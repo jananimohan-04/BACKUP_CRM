@@ -21,6 +21,8 @@ export interface CustomerAutocompleteProps {
   placeholder?: string;
   inputClass?: string;
   hint?: string;
+  /** Compact variant: the label sits to the left of the field so it can share a row. */
+  inlineLabel?: boolean;
 }
 
 export function CustomerAutocomplete({
@@ -34,6 +36,7 @@ export function CustomerAutocomplete({
   placeholder = "Type or select company...",
   inputClass = "w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-500 bg-white",
   hint,
+  inlineLabel = false,
 }: CustomerAutocompleteProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -57,7 +60,7 @@ export function CustomerAutocomplete({
   }, []);
 
   return (
-    <FormField label={label} required={required} hint={hint}>
+    <FormField label={label} required={required} hint={hint} inline={inlineLabel}>
       <div className="relative" ref={containerRef}>
         <input
           className={inputClass}

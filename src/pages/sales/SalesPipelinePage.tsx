@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { supabase } from '@/lib/supabase';
 import { financeApi } from '@/lib/finance';
 import { Button } from '@/components/ui/Card';
@@ -15,6 +15,8 @@ import { EnquiryModule } from './EnquiryModule';
 import { QuotationModule } from './QuotationModule';
 import { HsnDatalist } from '../../components/HsnDatalist';
 import { HSN_LIST_ID } from '@/lib/hsnMaster';
+import { tint } from '@/lib/entryTints';
+import { compactInput, compactCell, inlineLbl } from '@/lib/compactFields';
 import { CreateQuotationPage, type QuotationEmbed } from '../quotation/CreateQuotationPage';
 import { SalesOrderModule } from './SalesOrderModule';
 import { InwardModule } from './InwardModule';
@@ -139,10 +141,14 @@ export function formatLeadProductDisplay(raw: any): string {  if (!raw) return '
 }
 
 function formatStampDateTime(stamped: any): string | null {
+  // The stored lead number keeps its own 12-hour suffix (1009-26Sep26-1208AM) — that is
+  // data the strip/parse regexes elsewhere rely on. Only this rendering is converted to
+  // the 24-hour clock, so nothing already saved in the database has to change.
   const m = /-(\d{2})([A-Za-z]{3})(\d{2})-(\d{2})(\d{2})(AM|PM)$/.exec(String(stamped || ''));
   if (!m) return null;
   const [, dd, mon, yy, hh, mm, ap] = m;
-  return `${dd} ${mon} ${yy}, ${hh}:${mm} ${ap}`;
+  const h24 = (Number(hh) % 12) + (ap === 'PM' ? 12 : 0);
+  return `${dd} ${mon} ${yy}, ${String(h24).padStart(2, '0')}:${mm}`;
 }
 
 function formatSaleOrderDateTime(order: any): string | null {
@@ -156,8 +162,8 @@ function formatSaleOrderDateTime(order: any): string | null {
       const d = new Date(`${datePart}T${timePart}:00`);
       if (!isNaN(d.getTime())) {
         const monNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        let h = d.getHours(); const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
-        return `${String(d.getDate()).padStart(2, '0')} ${monNames[d.getMonth()]} ${String(d.getFullYear()).slice(-2)}, ${String(h).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} ${ap}`;
+        const h = d.getHours();
+        return `${String(d.getDate()).padStart(2, '0')} ${monNames[d.getMonth()]} ${String(d.getFullYear()).slice(-2)}, ${String(h).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
       }
     } catch { /* fall through */ }
     return `${datePart}${timePart ? `, ${timePart}` : ''}`;
@@ -166,7 +172,7 @@ function formatSaleOrderDateTime(order: any): string | null {
   if (order.created_at) {
     try {
       const d = new Date(order.created_at);
-      if (!isNaN(d.getTime())) return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true });
+      if (!isNaN(d.getTime())) return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
     } catch { /* ignore */ }
     return String(order.created_at).slice(0, 16).replace('T', ' ');
   }
@@ -1411,14 +1417,14 @@ export function SalesPipelinePage() {
   // KPI strip lives in the Topbar (single header line); the page supplies the data.
   const { setKpis } = useHeaderKpis();
   const stageColors: Record<string, { tile: string; icon: string }> = {
-    Enquiry: { tile: 'bg-gradient-to-br from-blue-700 to-blue-900 border-blue-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
-    Quotation: { tile: 'bg-gradient-to-br from-violet-700 to-violet-900 border-violet-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
-    'Sales Order': { tile: 'bg-gradient-to-br from-emerald-700 to-emerald-900 border-emerald-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
-    Inward: { tile: 'bg-gradient-to-br from-amber-600 to-amber-800 border-amber-900 hover:brightness-110', icon: 'bg-white/20 text-white' },
-    Rejected: { tile: 'bg-gradient-to-br from-fuchsia-700 to-fuchsia-900 border-fuchsia-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
-    'Finished Goods': { tile: 'bg-gradient-to-br from-cyan-700 to-cyan-900 border-cyan-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
-    DC: { tile: 'bg-gradient-to-br from-rose-700 to-rose-900 border-rose-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
-    Invoice: { tile: 'bg-gradient-to-br from-indigo-700 to-indigo-900 border-indigo-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
+    Enquiry: { tile: 'bg-gradient-to-br from-blue-800 to-blue-950 border-blue-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
+    Quotation: { tile: 'bg-gradient-to-br from-violet-800 to-violet-950 border-violet-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
+    'Sales Order': { tile: 'bg-gradient-to-br from-emerald-800 to-emerald-950 border-emerald-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
+    Inward: { tile: 'bg-gradient-to-br from-amber-700 to-amber-900 border-amber-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
+    Rejected: { tile: 'bg-gradient-to-br from-fuchsia-800 to-fuchsia-950 border-fuchsia-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
+    'Finished Goods': { tile: 'bg-gradient-to-br from-teal-800 to-teal-950 border-teal-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
+    DC: { tile: 'bg-gradient-to-br from-rose-800 to-rose-950 border-rose-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
+    Invoice: { tile: 'bg-gradient-to-br from-indigo-800 to-indigo-950 border-indigo-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
   };
   const stageClick: Record<string, () => void> = {
     Enquiry: () => setActiveView('enquiry_list'),
@@ -4256,12 +4262,7 @@ export function SalesPipelinePage() {
   // untouched — only the modal chrome (backdrop, positioning, close button and
   // footer) has been replaced by a card with Save Enquiry / Clear Reset buttons.
   const renderEnquiryEntryForm = () => (
-    <section className="rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="enquiry-entry-form">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-100 px-3 py-2">
-        <h3 className="text-sm font-bold text-slate-800">New Enquiry</h3>
-        <p className="text-xs text-slate-500">Enter the company and the products required, then save. The form stays open so you can add the next enquiry straight away.</p>
-      </div>
-
+    <section className={`rounded-xl border shadow-sm ${tint('Enquiry').panel}`} data-testid="enquiry-entry-form">
       <div className="space-y-2.5 p-3">
         {duplicateSource && (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-xs font-semibold text-brand-800">
@@ -4277,82 +4278,81 @@ export function SalesPipelinePage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 items-end gap-2 md:grid-cols-[minmax(0,32rem)_auto]">
+        {/* One compact row: company, then the product line, then the actions. flex-wrap keeps
+            every field reachable on narrow screens, where they simply flow onto extra lines. */}
+        <div className="flex flex-wrap items-center gap-2">
           <CustomerAutocomplete
-            label="Company Name"
+            label="Company"
             required
+            inlineLabel
             value={enquiryForm.company}
             onChange={val => handleCompanyChange(val)}
             onSelectCustomer={c => handleCompanyChange(c.company)}
             companies={allKnownCompanies}
-            inputClass={inputClass}
+            inputClass={`${compactInput} w-[15rem]`}
             placeholder="Type or select company..."
           />
-          <button type="button" onClick={openNewLeadModal} className="h-10 whitespace-nowrap rounded-lg border border-brand-200 bg-brand-50/50 px-3 text-xs font-bold text-brand-600 transition-colors hover:border-brand-400 hover:text-brand-800">+ Add New Company</button>
-        </div>
+          <button type="button" onClick={openNewLeadModal} className="h-8 whitespace-nowrap rounded-md border border-brand-200 bg-brand-50/50 px-2.5 text-[11px] font-bold text-brand-600 transition-colors hover:border-brand-400 hover:text-brand-800">+ Add New Company</button>
 
-        <div>
-          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Products Required *</label>
-          <div className="space-y-2">
-            {(enquiryForm.items || [{ productName: '', partName: '', quantity: '', remarks: '', filePaths: [] as string[], files: [] as File[] }]).map((item: any, idx: number) => (
-              <div key={idx} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_5.5rem_11rem_minmax(0,1fr)_auto] gap-2 items-center rounded-lg border border-slate-200 bg-slate-50 p-2">
-                <div>
-                  <input className={inputClass} placeholder="Product Name" list="enquiry-product-list" value={item.productName ?? item.partName ?? ''} onChange={e => {
-                    const newItems = [...(enquiryForm.items || [])];
-                    newItems[idx] = { ...newItems[idx], productName: e.target.value, partName: e.target.value };
-                    setEnquiryForm({...enquiryForm, items: newItems});
-                  }} />
-                </div>
-                <div>
-                  <input type="number" className={inputClass} placeholder="Qty" value={item.quantity} onChange={e => {
-                    const newItems = [...(enquiryForm.items || [])];
-                    newItems[idx] = { ...newItems[idx], quantity: e.target.value };
-                    setEnquiryForm({...enquiryForm, items: newItems});
-                  }} />
-                </div>
-                <div>
-                  <label className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
-                    <UploadCloud size={15}/>{(item.files || []).length ? `${item.files.length} file(s) selected` : 'Upload image / file / PDF'}
-                    <input type="file" multiple accept="*/*" className="hidden" onChange={e => {
-                      const selectedFiles = Array.from(e.currentTarget.files || []);
-                      const newItems = [...(enquiryForm.items || [])];
-                      newItems[idx] = { ...newItems[idx], files: [...(newItems[idx].files || []), ...selectedFiles] };
-                      setEnquiryForm({...enquiryForm, items: newItems});
-                      e.currentTarget.value = '';
-                    }} />
-                  </label>
-                  {(item.files || []).length > 0 && <div className="mt-1 space-y-1">{item.files.map((file: File, fileIdx: number) => <div key={`${file.name}-${fileIdx}`} className="flex items-center justify-between gap-2 text-[11px] text-slate-600"><span className="truncate">{file.name}</span><button type="button" className="text-rose-600 hover:text-rose-800" onClick={() => { const newItems = [...enquiryForm.items]; newItems[idx] = {...newItems[idx], files: newItems[idx].files.filter((_: File, j: number) => j !== fileIdx)}; setEnquiryForm({...enquiryForm, items: newItems}); }}>Remove</button></div>)}</div>}
-                </div>
-                <div>
-                  <input className={inputClass} placeholder="Remarks..." value={item.remarks || ''} onChange={e => {
-                    const newItems = [...(enquiryForm.items || [])];
-                    newItems[idx] = { ...newItems[idx], remarks: e.target.value };
-                    setEnquiryForm({...enquiryForm, items: newItems});
-                  }} />
-                </div>
-                {idx > 0 && (
-                  <button type="button" className="p-2 text-red-500 hover:bg-red-50 rounded mt-1" onClick={() => {
-                    const newItems = enquiryForm.items.filter((_: any, i: number) => i !== idx);
-                    setEnquiryForm({...enquiryForm, items: newItems});
-                  }}>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-                  </button>
-                )}
-              </div>
-            ))}
-            <datalist id="enquiry-product-list">{existingProductNames.map(n => <option key={n} value={n} />)}</datalist>
-            <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-800 flex items-center gap-1 mt-1" onClick={() => {
-              setEnquiryForm({...enquiryForm, items: [...(enquiryForm.items || []), { productName: '', partName: '', quantity: '', remarks: '', filePaths: [] as string[], files: [] as File[] }]});
-            }}>
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-              Add Another Product
-            </button>
+          <span className="h-6 w-px shrink-0 bg-slate-300" aria-hidden="true" />
+
+          <span className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wider text-slate-600">Products Required <span className="text-red-500">*</span></span>
+
+          {(enquiryForm.items || [{ productName: '', partName: '', quantity: '', remarks: '', filePaths: [] as string[], files: [] as File[] }]).map((item: any, idx: number) => (
+            <Fragment key={idx}>
+              <input className={`${compactInput} w-[13rem]`} placeholder="Product Name" list="enquiry-product-list" value={item.productName ?? item.partName ?? ''} onChange={e => {
+                const newItems = [...(enquiryForm.items || [])];
+                newItems[idx] = { ...newItems[idx], productName: e.target.value, partName: e.target.value };
+                setEnquiryForm({...enquiryForm, items: newItems});
+              }} />
+              <input type="number" className={`${compactInput} w-[4.5rem]`} placeholder="Qty" value={item.quantity} onChange={e => {
+                const newItems = [...(enquiryForm.items || [])];
+                newItems[idx] = { ...newItems[idx], quantity: e.target.value };
+                setEnquiryForm({...enquiryForm, items: newItems});
+              }} />
+              <label className="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
+                <UploadCloud size={13}/>{(item.files || []).length ? `${item.files.length} file(s)` : 'Upload file'}
+                <input type="file" multiple accept="*/*" className="hidden" onChange={e => {
+                  const selectedFiles = Array.from(e.currentTarget.files || []);
+                  const newItems = [...(enquiryForm.items || [])];
+                  newItems[idx] = { ...newItems[idx], files: [...(newItems[idx].files || []), ...selectedFiles] };
+                  setEnquiryForm({...enquiryForm, items: newItems});
+                  e.currentTarget.value = '';
+                }} />
+              </label>
+              {(item.files || []).length > 0 && item.files.map((file: File, fileIdx: number) => (
+                <span key={`${file.name}-${fileIdx}`} className="inline-flex shrink-0 items-center gap-1 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-600">
+                  <span className="max-w-[9rem] truncate">{file.name}</span>
+                  <button type="button" title={`Remove ${file.name}`} className="font-bold text-rose-600 hover:text-rose-800" onClick={() => { const newItems = [...enquiryForm.items]; newItems[idx] = {...newItems[idx], files: newItems[idx].files.filter((_: File, j: number) => j !== fileIdx)}; setEnquiryForm({...enquiryForm, items: newItems}); }}>×</button>
+                </span>
+              ))}
+              <input className={`${compactInput} w-[10rem]`} placeholder="Remarks..." value={item.remarks || ''} onChange={e => {
+                const newItems = [...(enquiryForm.items || [])];
+                newItems[idx] = { ...newItems[idx], remarks: e.target.value };
+                setEnquiryForm({...enquiryForm, items: newItems});
+              }} />
+              {idx > 0 && (
+                <button type="button" className="shrink-0 rounded p-1.5 text-red-500 hover:bg-red-50" onClick={() => {
+                  const newItems = enquiryForm.items.filter((_: any, i: number) => i !== idx);
+                  setEnquiryForm({...enquiryForm, items: newItems});
+                }}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                </button>
+              )}
+            </Fragment>
+          ))}
+          <datalist id="enquiry-product-list">{existingProductNames.map(n => <option key={n} value={n} />)}</datalist>
+          <button type="button" className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] font-semibold text-brand-600 hover:text-brand-800" onClick={() => {
+            setEnquiryForm({...enquiryForm, items: [...(enquiryForm.items || []), { productName: '', partName: '', quantity: '', remarks: '', filePaths: [] as string[], files: [] as File[] }]});
+          }}>
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Add Product
+          </button>
+
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={() => { setEnquiryForm(resetEnquiryForm()); setDuplicateSource(null); setEnquirySaveNotice(null); }}>Clear / Reset</Button>
+            <Button size="sm" onClick={saveEnquiry} disabled={savingEnquiry}>{savingEnquiry ? 'Saving...' : 'Save Enquiry'}</Button>
           </div>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-2.5">
-          <Button variant="secondary" onClick={() => { setEnquiryForm(resetEnquiryForm()); setDuplicateSource(null); setEnquirySaveNotice(null); }}>Clear / Reset</Button>
-          <Button onClick={saveEnquiry} disabled={savingEnquiry}>{savingEnquiry ? 'Saving...' : 'Save Enquiry'}</Button>
         </div>
       </div>
     </section>
@@ -4365,12 +4365,7 @@ export function SalesPipelinePage() {
   // drawing uploads and saveStandaloneSalesOrder are unchanged — only the modal chrome
   // (backdrop, positioning, close button and footer) is gone.
   const renderSalesOrderEntryForm = () => (
-    <section className="rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="so-entry-form">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-100 px-3 py-2">
-        <h3 className="text-sm font-bold text-slate-800">New Sales Order</h3>
-        <p className="text-xs text-slate-500">Enter the company and the product lines, then save. The form stays open so you can add the next order straight away.</p>
-      </div>
-
+    <section className={`rounded-xl border shadow-sm ${tint('Sales Order').panel}`} data-testid="so-entry-form">
       <div className="space-y-2.5 p-3">
         {soSaveNotice && (
           <div role="status" data-testid="so-saved-note" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
@@ -4379,75 +4374,77 @@ export function SalesPipelinePage() {
           </div>
         )}
 
-        <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-2">
-            <CustomerAutocomplete
-              label="Company"
-              required
-              value={soForm.customer || ''}
-              onChange={val => setSoForm((prev: any) => ({ ...prev, customer: val }))}
-              companies={allKnownCompanies}
-              inputClass={inputClass}
-              placeholder="Type or select company..."
-            />
-            <FormField label="Order Date" required><input type="date" className={inputClass} value={soForm.orderDate || ''} onChange={e=>setSoForm({...soForm, orderDate: e.target.value})} /></FormField>
-          </div>
-          {(soForm.items || []).length > 0 && (
-            <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_7.5rem_6.5rem] gap-2 items-center px-1">
-              <span></span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Product Name</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Qty</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Unit Price (₹)</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">GST %</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Status</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Drawings</span>
-            </div>
-          )}
-          {(soForm.items || []).map((item: any, idx: number) => {
-            const upd = (patch: any) => setSoForm((prev: any) => ({ ...prev, items: (prev.items || []).map((r: any, i: number) => (i === idx ? { ...r, ...patch } : r)) }));
-            return (
-              <div key={item.id || idx} className="rounded-lg border border-slate-200 bg-white px-2 py-2">
-                <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_7.5rem_6.5rem] gap-2 items-center">
-                  <span className="text-[11px] font-bold text-slate-400 text-center">{idx + 1}</span>
-                  <input className={inputClass} placeholder="Product name" value={item.partName || ''} onChange={e=>upd({ partName: e.target.value })} />
-                  <input type="number" min={0} className={inputClass} placeholder="Qty" value={item.quantity ?? ''} onChange={e=>upd({ quantity: e.target.value })} />
-                  <input type="number" min={0} className={inputClass} placeholder="Unit Price (₹)" value={item.unitPrice ?? ''} onChange={e=>upd({ unitPrice: e.target.value })} />
-                  <input type="number" min={0} className={inputClass} placeholder="GST %" value={item.gst ?? ''} onChange={e=>upd({ gst: e.target.value })} />
-                  <select className={inputClass} value={item.itemStatus || 'Confirmed'} onChange={e=>upd({ itemStatus: e.target.value })}>
-                    {['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'].map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                  <label className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-slate-300 bg-white px-2 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach drawings or any file (all formats)">
-                    <UploadCloud size={14} />{(item.files || []).length ? `${item.files.length} file${item.files.length === 1 ? '' : 's'}` : 'Upload'}
-                    <input type="file" multiple accept="*/*" className="hidden" aria-label={`Drawings for product ${idx + 1}`} onChange={e => { const picked = Array.from(e.currentTarget.files || []); e.currentTarget.value = ''; if (picked.length) upd({ files: [...(item.files || []), ...picked] }); }} />
-                  </label>
-                </div>
-                {(item.files || []).length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1.5 pl-9" data-testid="so-files">
-                    {(item.files as File[]).map((f, fi) => (
-                      <span key={`${f.name}-${fi}`} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-700">
-                        <span className="max-w-[200px] truncate">{f.name}</span>
-                        <button type="button" className="text-rose-500 hover:text-rose-700" aria-label={`Remove ${f.name}`} onClick={() => upd({ files: (item.files as File[]).filter((_, j) => j !== fi) })}>×</button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          <button type="button" onClick={() => setSoForm((prev: any) => ({ ...prev, items: [...(prev.items || []), { id: crypto.randomUUID(), partName: '', quantity: '', rejectedQty: '', itemStatus: 'Confirmed', unitPrice: '', gst: '18', files: [] }] }))}
-            className="text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
-            <span className="text-lg">+</span> Add Another Product
-          </button>
-          <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-2">
-            <FormField label="Delivery Date" required><input type="date" className={inputClass} value={soForm.deliveryDate || ''} onChange={e=>setSoForm({...soForm, deliveryDate: e.target.value})} /></FormField>
-            <FormField label="PO Number"><input className={inputClass} placeholder="Customer PO no." value={soForm.customerPoNo || ''} onChange={e=>setSoForm({...soForm, customerPoNo: e.target.value})} /></FormField>
-          </div>
-        </div>
+        {/* One compact row for the order fields. The product lines keep their own tabular
+            sub-grid below, because seven columns cannot sit on a single readable line. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <CustomerAutocomplete
+            label="Company"
+            required
+            inlineLabel
+            value={soForm.customer || ''}
+            onChange={val => setSoForm((prev: any) => ({ ...prev, customer: val }))}
+            companies={allKnownCompanies}
+            inputClass={`${compactInput} w-[15rem]`}
+            placeholder="Type or select company..."
+          />
+          <FormField label="Order Date" required inline><input type="date" className={`${compactInput} w-[10.5rem]`} value={soForm.orderDate || ''} onChange={e=>setSoForm({...soForm, orderDate: e.target.value})} /></FormField>
+          <FormField label="Delivery Date" required inline><input type="date" className={`${compactInput} w-[10.5rem]`} value={soForm.deliveryDate || ''} onChange={e=>setSoForm({...soForm, deliveryDate: e.target.value})} /></FormField>
+          <FormField label="PO Number" inline><input className={`${compactInput} w-[10rem]`} placeholder="Customer PO no." value={soForm.customerPoNo || ''} onChange={e=>setSoForm({...soForm, customerPoNo: e.target.value})} /></FormField>
 
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-2.5">
-          <Button variant="secondary" onClick={() => { setSoForm(resetSoForm()); setSoSaveNotice(null); }}>Clear / Reset</Button>
-          <Button onClick={saveStandaloneSalesOrder} disabled={savingSo}>{savingSo ? 'Saving...' : 'Save Order'}</Button>
+          <span className="h-6 w-px shrink-0 bg-slate-300" aria-hidden="true" />
+
+          <button type="button" onClick={() => setSoForm((prev: any) => ({ ...prev, items: [...(prev.items || []), { id: crypto.randomUUID(), partName: '', quantity: '', rejectedQty: '', itemStatus: 'Confirmed', unitPrice: '', gst: '18', files: [] }] }))}
+            className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] font-semibold text-brand-600 hover:text-brand-700">
+            <span className="text-sm">+</span> Add Product
+          </button>
+
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={() => { setSoForm(resetSoForm()); setSoSaveNotice(null); }}>Clear / Reset</Button>
+            <Button size="sm" onClick={saveStandaloneSalesOrder} disabled={savingSo}>{savingSo ? 'Saving...' : 'Save Order'}</Button>
+          </div>
         </div>
+        {(soForm.items || []).length > 0 && (
+          <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_7.5rem_6rem] gap-2 items-center px-1 pt-0.5">
+            <span></span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">Product Name</span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">Qty</span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">Unit Price (₹)</span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">GST %</span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">Status</span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">Drawings</span>
+          </div>
+        )}
+        {(soForm.items || []).map((item: any, idx: number) => {
+          const upd = (patch: any) => setSoForm((prev: any) => ({ ...prev, items: (prev.items || []).map((r: any, i: number) => (i === idx ? { ...r, ...patch } : r)) }));
+          return (
+            <div key={item.id || idx} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5">
+              <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_7.5rem_6rem] gap-2 items-center">
+                <span className="text-[11px] font-bold text-slate-400 text-center">{idx + 1}</span>
+                <input className={compactCell} placeholder="Product name" value={item.partName || ''} onChange={e=>upd({ partName: e.target.value })} />
+                <input type="number" min={0} className={compactCell} placeholder="Qty" value={item.quantity ?? ''} onChange={e=>upd({ quantity: e.target.value })} />
+                <input type="number" min={0} className={compactCell} placeholder="Unit Price (₹)" value={item.unitPrice ?? ''} onChange={e=>upd({ unitPrice: e.target.value })} />
+                <input type="number" min={0} className={compactCell} placeholder="GST %" value={item.gst ?? ''} onChange={e=>upd({ gst: e.target.value })} />
+                <select className={compactCell} value={item.itemStatus || 'Confirmed'} onChange={e=>upd({ itemStatus: e.target.value })}>
+                  {['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'].map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <label className="inline-flex h-8 w-full cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach drawings or any file (all formats)">
+                  <UploadCloud size={13} />{(item.files || []).length ? `${item.files.length} file${item.files.length === 1 ? '' : 's'}` : 'Upload'}
+                  <input type="file" multiple accept="*/*" className="hidden" aria-label={`Drawings for product ${idx + 1}`} onChange={e => { const picked = Array.from(e.currentTarget.files || []); e.currentTarget.value = ''; if (picked.length) upd({ files: [...(item.files || []), ...picked] }); }} />
+                </label>
+              </div>
+              {(item.files || []).length > 0 && (
+                <div className="mt-1.5 flex flex-wrap gap-1.5 pl-9" data-testid="so-files">
+                  {(item.files as File[]).map((f, fi) => (
+                    <span key={`${f.name}-${fi}`} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-700">
+                      <span className="max-w-[180px] truncate">{f.name}</span>
+                      <button type="button" className="font-bold text-rose-500 hover:text-rose-700" aria-label={`Remove ${f.name}`} onClick={() => upd({ files: (item.files as File[]).filter((_, j) => j !== fi) })}>×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </section>
   );
@@ -4468,11 +4465,7 @@ export function SalesPipelinePage() {
     setDcSaveNotice(null);
   };
   const renderDeliveryChallanEntryForm = () => (
-    <section className="rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="dc-entry-form">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-100 px-3 py-2">
-        <h3 className="text-sm font-bold text-slate-800">New Delivery Challan</h3>
-        <p className="text-xs text-slate-500">Enter the party and the dispatch lines, then save. The form stays open so you can add the next challan straight away.</p>
-      </div>
+    <section className={`rounded-xl border shadow-sm ${tint('DC').panel}`} data-testid="dc-entry-form">
       <div className="space-y-2.5 p-3">
         {dcSaveNotice && (
           <div role="status" data-testid="dc-saved-note" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
@@ -4480,13 +4473,16 @@ export function SalesPipelinePage() {
             <button type="button" onClick={() => setDcSaveNotice(null)} className="font-bold underline hover:text-emerald-900">Dismiss</button>
           </div>
         )}
-        <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <FormField label="DC No" required><input className={inputClass} value={dcForm.dcNo || ''} onChange={e=>setDcForm({...dcForm, dcNo: e.target.value})} /></FormField>
-            <FormField label="Date" required><input type="date" className={inputClass} value={dcForm.date || ''} onChange={e=>setDcForm({...dcForm, date: e.target.value})} /></FormField>
+        <div className="flex flex-col gap-2">
+          {/* Row 1 - party identity. Inline labels + one shared centre line, so the whole
+              block reads as a toolbar instead of five stacked label/control pairs. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <FormField label="DC No" required inline><input className={`${compactInput} w-[9rem]`} value={dcForm.dcNo || ''} onChange={e=>setDcForm({...dcForm, dcNo: e.target.value})} /></FormField>
+            <FormField label="Date" required inline><input type="date" className={`${compactInput} w-[10.5rem]`} value={dcForm.date || ''} onChange={e=>setDcForm({...dcForm, date: e.target.value})} /></FormField>
             <CustomerAutocomplete
               label="Party Name"
               required
+              inlineLabel
               value={dcForm.partyName || ''}
               onChange={val => setDcForm((prev: any) => ({ ...prev, partyName: val }))}
               onSelectCustomer={(c: any) => {
@@ -4501,25 +4497,27 @@ export function SalesPipelinePage() {
                 }));
               }}
               companies={allKnownCompanies}
-              inputClass={inputClass}
+              inputClass={`${compactInput} w-[14rem]`}
               placeholder="Type or select party..."
             />
-            <FormField label="Party Address"><input className={inputClass} value={dcForm.partyAddress || ''} onChange={e=>setDcForm({...dcForm, partyAddress: e.target.value})} /></FormField>
-            <FormField label="Party GSTIN"><input className={inputClass} value={dcForm.partyGstin || ''} onChange={e=>setDcForm({...dcForm, partyGstin: e.target.value})} /></FormField>
+            <FormField label="Party Address" inline><input className={`${compactInput} w-[14rem]`} value={dcForm.partyAddress || ''} onChange={e=>setDcForm({...dcForm, partyAddress: e.target.value})} /></FormField>
+            <FormField label="Party GSTIN" inline><input className={`${compactInput} w-[11rem]`} value={dcForm.partyGstin || ''} onChange={e=>setDcForm({...dcForm, partyGstin: e.target.value})} /></FormField>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <FormField label="Party Code"><input className={inputClass} value={dcForm.partyCode || ''} onChange={e=>setDcForm({...dcForm, partyCode: e.target.value})} /></FormField>
-            <FormField label="E-Way Bill No"><input className={inputClass} value={dcForm.ewayBill || ''} onChange={e=>setDcForm({...dcForm, ewayBill: e.target.value})} /></FormField>
-            <FormField label="PO Number"><input className={inputClass} value={dcForm.poNumber || ''} onChange={e=>setDcForm({...dcForm, poNumber: e.target.value})} /></FormField>
-            <FormField label="Place of Supply"><input className={inputClass} value={dcForm.placeOfSupply || ''} onChange={e=>setDcForm({...dcForm, placeOfSupply: e.target.value})} /></FormField>
-            <FormField label="Packaging Details"><input className={inputClass} value={dcForm.packaging || ''} onChange={e=>setDcForm({...dcForm, packaging: e.target.value})} /></FormField>
+          {/* Row 2 - dispatch references. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <FormField label="Party Code" inline><input className={`${compactInput} w-[8rem]`} value={dcForm.partyCode || ''} onChange={e=>setDcForm({...dcForm, partyCode: e.target.value})} /></FormField>
+            <FormField label="E-Way Bill No" inline><input className={`${compactInput} w-[10rem]`} value={dcForm.ewayBill || ''} onChange={e=>setDcForm({...dcForm, ewayBill: e.target.value})} /></FormField>
+            <FormField label="PO Number" inline><input className={`${compactInput} w-[10rem]`} value={dcForm.poNumber || ''} onChange={e=>setDcForm({...dcForm, poNumber: e.target.value})} /></FormField>
+            <FormField label="Place of Supply" inline><input className={`${compactInput} w-[11rem]`} value={dcForm.placeOfSupply || ''} onChange={e=>setDcForm({...dcForm, placeOfSupply: e.target.value})} /></FormField>
+            <FormField label="Packaging Details" inline><input className={`${compactInput} w-[12rem]`} value={dcForm.packaging || ''} onChange={e=>setDcForm({...dcForm, packaging: e.target.value})} /></FormField>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <FormField label="Enquiry No"><input className={inputClass} value={dcForm.enquiryNo || ''} onChange={e=>setDcForm({...dcForm, enquiryNo: e.target.value})} /></FormField>
-            <FormField label="Vehicle No"><input className={inputClass} value={dcForm.vehicleNo || ''} onChange={e=>setDcForm({...dcForm, vehicleNo: e.target.value})} /></FormField>
-            <FormField label="Phone No"><input className={inputClass} value={dcForm.phone || ''} onChange={e=>setDcForm({...dcForm, phone: e.target.value})} /></FormField>
-            <FormField label="Category"><input className={inputClass} list="dc-category-list" value={dcForm.category || ''} onChange={e=>setDcForm({...dcForm, category: e.target.value})} placeholder="Select or type category" /></FormField>
-            <FormField label="Process"><input className={inputClass} list="dc-process-list" value={dcForm.process || ''} onChange={e=>setDcForm({...dcForm, process: e.target.value})} placeholder="Select or type process" /></FormField>
+          {/* Row 3 - logistics. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <FormField label="Enquiry No" inline><input className={`${compactInput} w-[10rem]`} value={dcForm.enquiryNo || ''} onChange={e=>setDcForm({...dcForm, enquiryNo: e.target.value})} /></FormField>
+            <FormField label="Vehicle No" inline><input className={`${compactInput} w-[9rem]`} value={dcForm.vehicleNo || ''} onChange={e=>setDcForm({...dcForm, vehicleNo: e.target.value})} /></FormField>
+            <FormField label="Phone No" inline><input className={`${compactInput} w-[9rem]`} value={dcForm.phone || ''} onChange={e=>setDcForm({...dcForm, phone: e.target.value})} /></FormField>
+            <FormField label="Category" inline><input className={`${compactInput} w-[13rem]`} list="dc-category-list" value={dcForm.category || ''} onChange={e=>setDcForm({...dcForm, category: e.target.value})} placeholder="Select or type category" /></FormField>
+            <FormField label="Process" inline><input className={`${compactInput} w-[13rem]`} list="dc-process-list" value={dcForm.process || ''} onChange={e=>setDcForm({...dcForm, process: e.target.value})} placeholder="Select or type process" /></FormField>
           </div>
           <datalist id="dc-category-list">
             {(partsMaster.some((p: any) => p.category) ? Array.from(new Set(partsMaster.map((p: any) => p.category).filter(Boolean))) : ['GOODS PURCHASE', 'SERVICE PURCHASE', 'CUSTOMER DC', 'NEW PART', 'NO DC', 'EXPENSES']).map((c: string) => <option key={c} value={c} />)}
@@ -4540,7 +4538,7 @@ export function SalesPipelinePage() {
             {dcItems.map((it, idx) => {
               const amt = (Number(it.qty) || 0) * (Number(it.price) || 0);
               return (
-                <div key={idx} className={`grid grid-cols-[auto_minmax(0,1.5fr)_5rem_4.5rem_4rem_5.5rem_6rem] gap-2 items-center rounded-lg border px-3 py-2 mb-2 ${it.selected ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200'}`}>
+                <div key={idx} className={`grid grid-cols-[auto_minmax(0,1.5fr)_5rem_4.5rem_4rem_5.5rem_6rem] gap-2 items-center rounded-lg border px-2 py-1.5 mb-1.5 ${it.selected ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200'}`}>
                   <input
                     type="checkbox"
                     checked={it.selected}
@@ -4550,7 +4548,7 @@ export function SalesPipelinePage() {
                   />
                   <div>
                     <input
-                      className={inputClass} list="dc-product-list" placeholder="Part name" value={it.name || ''}
+                      className={compactCell} list="dc-product-list" placeholder="Part name" value={it.name || ''}
                       onChange={(e) => {
                         const nm = e.target.value;
                         const key = nm.trim().toLowerCase();
@@ -4565,33 +4563,33 @@ export function SalesPipelinePage() {
                       }}
                     />
                   </div>
-                  <input className={inputClass} placeholder="HSN" value={it.hsn || ''} onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, hsn: e.target.value } : x)))} />
+                  <input className={compactCell} placeholder="HSN" value={it.hsn || ''} onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, hsn: e.target.value } : x)))} />
                   <div>
                     <input
                       type="number" min={0}
                       disabled={!it.selected}
                       value={it.qty}
                       onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))}
-                      className={`${inputClass} !py-1.5 tabular-nums disabled:bg-slate-100`}
+                      className={`${compactCell} tabular-nums disabled:bg-slate-100`}
                     />
                     {it.avail != null && <p className="text-[10px] font-semibold text-violet-700 tabular-nums mt-0.5">Available: {it.avail}</p>}
                   </div>
-                  <input className={inputClass} placeholder="Nos" value={it.unit || ''} onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, unit: e.target.value } : x)))} />
-                  <input type="number" min={0} className={inputClass} placeholder="0.00" value={it.price || ''} onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, price: e.target.value } : x)))} />
-                  <input className={`${inputClass} bg-white font-bold tabular-nums`} value={amt ? amt.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : 0} disabled />
+                  <input className={compactCell} placeholder="Nos" value={it.unit || ''} onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, unit: e.target.value } : x)))} />
+                  <input type="number" min={0} className={compactCell} placeholder="0.00" value={it.price || ''} onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, price: e.target.value } : x)))} />
+                  <input className={`${compactCell} bg-white font-bold tabular-nums`} value={amt ? amt.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : 0} disabled />
                 </div>
               );
             })}
             <datalist id="dc-product-list">
               {partsMaster.map((p: any) => <option key={p.id || p.part_name} value={p.part_name} />)}
             </datalist>
-            <button type="button" onClick={() => setDcItems((prev) => [...prev, { name: '', avail: null, qty: '', selected: true, hsn: '', unit: 'Nos', price: '' }])} className="mt-1 text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
-              <span className="text-lg">+</span> Add Part
+            <button type="button" onClick={() => setDcItems((prev) => [...prev, { name: '', avail: null, qty: '', selected: true, hsn: '', unit: 'Nos', price: '' }])} className="mt-1 flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] font-semibold text-brand-600 hover:text-brand-700">
+              <span className="text-sm">+</span> Add Part
             </button>
             {dcPricing.loading ? (
               <p className="text-[11px] text-slate-400 mt-2">Resolving approved price…</p>
             ) : dcPricing.lines.length > 0 && (
-              <div className="text-xs bg-brand-50/60 border border-brand-100 rounded-lg px-3 py-2 mt-3 space-y-0.5">
+              <div className="text-xs bg-brand-50/60 border border-brand-100 rounded-lg px-3 py-1.5 mt-2 space-y-0.5">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-brand-700">Approved price (costing sheet)</p>
                 {dcPricing.lines.map((l) => (
                   <p key={l.name} className="font-semibold text-slate-700 tabular-nums">
@@ -4601,22 +4599,24 @@ export function SalesPipelinePage() {
               </div>
             )}
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <FormField label="Receiver Name"><input className={inputClass} value={dcForm.receiverName || ''} onChange={e=>setDcForm({...dcForm, receiverName: e.target.value})} /></FormField>
+          {/* Sign-off row. The pads cannot shrink to input height, so they keep their own
+              compact line with the names set inline beside them. */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 items-start">
+            <FormField label="Receiver Name" inline><input className={`${compactInput} w-[8rem]`} value={dcForm.receiverName || ''} onChange={e=>setDcForm({...dcForm, receiverName: e.target.value})} /></FormField>
             <div>
               <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Customer Signature</span>
-              <SignaturePad value={dcForm.custSignature || null} onChange={(v) => setDcForm((prev: any) => ({ ...prev, custSignature: v }))} />
+              <SignaturePad height={56} value={dcForm.custSignature || null} onChange={(v) => setDcForm((prev: any) => ({ ...prev, custSignature: v }))} />
             </div>
-            <FormField label="Sender Name"><input className={inputClass} value={dcForm.senderName || ''} onChange={e=>setDcForm({...dcForm, senderName: e.target.value})} /></FormField>
+            <FormField label="Sender Name" inline><input className={`${compactInput} w-[8rem]`} value={dcForm.senderName || ''} onChange={e=>setDcForm({...dcForm, senderName: e.target.value})} /></FormField>
             <div>
               <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Authorized Signature</span>
-              <SignaturePad value={dcForm.authSignature || null} onChange={(v) => setDcForm((prev: any) => ({ ...prev, authSignature: v }))} />
+              <SignaturePad height={56} value={dcForm.authSignature || null} onChange={(v) => setDcForm((prev: any) => ({ ...prev, authSignature: v }))} />
             </div>
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-2.5">
-          <Button variant="secondary" onClick={clearDcForm}>Clear / Reset</Button>
-          <Button onClick={saveDeliveryChallan} disabled={dcSaving}>{dcSaving ? 'Saving...' : 'Save'}</Button>
+          <Button variant="secondary" size="sm" onClick={clearDcForm}>Clear / Reset</Button>
+          <Button size="sm" onClick={saveDeliveryChallan} disabled={dcSaving}>{dcSaving ? 'Saving...' : 'Save'}</Button>
         </div>
       </div>
     </section>
@@ -4630,23 +4630,19 @@ export function SalesPipelinePage() {
   // gone. Done/Cancel became Clear / Reset, because there is no popup to close.
   const clearInwardForm = () => { setInwardSavedCount(0); openDummyInward(); };
   const renderInwardEntryForm = () => (
-    <section className="rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="inward-entry-form">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-100 px-3 py-2">
-        <h3 className="text-sm font-bold text-slate-800">New Inward Entry</h3>
-        <p className="text-xs text-slate-500">Add the parts to buy for this product, then submit. The form stays open so you can record the next inward straight away.</p>
-      </div>
+    <section className={`rounded-xl border shadow-sm ${tint('Inward').panel}`} data-testid="inward-entry-form">
       <div className="space-y-2.5 p-3">
         <div className="flex flex-col gap-4">
           <datalist id="inward-customer-list">
             {(allKnownCompanies || []).map((c: any) => <option key={c.company} value={c.company} />)}
           </datalist>
 
-          <div className="flex items-center justify-between border-t border-slate-100 pt-4">
-            <div><h4 className="font-semibold text-sm text-slate-800">Parts to Buy for {inwardForm.productName || 'Selected Product'}</h4><p className="text-xs text-slate-500">Each inward can hold multiple parts — one line per part.</p></div>
-            {inwardSavedCount > 0 && <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700" data-testid="inward-saved-note">✓ {inwardSavedCount} saved — add the next inward</span>}
-
-          </div>
-          <div className="space-y-4">
+          {inwardSavedCount > 0 && (
+            <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700" data-testid="inward-saved-note">✓ {inwardSavedCount} saved — add the next inward</span>
+            </div>
+          )}
+          <div className="space-y-2.5">
             {(inwardForm.parts || []).map((group: any, index: number) => {
               const setGroup = (patch: any) => { const parts=[...inwardForm.parts]; parts[index]={...group, ...patch}; setInwardForm({...inwardForm, parts}); };
               const setItem = (ii: number, patch: any) => { const items=[...(group.items || [])]; items[ii]={...items[ii], ...patch}; setGroup({ items }); };
@@ -4664,12 +4660,18 @@ export function SalesPipelinePage() {
                 const parts=[...inwardForm.parts]; parts[index]={...group, ...gpatch, items};
                 setInwardForm({ ...inwardForm, parts, ...patch, partyName: cust || inwardForm.partyName });
               };
+              const addPartBtn = (
+                <button type="button" className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs font-medium text-brand-600 hover:text-brand-800" onClick={() => setGroup({ items: [...(group.items || []), emptyInwardItem()] })}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  Add part
+                </button>
+              );
               return (
-              <div key={index} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <div className="mb-3 flex items-center justify-between"><span className="text-xs font-bold uppercase text-slate-600">Inward {index + 1}</span>{inwardForm.parts.length > 1 && <button type="button" onClick={() => setInwardForm({...inwardForm, parts: inwardForm.parts.filter((_: any, i: number) => i !== index)})} className="text-xs font-medium text-rose-600 hover:text-rose-800">Remove</button>}</div>
-                <div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-4 mb-3">
-                  <FormField label="Category" required>
-                    <select className={inputClass} value={group.category || 'GOODS PURCHASE'} onChange={e=>setGroup({ category: e.target.value })}>
+              <div key={index} className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="shrink-0 text-xs font-bold uppercase text-slate-600">Inward {index + 1}</span>
+                  <FormField label="Category" required inline>
+                    <select className={`${compactInput} w-[11rem]`} value={group.category || 'GOODS PURCHASE'} onChange={e=>setGroup({ category: e.target.value })}>
                       <option>EXPENSES</option>
                       <option>CUSTOMER DC</option>
                       <option>NEW PART</option>
@@ -4678,76 +4680,72 @@ export function SalesPipelinePage() {
                       <option>SERVICE PURCHASE</option>
                     </select>
                   </FormField>
-                  <div>
-                    <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Company</span>
-                    <input className={inputClass} placeholder="Company" list="inward-customer-list" value={group.partyName ?? inwardForm.partyName ?? ''} onChange={e=>setGroup({ partyName: e.target.value })} />
+                  <div className="flex items-center gap-1.5">
+                    <span className={inlineLbl}>Company</span>
+                    <input className={`${compactInput} w-[12rem]`} placeholder="Company" list="inward-customer-list" value={group.partyName ?? inwardForm.partyName ?? ''} onChange={e=>setGroup({ partyName: e.target.value })} />
                   </div>
-                  <FormField label="Inward Date" required><input type="date" className={inputClass} value={group.inwardDate || ''} onChange={e=>setGroup({ inwardDate: e.target.value })} /></FormField>
-                  <FormField label="Reference No."><input className={inputClass} value={group.referenceNo || ''} onChange={e=>setGroup({ referenceNo: e.target.value })} placeholder="e.g. DC/Invoice No" /></FormField>
-                  <div>
-                    <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Files</span>
-                    <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600 hover:text-brand-700">
-                      <span className="rounded-md border border-dashed border-slate-300 bg-white px-3 py-2 hover:border-brand-400">Choose Files</span>
-                      {(group.files || []).length ? <span className="max-w-[12rem] truncate text-slate-500">{group.files.map((f: File) => f.name).join(', ')}</span> : <span className="text-slate-400">No file chosen</span>}
+                  <FormField label="Inward Date" required inline><input type="date" className={`${compactInput} w-[10.5rem]`} value={group.inwardDate || ''} onChange={e=>setGroup({ inwardDate: e.target.value })} /></FormField>
+                  <FormField label="Reference No." inline><input className={`${compactInput} w-[10rem]`} value={group.referenceNo || ''} onChange={e=>setGroup({ referenceNo: e.target.value })} placeholder="e.g. DC/Invoice No" /></FormField>
+                  <div className="flex items-center gap-1.5">
+                    <span className={inlineLbl}>Files</span>
+                    <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach bills, DCs or any file (all formats)">
+                      <UploadCloud size={13}/>{(group.files || []).length ? `${group.files.length} file${group.files.length === 1 ? '' : 's'}` : 'Choose Files'}
                       <input type="file" multiple accept="*/*" className="hidden" onChange={e=>{ setGroup({ files: [...(group.files || []), ...Array.from(e.target.files || [])] }); e.currentTarget.value=''; }} />
                     </label>
+                    {(group.files || []).length > 0 && <span className="max-w-[10rem] truncate text-[11px] text-slate-500">{group.files.map((f: File) => f.name).join(', ')}</span>}
                   </div>
+                  {inwardForm.parts.length > 1 && <button type="button" onClick={() => setInwardForm({...inwardForm, parts: inwardForm.parts.filter((_: any, i: number) => i !== index)})} className="ml-auto shrink-0 text-xs font-medium text-rose-600 hover:text-rose-800">Remove</button>}
                 </div>
-                {(group.items || []).map((item: any, ii: number) => {
-                  const lbl = 'block text-[10px] font-bold text-slate-500 uppercase mb-0.5';
-                  return (
-                    <div key={ii} className="grid grid-cols-6 gap-x-2 gap-y-2 mb-3 pb-3 border-b border-slate-200 last:border-b-0 last:pb-0">
-                      <label className="col-span-6 sm:col-span-2 min-w-0"><span className={lbl}>Product</span>
-                        {(group.category || 'GOODS PURCHASE') === 'EXPENSES' ? (
-                          <>
-                            <input className={inputClass} list={`expense-products-${index}`} placeholder="Type the product / project" value={item.productName || ''}
-                              onChange={e => { const v = e.target.value; const m = (inwardForm.productOptions || []).find((o: any) => String(o.name).trim().toLowerCase() === v.trim().toLowerCase()); setItem(ii, { productName: v, productKey: v.trim() ? (m?.key || 'expense') : '', enquiryId: m?.enquiryId || '', projectName: m?.leadNo || v }); }} />
-                            <datalist id={`expense-products-${index}`}>{(inwardForm.productOptions || []).map((o: any) => <option key={o.key} value={o.name} />)}</datalist>
-                          </>
-                        ) : (
-                        <select className={inputClass} value={item.productKey || ''} onChange={e=>onSelectProduct(ii, e.target.value)}>
+                {(group.items || []).map((item: any, ii: number) => (
+                  <div key={ii} className="mt-1.5 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-1.5">
+                    <span className="w-4 shrink-0 text-center text-[11px] font-bold text-slate-400">{ii + 1}</span>
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className={inlineLbl}>Product</span>
+                      {(group.category || 'GOODS PURCHASE') === 'EXPENSES' ? (
+                        <>
+                          <input className={`${compactInput} w-[13rem]`} list={`expense-products-${index}`} placeholder="Type the product / project" value={item.productName || ''}
+                            onChange={e => { const v = e.target.value; const m = (inwardForm.productOptions || []).find((o: any) => String(o.name).trim().toLowerCase() === v.trim().toLowerCase()); setItem(ii, { productName: v, productKey: v.trim() ? (m?.key || 'expense') : '', enquiryId: m?.enquiryId || '', projectName: m?.leadNo || v }); }} />
+                          <datalist id={`expense-products-${index}`}>{(inwardForm.productOptions || []).map((o: any) => <option key={o.key} value={o.name} />)}</datalist>
+                        </>
+                      ) : (
+                        <select className={`${compactInput} w-[13rem]`} value={item.productKey || ''} onChange={e=>onSelectProduct(ii, e.target.value)}>
                           <option value="">Select product</option>
                           {productOptions.map((option: any) => <option key={option.key} value={option.key}>{option.name} — {option.customer || option.leadNo}{option.saleLabel ? ` · ${option.saleLabel}` : ''}</option>)}
-                        </select>)}</label>
-                      <label className="col-span-6 sm:col-span-2 min-w-0"><span className={lbl}>Part Name *</span>
-                        <input className={inputClass} placeholder="Part Name" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} /></label>
-                      <label className="col-span-6 sm:col-span-2 min-w-0"><span className={lbl}>Remarks</span>
-                        <input className={inputClass} placeholder="Remarks..." value={item.remarks ?? ''} onChange={e=>setItem(ii, { remarks: e.target.value })} /></label>
-                      <label className="col-span-2 sm:col-span-1 min-w-0"><span className={lbl}>Qty *</span>
-                        <input type="number" min="0" className={inputClass} placeholder="Qty" value={item.quantity || ''} onChange={e=>setItem(ii, { quantity: e.target.value })} /></label>
-                      <label className="col-span-2 sm:col-span-1 min-w-0"><span className={lbl}>Price *</span>
-                        <input type="number" min="0" className={inputClass} placeholder="Price" value={item.price || ''} onChange={e=>setItem(ii, { price: e.target.value })} /></label>
-                      <label className="col-span-1 min-w-0"><span className={lbl}>Disc %</span>
-                        <input type="number" min="0" className={inputClass} placeholder="%" value={item.discount || ''} onChange={e=>setItem(ii, { discount: e.target.value })} /></label>
-                      <label className="col-span-1 min-w-0"><span className={lbl}>GST %</span>
-                        <input type="number" min="0" className={inputClass} placeholder="%" value={item.gst || ''} onChange={e=>setItem(ii, { gst: e.target.value })} /></label>
-                      <label className="col-span-2 sm:col-span-1 min-w-0"><span className={lbl}>Total</span>
-                        <input className={`${inputClass} bg-white font-bold`} value={lineTotal(item) || 0} disabled /></label>
-                      <div className="col-span-1 flex items-end justify-end">
-                        {(group.items || []).length > 1 && (
-                          <button type="button" className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded" title="Remove line" onClick={() => setGroup({ items: (group.items || []).filter((_: any, j: number) => j !== ii) })}>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-                          </button>
-                        )}
-                      </div>
+                        </select>)}
                     </div>
-                  );
-                })}
+                    <div className="flex items-center gap-1.5"><span className={inlineLbl}>Part Name *</span>
+                      <input className={`${compactInput} w-[10rem]`} placeholder="Part Name" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} /></div>
+                    <div className="flex items-center gap-1.5"><span className={inlineLbl}>Remarks</span>
+                      <input className={`${compactInput} w-[10rem]`} placeholder="Remarks..." value={item.remarks ?? ''} onChange={e=>setItem(ii, { remarks: e.target.value })} /></div>
+                    <div className="flex items-center gap-1.5"><span className={inlineLbl}>Qty *</span>
+                      <input type="number" min="0" className={`${compactInput} w-[4.5rem]`} placeholder="Qty" value={item.quantity || ''} onChange={e=>setItem(ii, { quantity: e.target.value })} /></div>
+                    <div className="flex items-center gap-1.5"><span className={inlineLbl}>Price *</span>
+                      <input type="number" min="0" className={`${compactInput} w-[6rem]`} placeholder="Price" value={item.price || ''} onChange={e=>setItem(ii, { price: e.target.value })} /></div>
+                    <div className="flex items-center gap-1.5"><span className={inlineLbl}>Disc %</span>
+                      <input type="number" min="0" className={`${compactInput} w-[4.5rem]`} placeholder="%" value={item.discount || ''} onChange={e=>setItem(ii, { discount: e.target.value })} /></div>
+                    <div className="flex items-center gap-1.5"><span className={inlineLbl}>GST %</span>
+                      <input type="number" min="0" className={`${compactInput} w-[4.5rem]`} placeholder="%" value={item.gst || ''} onChange={e=>setItem(ii, { gst: e.target.value })} /></div>
+                    <div className="flex items-center gap-1.5"><span className={inlineLbl}>Total</span>
+                      <input className={`${compactInput} w-[6rem] bg-white font-bold`} value={lineTotal(item) || 0} disabled /></div>
+                    {(group.items || []).length > 1 && (
+                      <button type="button" className="shrink-0 rounded p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600" title="Remove line" onClick={() => setGroup({ items: (group.items || []).filter((_: any, j: number) => j !== ii) })}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                      </button>
+                    )}
+                    {/* "Add part" rides on the last line so the form stays exactly two lines tall. */}
+                    {ii === (group.items || []).length - 1 && <span className="ml-auto">{addPartBtn}</span>}
+                  </div>
+                ))}
+                {(group.items || []).length === 0 && <div className="mt-1.5 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-1.5">{addPartBtn}</div>}
                 {(inwardForm.productOptions || []).length === 0 && (group.category || 'GOODS PURCHASE') !== 'EXPENSES' && <span className="mt-1 block text-xs text-amber-700">No enquired products found. Add the product to an Enquiry first.</span>}
-                <div className="flex items-center justify-between mt-1">
-                  <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-800 flex items-center gap-1" onClick={() => setGroup({ items: [...(group.items || []), emptyInwardItem()] })}>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    Add part
-                  </button>
-                </div>
               </div>);
             })}
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-2.5">
-          <Button variant="secondary" onClick={clearInwardForm}>Clear / Reset</Button>
-          <Button variant="secondary" onClick={() => void saveInward(true)}>Save &amp; Add Another Inward</Button>
-          <Button onClick={() => void saveInward(false)}>Submit</Button>
+          <Button variant="secondary" size="sm" onClick={clearInwardForm}>Clear / Reset</Button>
+          <Button variant="secondary" size="sm" onClick={() => void saveInward(true)}>Save &amp; Add Another Inward</Button>
+          <Button size="sm" onClick={() => void saveInward(false)}>Submit</Button>
         </div>
       </div>
     </section>
@@ -4801,6 +4799,30 @@ export function SalesPipelinePage() {
   const onPipelineView = activeView === 'pipeline';
   const onQuotationView = activeView === 'quotation_list';
 
+  // The quotation tool shortcuts. When the quotation list is showing they are handed to
+  // QuotationModule so they sit on the SAME line as its title, search and view toggles
+  // instead of stacking a separate bar above the card. When a tool page is open instead,
+  // QuotationModule is unmounted, so they fall back to a standalone row above that tool.
+  const quotationTools = (
+    <nav aria-label="Quotation tools" data-testid="quotation-tools" className="flex flex-wrap items-center gap-1 min-w-0">
+      {([
+        ['Metal Calculator', 'Calculator', '/quotation/metal-calculator', Calculator, 'text-orange-500'],
+        ['Create Quotation', 'Create', '/quotation/create', FileText, 'text-sky-500'],
+        ['Client Library', 'Clients', '/quotation/client-library', UsersIcon, 'text-cyan-500'],
+        ['Product Library', 'Products', '/quotation/product-library', PackageIcon, 'text-emerald-500'],
+        ['Terms Library', 'Terms', '/quotation/terms-library', ScrollText, 'text-amber-500'],
+        ['Quotation Library', 'History', '/quotation/library', FolderOpen, 'text-violet-500'],
+        ['Company Profile', 'Profile', '/quotation/company-profile', Building2, 'text-lime-600'],
+      ] as const).map(([full, label, to, Icon, tone]) => (
+        <button key={to} type="button" title={full} aria-label={full} aria-pressed={quoteTool === to}
+          onClick={() => setQuoteTool(cur => (cur === to ? null : to))}
+          className={`inline-flex items-center gap-1.5 whitespace-nowrap px-2 py-2 border rounded-lg shadow-sm text-xs font-semibold transition-colors ${quoteTool === to ? 'bg-brand-50 border-brand-300 text-brand-700' : 'bg-white border-slate-200 text-slate-700 hover:border-brand-300 hover:bg-brand-50/40'}`}>
+          <Icon size={14} className={tone} />{label}
+        </button>
+      ))}
+    </nav>
+  );
+
   return (
     <div className="p-4 bg-[#F8FAFC] min-h-full flex flex-col font-sans">
 
@@ -4811,7 +4833,7 @@ export function SalesPipelinePage() {
           modules (Enquiries, Orders, Inward, DC ...) each render their own PageHeader
           with a back arrow, search and view toggles, so showing the board tabs above
           them stacked two headers and a gap for no reason. */}
-      <div className={`flex flex-wrap items-center gap-3 ${onPipelineView || onQuotationView ? 'mb-3' : ''}`}>
+      <div className={`flex flex-wrap items-center gap-3 ${onPipelineView || (onQuotationView && !!quoteTool) ? 'mb-3' : ''}`}>
         {onPipelineView && (
         <div className="flex p-1 shrink-0 bg-white rounded-lg shadow-sm border border-slate-200">
             <button 
@@ -4829,24 +4851,11 @@ export function SalesPipelinePage() {
         </div>
         )}
         
-        {onQuotationView && (
-          <nav aria-label="Quotation tools" data-testid="quotation-tools" className="flex flex-nowrap items-center gap-1 min-w-0 md:flex-1 md:justify-end">
-            {([
-              ['Metal Calculator', 'Calculator', '/quotation/metal-calculator', Calculator, 'text-orange-500'],
-              ['Create Quotation', 'Create', '/quotation/create', FileText, 'text-sky-500'],
-              ['Client Library', 'Clients', '/quotation/client-library', UsersIcon, 'text-cyan-500'],
-              ['Product Library', 'Products', '/quotation/product-library', PackageIcon, 'text-emerald-500'],
-              ['Terms Library', 'Terms', '/quotation/terms-library', ScrollText, 'text-amber-500'],
-              ['Quotation Library', 'History', '/quotation/library', FolderOpen, 'text-violet-500'],
-              ['Company Profile', 'Profile', '/quotation/company-profile', Building2, 'text-lime-600'],
-            ] as const).map(([full, label, to, Icon, tone]) => (
-              <button key={to} type="button" title={full} aria-label={full} aria-pressed={quoteTool === to}
-                onClick={() => setQuoteTool(cur => (cur === to ? null : to))}
-                className={`inline-flex items-center gap-1.5 whitespace-nowrap px-2 py-2 border rounded-lg shadow-sm text-xs font-semibold transition-colors ${quoteTool === to ? 'bg-brand-50 border-brand-300 text-brand-700' : 'bg-white border-slate-200 text-slate-700 hover:border-brand-300 hover:bg-brand-50/40'}`}>
-                <Icon size={14} className={tone} />{label}
-              </button>
-            ))}
-          </nav>
+        {/* The tool strip lives inside QuotationModule's header on the quotation list so
+            it shares one line with that card's title, search and view toggles. It only
+            needs its own row here when a tool page is open and the module is unmounted. */}
+        {onQuotationView && !!quoteTool && (
+          <div className="flex flex-1 items-center justify-end min-w-0">{quotationTools}</div>
         )}
 
         {/* The company / search / filter controls drive the pipeline cards, so they are
@@ -4899,7 +4908,7 @@ export function SalesPipelinePage() {
               {quoteTool === '/quotation/company-profile' && <CompanyProfilePage />}
             </div>
           ) : (
-            <QuotationModule onBack={() => setActiveView('pipeline')} onView={listView('quotation', 'Quotation')} onAdd={() => addForStage('Quotation')} onEdit={listEdit('quotation', 'Quotation')} onDelete={listDelete('quotation', 'Quotation')} refreshSignal={listRefresh} />
+            <QuotationModule onBack={() => setActiveView('pipeline')} onView={listView('quotation', 'Quotation')} onEdit={listEdit('quotation', 'Quotation')} onDelete={listDelete('quotation', 'Quotation')} refreshSignal={listRefresh} toolbar={quotationTools} />
           )}
         </div>
       ) : activeView === 'sales_order_list' ? (
@@ -5279,6 +5288,7 @@ export function SalesPipelinePage() {
         onClose={() => setAddPopup(null)}
         title={addPopup ? addPopupTitle(addPopup) : ''}
         subtitle="Fill in the details and save. The board refreshes once the record is created."
+        accent={addPopup ? tint(addPopup) : undefined}
         size="2xl"
         width={1000}
         draggable={false}

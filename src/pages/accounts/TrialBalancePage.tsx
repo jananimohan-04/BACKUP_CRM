@@ -128,7 +128,7 @@ export function TrialBalancePage() {
       <table><thead><tr><th>Code</th><th>Account</th><th>Type</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead>
       <tbody>${rows || `<tr><td colspan="5">${escapeHtml(EMPTY_MESSAGE)}</td></tr>`}
       <tr class="total"><td colspan="3">Total</td><td class="num">${escapeHtml(formatINR(report.totals.debit))}</td><td class="num">${escapeHtml(formatINR(report.totals.credit))}</td></tr></tbody></table>
-      <div class="note">Generated ${escapeHtml(new Date().toLocaleString('en-IN'))}</div>`);
+      <div class="note">Generated ${escapeHtml(new Date().toLocaleString('en-IN', { hour12: false }))}</div>`);
   };
 
   if (!company) {

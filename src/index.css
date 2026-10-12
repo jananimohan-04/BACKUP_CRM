@@ -24,6 +24,9 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 24 95% 53%;
     --radius: 0.5rem;
+    /* Border colour for inputs. Each tinted entry form overrides this on its own <section>,
+       so every control inside picks up that module's accent without per-field classes. */
+    --entry-border: #cbd5e1; /* = slate-300, the value used outside any tinted form */
   }
   * {
     border-color: theme('colors.slate.200');
@@ -110,12 +113,17 @@
   background-color: #111c33;
 }
 .erp-table thead tr,
-.erp-table thead th,
 .erp-table thead th button {
   background-color: transparent;
   color: #ffffff;
 }
+/* Each <th> is position:sticky (see above), so it stays pinned at the top while its <thead>
+   scrolls away with the page. A pinned heading paints above the scrolling body, so it cannot
+   lean on the <thead> background behind it — left transparent, the tinted rows show straight
+   through it. Each <th> has to carry the header colour itself. */
 .erp-table thead th {
+  background-color: #111c33;
+  color: #ffffff;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;

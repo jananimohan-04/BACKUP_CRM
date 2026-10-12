@@ -19,7 +19,7 @@ const money = (n: number) => (n ? formatINR(n, { decimals: 'always', symbol: fal
 const dmy = (iso: string) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '');
 const stamp = (iso: string) => {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' });
 };
 
 /** The kind of ledger an account is, as a short readable label. */

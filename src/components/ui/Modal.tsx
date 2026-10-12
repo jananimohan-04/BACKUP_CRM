@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { GripVertical, X } from 'lucide-react';
+import type { EntryTint } from '@/lib/entryTints';
 
 // Light scrim only: the page behind stays clearly visible (never blurred).
 const SCRIM = 'bg-[rgba(15,23,42,0.12)]';
@@ -42,6 +43,7 @@ export function Modal({
   isDirty = false,
   dirtyMessage = 'Discard unsaved changes?',
   inline = false,
+  accent,
 }: {
   open: boolean;
   onClose: () => void;
@@ -58,8 +60,13 @@ export function Modal({
   isDirty?: boolean;
   dirtyMessage?: string;
   /**
-   * Inline mode: the same title / body / footer chrome is rendered as a normal card in the
-   * page flow (no backdrop, no overlay, no page scroll lock) so the form can sit above its
+   * Stage colour for the dialog chrome: the header band in popup mode, and the panel tint plus
+   * accent input borders in inline mode. Omit it for dialogs that are not tied to a stage.
+   */
+  accent?: EntryTint;
+  /**
+   * Inline mode: the body (and optional footer) is rendered as a normal card in the page flow
+   * (no backdrop, no overlay, no page scroll lock, no header band) so the form can sit above its
    * table. Everything else - field markup, footer buttons, handlers - is unchanged.
    */
   inline?: boolean;
@@ -131,22 +138,16 @@ export function Modal({
 
   if (!open) return null;
 
-  // Inline: no backdrop, no overlay, no scroll lock, no drag/resize - just the same
-  // header / body / footer laid out as a card so the form flows with the page.
+  // Inline: no backdrop, no overlay, no scroll lock, no drag/resize - just the body
+  // laid out as a card so the form flows with the page. No header band: entry forms
+  // identify their module through the tinted panel + accent input borders instead,
+  // which also gives the field row a full row of vertical space back.
   if (inline) {
     return (
-      <section className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col" data-testid="inline-form">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50 shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="min-w-0">
-              <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider truncate">{title}</h2>
-              {subtitle && <p className="text-xs font-medium text-slate-500 mt-0.5 truncate">{subtitle}</p>}
-            </div>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-5 bg-slate-50/30 min-h-0">{children}</div>
+      <section className={`${accent ? accent.panel : 'bg-white border-slate-200'} rounded-xl shadow-sm border overflow-hidden flex flex-col`} data-testid="inline-form">
+        <div className={`flex-1 overflow-y-auto scrollbar-thin px-6 py-5 min-h-0 ${accent ? '' : 'bg-slate-50/30'}`}>{children}</div>
         {footer && (
-          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50 shrink-0">
+          <div className={`flex items-center justify-end gap-3 px-6 py-4 border-t shrink-0 ${accent ? 'border-white/60 bg-white/70' : 'border-slate-100 bg-slate-50'}`}>
             {footer}
           </div>
         )}
@@ -249,7 +250,9 @@ export function Modal({
           onChange={() => setTouched(true)}
         >
           <div
-            className={`flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50 shrink-0 select-none ${
+            className={`flex items-center justify-between px-6 py-4 border-b shrink-0 select-none ${
+              accent ? accent.head : 'border-slate-100 bg-slate-50/50'
+            } ${
               draggable ? 'touch-none' : ''
             } ${draggable ? (dragging ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
             onPointerDown={onHeaderPointerDown}
@@ -259,16 +262,16 @@ export function Modal({
             title={draggable ? 'Drag to move' : undefined}
           >
             <div className="flex items-center gap-2 min-w-0">
-              {draggable && <GripVertical size={15} className="shrink-0 text-slate-300" />}
+              {draggable && <GripVertical size={15} className={`shrink-0 ${accent ? 'text-white/50' : 'text-slate-300'}`} />}
               <div className="min-w-0">
-                <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider truncate">{title}</h2>
-                {subtitle && <p className="text-xs font-medium text-slate-500 mt-0.5 truncate">{subtitle}</p>}
+                <h2 className={`text-sm font-bold uppercase tracking-wider truncate ${accent ? accent.title : 'text-slate-800'}`}>{title}</h2>
+                {subtitle && <p className={`text-xs font-medium mt-0.5 truncate ${accent ? accent.note : 'text-slate-500'}`}>{subtitle}</p>}
               </div>
             </div>
             <button
               onClick={onClose}
               onPointerDown={(e) => e.stopPropagation()}
-              className="w-8 h-8 flex items-center justify-center rounded border border-transparent hover:border-slate-200 hover:bg-white text-slate-500 transition-colors shadow-sm shrink-0"
+              className={`w-8 h-8 flex items-center justify-center rounded border transition-colors shadow-sm shrink-0 ${accent ? 'border-transparent hover:border-white/30 hover:bg-white/20 text-white/90' : 'border-transparent hover:border-slate-200 hover:bg-white text-slate-500'}`}
             >
               <X size={16} />
             </button>
@@ -401,12 +404,27 @@ export function FormField({
   children,
   required,
   hint,
+  inline = false,
 }: {
   label: string;
   children: ReactNode;
   required?: boolean;
   hint?: string;
+  /** Compact variant: the label sits to the left so several fields can share one row. */
+  inline?: boolean;
 }) {
+  // A span, not a <label>, so it never swallows clicks meant for a dropdown inside the control.
+  if (inline) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <span className="whitespace-nowrap text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+          {label}
+          {required && <span className="text-red-500 ml-0.5">*</span>}
+        </span>
+        {children}
+      </div>
+    );
+  }
   return (
     <div>
       <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">

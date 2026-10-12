@@ -4,7 +4,7 @@ import { Card, Badge } from '@/components/ui/Card';
 import { Calendar, ChevronLeft, ChevronRight, Plus, User, Settings2, Clock, GripVertical, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
-import { TimeAmPm } from '@/components/ui/TimeAmPm';
+import { Time24 } from '@/components/ui/Time24';
 import { PlannedTimeline } from './PlannedTimeline';
 import { ComparisonTimeline } from './ComparisonPage';
 import { ActualTimeline } from './ActualPage';
@@ -366,7 +366,7 @@ function ActualScheduling() {
   const getSlots = () => {
     if (view === 'Day') return [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]; // hourly
     if (view === 'Week') return [8, 10, 12, 14, 16]; // 2-hourly
-    return [8]; // daily (dropped jobs start at 8 AM so they stay visible in Day/Week views)
+    return [8]; // daily (dropped jobs start at 08:00 so they stay visible in Day/Week views)
   };
   
   const activeSlots = getSlots();
@@ -491,7 +491,7 @@ function ActualScheduling() {
   // Helper to format date strings
   const formatTime = (dateStr: string) => {
     if (!dateStr) return '';
-    return new Date(dateStr).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    return new Date(dateStr).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
   };
 
   // Scheduled end = start (created_at) + block length (setup + qty x cycle).
@@ -500,7 +500,7 @@ function ActualScheduling() {
     const end = new Date(job.created_at);
     if (isNaN(end.getTime())) return '-';
     end.setMinutes(end.getMinutes() + Math.round(calculateDurationHours(job) * 60));
-    return end.toLocaleString('en-US', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true });
+    return end.toLocaleString('en-US', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
   };
 
   // Unscheduled vs Scheduled Jobs
@@ -722,7 +722,7 @@ function ActualScheduling() {
                         {view === 'Month' ? (
                            <div className="flex-1 text-center py-1">All Day</div>
                         ) : activeSlots.map(t => (
-                          <div key={t} className="flex-1 text-center py-1 border-r border-slate-50 last:border-r-0">{t > 12 ? t - 12 + ' PM' : t === 12 ? '12 PM' : t + ' AM'}</div>
+                          <div key={t} className="flex-1 text-center py-1 border-r border-slate-50 last:border-r-0">{String(t).padStart(2, '0')}</div>
                         ))}
                       </div>
                     </div>
@@ -809,7 +809,7 @@ function ActualScheduling() {
                         {view === 'Month' ? (
                            <div className="flex-1 text-center py-1">All Day</div>
                         ) : activeSlots.map(t => (
-                          <div key={t} className="flex-1 text-center py-1 border-r border-slate-50 last:border-r-0">{t > 12 ? t - 12 + ' PM' : t === 12 ? '12 PM' : t + ' AM'}</div>
+                          <div key={t} className="flex-1 text-center py-1 border-r border-slate-50 last:border-r-0">{String(t).padStart(2, '0')}</div>
                         ))}
                       </div>
                     </div>
@@ -1084,14 +1084,14 @@ function ActualScheduling() {
               <div className="flex items-stretch w-full text-sm font-medium rounded border border-slate-300 bg-white text-slate-800 shadow-sm transition-all overflow-hidden focus-within:ring-2 focus-within:ring-brand-500/20 focus-within:border-brand-500">
                 <input type="date" aria-label="Start date" className="min-w-0 flex-1 px-3 py-2 bg-transparent focus:outline-none" value={newJobForm.date} onChange={e => setNewJobForm(prev => withEnd({ ...prev, date: e.target.value }))} />
                 <div className="w-px bg-slate-300 my-1.5 shrink-0" />
-                <TimeAmPm label="Start time" value={newJobForm.startTime} onChange={v => setNewJobForm(prev => withEnd({ ...prev, startTime: v }))} />
+                <Time24 label="Start time" value={newJobForm.startTime} onChange={v => setNewJobForm(prev => withEnd({ ...prev, startTime: v }))} />
               </div>
             </FormField>
             <FormField label="End Date & Time" required>
               <div className="flex items-stretch w-full text-sm font-medium rounded border border-slate-300 bg-white text-slate-800 shadow-sm transition-all overflow-hidden focus-within:ring-2 focus-within:ring-brand-500/20 focus-within:border-brand-500">
                 <input type="date" aria-label="End date" className="min-w-0 flex-1 px-3 py-2 bg-transparent focus:outline-none" value={newJobForm.endDate} onChange={e => setNewJobForm(prev => withEndEdit({ ...prev, endDate: e.target.value }))} />
                 <div className="w-px bg-slate-300 my-1.5 shrink-0" />
-                <TimeAmPm label="End time" value={newJobForm.endTime} onChange={v => setNewJobForm(prev => withEndEdit({ ...prev, endTime: v }))} />
+                <Time24 label="End time" value={newJobForm.endTime} onChange={v => setNewJobForm(prev => withEndEdit({ ...prev, endTime: v }))} />
               </div>
             </FormField>
           </div>

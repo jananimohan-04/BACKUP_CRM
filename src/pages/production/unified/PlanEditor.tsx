@@ -1,6 +1,6 @@
 import { Plus, Trash2 } from 'lucide-react';
 import { inputClass } from '@/components/ui/Modal';
-import { TimeAmPm } from '@/components/ui/TimeAmPm';
+import { Time24 } from '@/components/ui/Time24';
 import { expandPlan, parseYmd, planDates, planError, planHours, slotsFor, type PlanDraft, type PlanSlot } from '@/lib/operationPlans';
 
 const label = 'block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-0.5';
@@ -8,7 +8,7 @@ const timeBox = 'inline-flex items-center rounded-lg border border-slate-300 bg-
 const dayName = (d: string) => parseYmd(d).toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' });
 
 /** Plan an operation: the dates from - to at the top, then the timings of each particular date below (several slots a
- *  date allowed, e.g. 1 PM - 3 PM and again 5 PM - 6 PM; a date can be left off). */
+ *  date allowed, e.g. 13:00 - 15:00 and again 17:00 - 18:00; a date can be left off). */
 export function PlanEditor({ value, onChange, showSummary = true }: { value: PlanDraft; onChange: (p: PlanDraft) => void; showSummary?: boolean }) {
   const set = (patch: Partial<PlanDraft>) => onChange({ ...value, ...patch });
   const dates = planDates(value);
@@ -56,9 +56,9 @@ export function PlanEditor({ value, onChange, showSummary = true }: { value: Pla
                     {slots.length === 0 && <p className="pt-2 text-xs text-slate-400">Day off — no timing</p>}
                     {slots.map((s, i) => (
                       <div key={i} className="flex flex-wrap items-center gap-2" data-testid="plan-slot">
-                        <div className={timeBox}><TimeAmPm label={`${date} slot ${i + 1} from`} value={s.start} onChange={v => setSlot(date, i, { start: v })} /></div>
+                        <div className={timeBox}><Time24 label={`${date} slot ${i + 1} from`} value={s.start} onChange={v => setSlot(date, i, { start: v })} /></div>
                         <span className="text-xs text-slate-500">to</span>
-                        <div className={timeBox}><TimeAmPm label={`${date} slot ${i + 1} to`} value={s.end} onChange={v => setSlot(date, i, { end: v })} /></div>
+                        <div className={timeBox}><Time24 label={`${date} slot ${i + 1} to`} value={s.end} onChange={v => setSlot(date, i, { end: v })} /></div>
                         <button type="button" aria-label={`Remove slot ${i + 1} on ${date}`} title="Remove" onClick={() => setDay(date, slots.filter((_, j) => j !== i))}
                           className="p-1 text-slate-400 hover:text-red-600"><Trash2 size={15} /></button>
                       </div>

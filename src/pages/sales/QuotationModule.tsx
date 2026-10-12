@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Search, Calendar, List, Kanban as KanbanIcon, ArrowLeft, FileText, Plus } from 'lucide-react';
+import { Search, Calendar, List, Kanban as KanbanIcon, ArrowLeft, FileText } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 
-export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onAdd, onView }: { onBack: () => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onAdd?: () => void; onView?: (record: any) => void }) {
+export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onView, toolbar }: { onBack: () => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onView?: (record: any) => void; /** Quotation tool strip, rendered on the same line as the title and actions. */ toolbar?: React.ReactNode }) {
   const [quotations, setQuotations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -126,36 +126,37 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onAdd
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
-      <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-        <div className="flex items-center gap-3">
-          <button onClick={onBack} className="p-1.5 hover:bg-slate-200 rounded-md transition-colors text-slate-600">
-            <ArrowLeft className="w-5 h-5" />
+      {/* One line: back + title on the left, the quotation tool strip and the
+          Add / search / view-toggle controls grouped flush right. flex-wrap so the
+          row breaks cleanly instead of overflowing on narrow viewports. */}
+      <div className="px-3 py-1.5 border-b border-slate-200 flex flex-wrap justify-between items-center gap-2 gap-y-1 bg-slate-50">
+        <div className="flex items-center gap-2 min-w-0">
+          <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-600 shrink-0">
+            <ArrowLeft className="w-4 h-4" />
           </button>
-          <div>
-            <h2 className="text-lg font-bold text-slate-800">Quotations</h2>
-            <p className="text-xs text-slate-500">Manage all sent quotations</p>
+          <div className="flex items-baseline gap-2 min-w-0">
+            <h2 className="text-sm font-bold text-slate-800 shrink-0">Quotations</h2>
+            <p className="text-xs text-slate-500 truncate">Manage all sent quotations</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {onAdd && (
-            <button onClick={onAdd} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-brand-700 border border-brand-200 rounded-lg hover:bg-brand-50 transition-colors whitespace-nowrap">
-              <Plus size={15} /> Add Quotation
-            </button>
-          )}
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input 
-              type="text" 
-              placeholder="Search quotations..." 
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="pl-9 pr-4 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-brand-500"
-            />
-          </div>
-          <div className="flex bg-slate-100 rounded-lg p-1 border border-slate-200">
-            <button onClick={() => setViewMode('kanban')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'kanban' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}><KanbanIcon className="w-4 h-4" /></button>
-            <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}><List className="w-4 h-4" /></button>
-            <button onClick={() => setViewMode('calendar')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'calendar' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}><Calendar className="w-4 h-4" /></button>
+        <div className="flex flex-wrap items-center gap-2 gap-y-2 min-w-0 md:justify-end">
+          {toolbar}
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input 
+                type="text" 
+                placeholder="Search quotations..." 
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="pl-9 pr-4 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-brand-500"
+              />
+            </div>
+            <div className="flex bg-slate-100 rounded-lg p-1 border border-slate-200">
+              <button onClick={() => setViewMode('kanban')} className={`p-1 rounded-md transition-colors ${viewMode === 'kanban' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}><KanbanIcon className="w-4 h-4" /></button>
+              <button onClick={() => setViewMode('list')} className={`p-1 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}><List className="w-4 h-4" /></button>
+              <button onClick={() => setViewMode('calendar')} className={`p-1 rounded-md transition-colors ${viewMode === 'calendar' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}><Calendar className="w-4 h-4" /></button>
+            </div>
           </div>
         </div>
       </div>

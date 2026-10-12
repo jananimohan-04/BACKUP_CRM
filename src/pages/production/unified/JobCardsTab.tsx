@@ -794,8 +794,8 @@ export function JobCardsTab({ workOrders }: { workOrders: any[] }) {
                   ['Estimated Duration', `${fmt(durationMins(viewJob.setup_time, viewJob.qty_planned, viewJob.cycle_time))} min`],
                   ['Scheduled Start', viewJob.machine ? dstr(viewJob.created_at) : '—'],
                   ['Scheduled End', viewJob.machine ? endOf(viewJob.created_at, viewJob.setup_time, viewJob.qty_planned, viewJob.cycle_time) : '—'],
-                  ['Actual Start', viewJob.actual_start ? new Date(viewJob.actual_start).toLocaleString('en-IN') : '—'],
-                  ['Actual End', viewJob.actual_end ? new Date(viewJob.actual_end).toLocaleString('en-IN') : '—'],
+                  ['Actual Start', viewJob.actual_start ? new Date(viewJob.actual_start).toLocaleString('en-IN', { hour12: false }) : '—'],
+                  ['Actual End', viewJob.actual_end ? new Date(viewJob.actual_end).toLocaleString('en-IN', { hour12: false }) : '—'],
                 ].map(([k, v]) => (
                   <div key={k}><p className="text-[10px] uppercase tracking-wider text-slate-400">{k}</p><p className="font-semibold tabular-nums">{v}</p></div>
                 ))}

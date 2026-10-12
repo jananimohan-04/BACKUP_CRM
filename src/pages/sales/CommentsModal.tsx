@@ -89,7 +89,7 @@ export function CommentsModal({ isOpen, onClose, recordId, recordTitle }: { isOp
               <div key={c.id} className="bg-slate-50 rounded-lg p-3 border border-slate-100 shadow-sm">
                 <div className="flex justify-between items-center mb-1.5">
                   <span className="text-[11px] font-bold text-brand-700">{c.author_name || 'User'}</span>
-                  <span className="text-[10px] text-slate-400">{new Date(c.created_at).toLocaleString('en-IN', { hour: '2-digit', minute:'2-digit', day:'2-digit', month:'short' })}</span>
+                  <span className="text-[10px] text-slate-400">{new Date(c.created_at).toLocaleString('en-IN', { hour: '2-digit', minute:'2-digit', day:'2-digit', month:'short', hour12: false })}</span>
                 </div>
                 <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{c.comment}</p>
               </div>

@@ -178,7 +178,7 @@ export function ProfitLossPage() {
         <tr><td>Total Expenses</td><td class="num">${escapeHtml(money(report.totals.expenses))}</td></tr>
         <tr class="total"><td>${netNegative ? 'Net Loss' : 'Net Profit'}</td><td class="num ${netNegative ? 'warn' : ''}">${escapeHtml(money(report.totals.net_profit))}</td></tr>
       </tbody></table>
-      <div class="note">Generated ${escapeHtml(new Date().toLocaleString('en-IN'))}</div>`);
+      <div class="note">Generated ${escapeHtml(new Date().toLocaleString('en-IN', { hour12: false }))}</div>`);
   };
 
   const sectionRows = useMemo(() => {

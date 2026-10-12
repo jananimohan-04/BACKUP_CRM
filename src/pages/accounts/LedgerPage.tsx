@@ -283,7 +283,7 @@ function LedgerTab({ fyr, accounts, companyName, onOpenVoucher }: {
       ${rows || `<tr><td colspan="7">${escapeHtml(EMPTY_MESSAGE)}</td></tr>`}
       <tr class="total"><td colspan="4">Total</td><td class="num">${escapeHtml(formatINR(ledger.totals.debit))}</td><td class="num">${escapeHtml(formatINR(ledger.totals.credit))}</td><td></td></tr>
       <tr class="total"><td colspan="6">Closing Balance</td><td class="num">${escapeHtml(formatBalance(ledger.closing, t))}</td></tr></tbody></table>
-      <div class="note">Generated ${escapeHtml(new Date().toLocaleString('en-IN'))}</div>`);
+      <div class="note">Generated ${escapeHtml(new Date().toLocaleString('en-IN', { hour12: false }))}</div>`);
   };
 
   return (

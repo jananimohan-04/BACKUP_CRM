@@ -87,9 +87,9 @@ export function describeRateIssue(step: 'table' | 'function', err: unknown, stat
   return `Rate service error${status ? ` (HTTP ${status})` : ''}: ${msg || 'unknown'}`;
 }
 
-/** "03 Oct 2026, 11:52 AM" in India time, for showing exactly when a quote was taken. */
+/** "03 Oct 2026, 11:52" in India time (24-hour clock), for showing exactly when a quote was taken. */
 export function quoteStamp(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return 'time unknown';
-  return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }).replace(/\b(am|pm)\b/, x => x.toUpperCase());
+  return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' });
 }

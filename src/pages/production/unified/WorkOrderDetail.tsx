@@ -51,7 +51,7 @@ function printWorkOrder(wo: any, ops: any[]) {
       .foot div{border-top:1px solid #94a3b8;padding-top:6px;margin-top:48px;}
     </style></head><body>
     <div class="head"><h1>WORK ORDER — ${esc(wo.wo_no)}</h1>
-    <p>Argus CNC ERP · Printed ${esc(new Date().toLocaleString('en-IN'))}</p></div>
+    <p>Argus CNC ERP · Printed ${esc(new Date().toLocaleString('en-IN', { hour12: false }))}</p></div>
     <div class="grid">
       <div class="cell"><small>Sales Order</small><b>${esc(wo.sales_order || '—')}</b></div>
       <div class="cell"><small>Company</small><b>${esc(wo.customer || '—')}</b></div>

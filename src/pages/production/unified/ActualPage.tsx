@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge, Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
-import { TimeAmPm } from '@/components/ui/TimeAmPm';
+import { Time24 } from '@/components/ui/Time24';
 import { supabase } from '@/lib/supabase';
 import { insertTolerant } from '@/lib/partRouting';
 import { generateJobNo } from '@/lib/jobCards';
-import { fmtTime12, ymd } from '@/lib/operationPlans';
+import { fmtTime24, ymd } from '@/lib/operationPlans';
 import { CalendarNav, TimelineGrid, colorFor, minToHhmm, useCalendarNav, type GridBlock } from './TimelineGrid';
 import { dt, dur, jobSpan, splitByDay, useTimelineData } from './ComparisonPage';
 
@@ -106,7 +106,7 @@ Then save the run again.`
         lines: [
           `${j.work_order}${j.operation ? ` · ${j.operation}` : ''}`,
           `${j.machine ?? '—'}${man(j) ? ` · ${man(j)}` : ''}`,
-          `${fmtTime12(minToHhmm(s.startMin))}–${span.running && s.date === ymd(now) ? 'now' : fmtTime12(minToHhmm(Math.min(s.endMin, 24 * 60 - 1)))}${span.running ? ' · Running' : ''}`,
+          `${fmtTime24(minToHhmm(s.startMin))}–${span.running && s.date === ymd(now) ? 'now' : fmtTime24(minToHhmm(Math.min(s.endMin, 24 * 60 - 1)))}${span.running ? ' · Running' : ''}`,
         ],
         onClick: () => setPicked(j),
       }));
@@ -175,13 +175,13 @@ Then save the run again.`
             <FormField label="Started" required>
               <div className="flex items-center gap-2">
                 <input type="date" aria-label="Run start date" className={inputClass} value={run.date} onChange={e => setRun(r => ({ ...r, date: e.target.value, endDate: r.endDate < e.target.value ? e.target.value : r.endDate }))} />
-                <div className="inline-flex items-center rounded-lg border border-slate-300 bg-white text-sm"><TimeAmPm label="Run start" value={run.start} onChange={v => setRun(r => ({ ...r, start: v }))} /></div>
+                <div className="inline-flex items-center rounded-lg border border-slate-300 bg-white text-sm"><Time24 label="Run start" value={run.start} onChange={v => setRun(r => ({ ...r, start: v }))} /></div>
               </div>
             </FormField>
             <FormField label="Ended" required>
               <div className="flex items-center gap-2">
                 <input type="date" aria-label="Run end date" className={inputClass} value={run.endDate} min={run.date || undefined} onChange={e => setRun(r => ({ ...r, endDate: e.target.value }))} />
-                <div className="inline-flex items-center rounded-lg border border-slate-300 bg-white text-sm"><TimeAmPm label="Run end" value={run.end} onChange={v => setRun(r => ({ ...r, end: v }))} /></div>
+                <div className="inline-flex items-center rounded-lg border border-slate-300 bg-white text-sm"><Time24 label="Run end" value={run.end} onChange={v => setRun(r => ({ ...r, end: v }))} /></div>
               </div>
             </FormField>
           </div>

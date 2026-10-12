@@ -254,7 +254,7 @@ export function BalanceSheetPage() {
         ? 'Balanced: Total Assets = Total Liabilities + Total Equity'
         : `Not balanced — difference ${escapeHtml(money(report.difference))}. Please review accounting entries.`}</p>
       <p class="note">Current ratio: ${escapeHtml(report.current_ratio ?? 'n/a')} · Figures are as per books of accounts and subject to final audit.
-        Generated ${escapeHtml(new Date(report.generated_at).toLocaleString('en-IN'))}.</p>`);
+        Generated ${escapeHtml(new Date(report.generated_at).toLocaleString('en-IN', { hour12: false }))}.</p>`);
   };
 
   const handlePdf = async () => {
@@ -313,7 +313,7 @@ export function BalanceSheetPage() {
       else { doc.setTextColor(185, 28, 28); doc.text(`NOT BALANCED - difference INR ${amt(report.difference)}. Please review accounting entries.`, 40, y); }
       y += 16;
       doc.setTextColor(100, 116, 139); doc.setFontSize(8.5);
-      doc.text(`Current ratio: ${report.current_ratio ?? 'n/a'}   |   Figures are as per books of accounts and subject to final audit.   |   Generated ${new Date(report.generated_at).toLocaleString('en-IN')}   |   Powered by ArgusCNC`, 40, y);
+      doc.text(`Current ratio: ${report.current_ratio ?? 'n/a'}   |   Figures are as per books of accounts and subject to final audit.   |   Generated ${new Date(report.generated_at).toLocaleString('en-IN', { hour12: false })}   |   Powered by ArgusCNC`, 40, y);
       doc.save(`${fileBase()}.pdf`);
     } catch (e) {
       console.error('PDF failed:', e);
@@ -506,7 +506,7 @@ export function BalanceSheetPage() {
       </div>
       {report && !loading && (
         <p className="text-right text-[11px] text-slate-400 mt-2">
-          {report.company} · {report.financial_year.name} · as on {formatDate(report.as_of)} · generated {new Date(report.generated_at).toLocaleString('en-IN')}
+          {report.company} · {report.financial_year.name} · as on {formatDate(report.as_of)} · generated {new Date(report.generated_at).toLocaleString('en-IN', { hour12: false })}
         </p>
       )}
     </div>

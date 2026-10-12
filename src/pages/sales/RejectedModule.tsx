@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Plus, Search } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Card';
-import { Modal, FormField, inputClass } from '@/components/ui/Modal';
+import { Modal } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { REJECTION_TYPES, recordProductionBatch, summarizeSalesOrder, type OrderQtySummary } from '@/lib/orderQuantities';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
+import { tint } from '@/lib/entryTints';
+import { compactInput, inlineLbl } from '@/lib/compactFields';
 
 // Rejected: one row per order (company + order) with how much was ordered, finished, rejected and what is left. The rejections
 // themselves are kept as production batches (the same records the order's quantity tracking reads), so they reduce what can
@@ -197,19 +199,17 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
             {view || dlg.mode === 'edit' ? (
               <p className="text-base font-bold text-slate-900">{dlg.company} <span className="font-mono text-sm font-medium text-slate-500">({chosenOrder?.lead_no || dlg.orderNo})</span></p>
             ) : (
-              <div className="grid grid-cols-2 gap-4">
-                <FormField label="Company" required>
-                  <select className={inputClass} value={dlg.company} onChange={e => setDlg({ ...dlg, company: e.target.value, orderNo: '', lines: [emptyLine()], origIds: [] })}>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5"><span className={inlineLbl}>Company *</span>
+                  <select className={`${compactInput} w-[14rem]`} value={dlg.company} onChange={e => setDlg({ ...dlg, company: e.target.value, orderNo: '', lines: [emptyLine()], origIds: [] })}>
                     <option value="">Select company</option>
                     {companies.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </FormField>
-                <FormField label="Order" required>
-                  <select className={inputClass} value={dlg.orderNo} disabled={!dlg.company} onChange={e => pickOrder(e.target.value)}>
+                  </select></div>
+                <div className="flex items-center gap-1.5"><span className={inlineLbl}>Order *</span>
+                  <select className={`${compactInput} w-[16rem]`} value={dlg.orderNo} disabled={!dlg.company} onChange={e => pickOrder(e.target.value)}>
                     <option value="">Select order</option>
                     {companyOrders.map(o => <option key={o.id} value={o.order_no}>{o.lead_no || o.order_no}{o.lead_no ? ` (${o.order_no})` : ''}</option>)}
-                  </select>
-                </FormField>
+                  </select></div>
               </div>
             )}
 
@@ -235,36 +235,29 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
               <>
                 <div className="space-y-3">
                   {dlg.lines.map((l, i) => (
-                    <div key={l.id ?? `new-${i}`} className="rounded-lg border border-slate-200 bg-slate-50/60 p-3" data-testid="rejection-line">
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Rejection {i + 1}{l.id ? '' : ' · new'}</span>
-                        {dlg.lines.length > 1 && (
-                          <button type="button" aria-label={`Remove rejection ${i + 1}`} className="text-xs font-semibold text-red-600 hover:underline"
-                            onClick={() => setDlg(d => d && ({ ...d, lines: d.lines.filter((_, j) => j !== i) }))}>Remove</button>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-3 gap-3">
-                        <FormField label="Product" required>
-                          <select className={inputClass} value={l.product} disabled={!dlg.orderNo} onChange={e => setLine(i, { product: e.target.value })}>
+                    <div key={l.id ?? `new-${i}`} className="rounded-lg border border-slate-200 bg-white/60 px-2.5 py-2" data-testid="rejection-line">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-500">Rejection {i + 1}{l.id ? '' : ' · new'}</span>
+                        <div className="flex items-center gap-1.5"><span className={inlineLbl}>Product *</span>
+                          <select className={`${compactInput} w-[13rem]`} value={l.product} disabled={!dlg.orderNo} onChange={e => setLine(i, { product: e.target.value })}>
                             <option value="">Select product</option>
                             {products.map(p => <option key={p.name} value={p.name}>{p.name}{p.qty ? ` · ordered ${p.qty}` : ''}</option>)}
-                          </select>
-                        </FormField>
-                        <FormField label="Rejected Qty" required>
-                          <input type="number" min={0} className={inputClass} value={l.qty} onChange={e => setLine(i, { qty: e.target.value })} placeholder="Qty" />
-                        </FormField>
-                        <FormField label="Rejection Type" required>
-                          <select className={inputClass} value={l.type} onChange={e => setLine(i, { type: e.target.value })}>
+                          </select></div>
+                        <div className="flex items-center gap-1.5"><span className={inlineLbl}>Rejected Qty *</span>
+                          <input type="number" min={0} className={`${compactInput} w-[5rem]`} value={l.qty} onChange={e => setLine(i, { qty: e.target.value })} placeholder="Qty" /></div>
+                        <div className="flex items-center gap-1.5"><span className={inlineLbl}>Type *</span>
+                          <select className={`${compactInput} w-[10rem]`} value={l.type} onChange={e => setLine(i, { type: e.target.value })}>
                             <option value="">Select type</option>
                             {REJECTION_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                          </select>
-                        </FormField>
-                        <div className="col-span-2">
-                          <FormField label="Reason" required>
-                            <input className={inputClass} value={l.reason} onChange={e => setLine(i, { reason: e.target.value })} placeholder="e.g. Oversize by 0.05mm" />
-                          </FormField>
-                        </div>
-                        <FormField label="Notes"><input className={inputClass} value={l.notes} onChange={e => setLine(i, { notes: e.target.value })} placeholder="Optional" /></FormField>
+                          </select></div>
+                        <div className="flex items-center gap-1.5"><span className={inlineLbl}>Reason *</span>
+                          <input className={`${compactInput} w-[11rem]`} value={l.reason} onChange={e => setLine(i, { reason: e.target.value })} placeholder="e.g. Oversize by 0.05mm" /></div>
+                        <div className="flex items-center gap-1.5"><span className={inlineLbl}>Notes</span>
+                          <input className={`${compactInput} w-[9rem]`} value={l.notes} onChange={e => setLine(i, { notes: e.target.value })} placeholder="Optional" /></div>
+                        {dlg.lines.length > 1 && (
+                          <button type="button" aria-label={`Remove rejection ${i + 1}`} className="shrink-0 text-[11px] font-semibold text-red-600 hover:underline"
+                            onClick={() => setDlg(d => d && ({ ...d, lines: d.lines.filter((_, j) => j !== i) }))}>Remove</button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -280,12 +273,12 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
  
   return (
     <div className="flex flex-col gap-4" data-testid="rejected-list">
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <button onClick={onBack} className="p-1.5 hover:bg-slate-200 rounded-md transition-colors text-slate-600"><ArrowLeft className="w-5 h-5" /></button>
-          <div>
-            <h2 className="text-lg font-bold text-slate-800">Rejected</h2>
-            <p className="text-xs text-slate-500">Rejections by order · {shown.length} order{shown.length === 1 ? '' : 's'} · {grand} pcs rejected</p>
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 px-3 py-1.5 flex flex-wrap justify-between items-center gap-2 gap-y-1">
+        <div className="flex items-center gap-2 min-w-0">
+          <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-600 shrink-0"><ArrowLeft className="w-4 h-4" /></button>
+          <div className="flex items-baseline gap-2 min-w-0">
+            <h2 className="text-sm font-bold text-slate-800 shrink-0">Rejected</h2>
+            <p className="text-xs text-slate-500 truncate">Rejections by order · {shown.length} order{shown.length === 1 ? '' : 's'} · {grand} pcs rejected</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -298,12 +291,8 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
       {/* Always-visible Add Rejected entry form. The same form the "Add Rejected" popup
           showed, refactored to sit above the table - view / edit still use the popup. */}
       {dlg?.mode === 'add' && (
-        <section className="bg-white rounded-xl shadow-sm border border-slate-200" data-testid="rej-entry-form">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-100 px-4 py-3">
-            <h3 className="text-sm font-bold text-slate-800">Add Rejected</h3>
-            <p className="text-xs text-slate-500">Select the company and order, record the rejected quantities, then save. The form stays open so you can add the next one straight away.</p>
-          </div>
-          <div className="space-y-4 p-4">
+        <section className={`rounded-xl shadow-sm border ${tint('Rejected').panel}`} data-testid="rej-entry-form">
+          <div className="space-y-3 p-4">
             {savedNote && (
               <div role="status" data-testid="rej-saved-note" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
                 <span>&#10003; Rejections for {savedNote} saved. The list below has been refreshed.</span>
@@ -311,9 +300,9 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
               </div>
             )}
             {rejDialogBody}
-            <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 pt-4">
-              <Button variant="secondary" onClick={openAdd}>Clear / Reset</Button>
-              <Button onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
+            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-3">
+              <Button variant="secondary" size="sm" onClick={openAdd}>Clear / Reset</Button>
+              <Button size="sm" onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
             </div>
           </div>
         </section>

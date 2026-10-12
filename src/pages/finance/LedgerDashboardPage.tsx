@@ -75,7 +75,7 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
         if (r.error) throw new Error(r.error.message);
         rows = fromInwards((r.data ?? []) as Record<string, unknown>[]);
       }
-      setSrc(s => ({ ...s, [which]: { rows, state: 'ok', error: '', at: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) } }));
+      setSrc(s => ({ ...s, [which]: { rows, state: 'ok', error: '', at: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false }) } }));
       return rows.length;
     } catch (e) {
       setSrc(s => ({ ...s, [which]: { ...s[which], state: 'error', error: e instanceof Error ? e.message : 'Could not load.' } }));

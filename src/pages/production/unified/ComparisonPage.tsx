@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Badge, Button } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
-import { fmtTime12, isMissingTable, toMinutes, ymd } from '@/lib/operationPlans';
+import { fmtTime24, isMissingTable, toMinutes, ymd } from '@/lib/operationPlans';
 import { CalendarNav, TimelineGrid, colorFor, minToHhmm, useCalendarNav, type GridBlock } from './TimelineGrid';
 
 // Comparison: the planned timeline set against what actually ran (job cards' actual start / end), operation by
@@ -32,7 +32,7 @@ export const dur = (mins: number) => {
   return h ? (m ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
 };
 const signed = (mins: number) => (Math.round(mins) === 0 ? 'on time' : `${mins > 0 ? '+' : '−'}${dur(mins)}`);
-export const dt = (d: Date | null) => (d ? `${d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} ${fmtTime12(`${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`)}` : '—');
+export const dt = (d: Date | null) => (d ? `${d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} ${fmtTime24(`${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`)}` : '—');
 // Job cards are linked to an operation by (work order, op_no = operation sequence x 10).
 export const seqOfJob = (j: any) => Math.round((Number(j.op_no) || 0) / 10);
 
@@ -203,7 +203,7 @@ export function ComparisonTimeline() {
       out.push({
         id: `p-${p.id}`, date: String(p.plan_date).slice(0, 10), startMin: toMinutes(hh(p.start_time)), endMin: toMinutes(hh(p.end_time)), lane: 0, lanes: 2, ghost: true,
         className: colorFor(wo.wo_no), title: `Planned · ${wo.wo_no} · ${p.process_name}`,
-        lines: [`Planned · ${wo.wo_no}`, `${p.machine} · ${fmtTime12(hh(p.start_time))}–${fmtTime12(hh(p.end_time))}`],
+        lines: [`Planned · ${wo.wo_no}`, `${p.machine} · ${fmtTime24(hh(p.start_time))}–${fmtTime24(hh(p.end_time))}`],
       });
     }
     const now = new Date();
@@ -213,7 +213,7 @@ export function ComparisonTimeline() {
       splitByDay(span.start, span.end).forEach((s, i) => out.push({
         id: `a-${j.id}-${i}`, date: s.date, startMin: s.startMin, endMin: s.endMin, lane: 1, lanes: 2,
         className: colorFor(String(j.work_order)), ring: false, title: `Actual · ${j.work_order} · ${j.operation ?? ''}`,
-        lines: [`Actual · ${j.work_order}`, `${j.machine ?? '—'} · ${fmtTime12(minToHhmm(s.startMin))}–${span.running && s.date === ymd(now) ? 'now' : fmtTime12(minToHhmm(Math.min(s.endMin, 24 * 60 - 1)))}`],
+        lines: [`Actual · ${j.work_order}`, `${j.machine ?? '—'} · ${fmtTime24(minToHhmm(s.startMin))}–${span.running && s.date === ymd(now) ? 'now' : fmtTime24(minToHhmm(Math.min(s.endMin, 24 * 60 - 1)))}`],
       }));
     }
     return out;
@@ -368,7 +368,7 @@ export function ComparisonTimeline() {
                 {picked.plans.length === 0 ? <p className="text-xs text-slate-400">Not planned</p> : (
                   <ul className="text-xs space-y-0.5 max-h-56 overflow-auto">
                     {[...picked.plans].sort((a, b) => `${a.plan_date}${a.start_time}`.localeCompare(`${b.plan_date}${b.start_time}`)).map(p => (
-                      <li key={p.id}>{String(p.plan_date).slice(0, 10)} · {fmtTime12(hh(p.start_time))} – {fmtTime12(hh(p.end_time))}</li>
+                      <li key={p.id}>{String(p.plan_date).slice(0, 10)} · {fmtTime24(hh(p.start_time))} – {fmtTime24(hh(p.end_time))}</li>
                     ))}
                   </ul>
                 )}

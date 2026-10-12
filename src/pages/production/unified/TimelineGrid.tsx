@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Badge, Button } from '@/components/ui/Card';
-import { addDays, fmtTime12, parseYmd, ymd } from '@/lib/operationPlans';
+import { addDays, fmtTime24, parseYmd, ymd } from '@/lib/operationPlans';
 
 // Calendar used by the Comparison page: a week / day grid with blocks placed by date and time, side-by-side lanes
 // inside a day (planned | actual), a current-time line, and the same navigation as the Planned timeline.
@@ -109,7 +109,7 @@ export function TimelineGrid({ days, blocks, testId = 'timeline-grid', onDragRan
         ))}
         <div className="relative" style={{ height: 24 * HOUR_PX }}>
           {Array.from({ length: 24 }, (_, h) => (
-            <div key={h} className="absolute right-2 -translate-y-2 text-[10px] text-slate-400" style={{ top: h * HOUR_PX }}>{h === 0 ? '' : fmtTime12(`${h}:00`)}</div>
+            <div key={h} className="absolute right-2 -translate-y-2 text-[10px] text-slate-400" style={{ top: h * HOUR_PX }}>{h === 0 ? '' : fmtTime24(`${h}:00`)}</div>
           ))}
         </div>
         {days.map(d => (
@@ -120,7 +120,7 @@ export function TimelineGrid({ days, blocks, testId = 'timeline-grid', onDragRan
             {drag && drag.date === d && (
               <div className="absolute left-0.5 right-0.5 rounded-md border-2 border-dashed border-brand-500 bg-brand-100/60 pointer-events-none z-10" data-testid="tl-drag"
                 style={{ top: (Math.min(drag.a, drag.b) / 60) * HOUR_PX, height: Math.max(SNAP, Math.abs(drag.b - drag.a)) / 60 * HOUR_PX }}>
-                <span className="text-[10px] font-bold text-brand-700 px-1">{fmtTime12(minToHhmm(Math.min(drag.a, drag.b)))} – {fmtTime12(minToHhmm(Math.min(24 * 60 - 1, Math.max(Math.max(drag.a, drag.b), Math.min(drag.a, drag.b) + SNAP))))}</span>
+                <span className="text-[10px] font-bold text-brand-700 px-1">{fmtTime24(minToHhmm(Math.min(drag.a, drag.b)))} – {fmtTime24(minToHhmm(Math.min(24 * 60 - 1, Math.max(Math.max(drag.a, drag.b), Math.min(drag.a, drag.b) + SNAP))))}</span>
               </div>
             )}
             {d === today && <div className="absolute inset-x-0 z-10 pointer-events-none" style={{ top: (nowMin / 60) * HOUR_PX }}><div className="h-0.5 bg-red-500" /><div className="absolute -left-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500" /></div>}

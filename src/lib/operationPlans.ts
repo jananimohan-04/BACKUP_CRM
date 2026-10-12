@@ -23,10 +23,11 @@ export const toMinutes = (hhmm: string): number => {
   return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
 };
 
-export const fmtTime12 = (hhmm: string): string => {
+/** Railway (24-hour) clock time, zero-padded: 08:00, 13:05, 23:59. */
+export const fmtTime24 = (hhmm: string): string => {
   const mins = toMinutes(hhmm);
   const h = Math.floor(mins / 60) % 24; const m = mins % 60;
-  return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 };
 
 export const ymd = (d: Date): string => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

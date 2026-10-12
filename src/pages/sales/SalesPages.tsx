@@ -5,6 +5,8 @@ import { PageHeader, DateSelector } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, Button, StatCard, statusToVariant } from '@/components/ui/Card';
 import { Modal, ConfirmDialog, FormField, inputClass } from '@/components/ui/Modal';
+import { tint } from '@/lib/entryTints';
+import { compactInput } from '@/lib/compactFields';
 import type { Quotation, SalesOrder, Customer } from '@/data/mockData';
 
 export { LeadsPage } from './LeadsPage';
@@ -235,8 +237,14 @@ function useCustomerOptions() {
 }
 
 export function QuotationsPage() {
-  const [showAdd, setShowAdd] = useState(false);
+  // The New Quotation form is an always-visible card above the table and starts open.
+  // `editId` is what opens the edit popup: the inline card steps aside while a record is
+  // being edited, then comes back as soon as the popup closes.
+  const [showAdd, setShowAdd] = useState(true);
   const [editId, setEditId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [savedNote, setSavedNote] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [viewTarget, setViewTarget] = useState<QuotationRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<QuotationRow | null>(null);
   const [quotationsData, setQuotationsData] = useState<QuotationRow[]>([]);
@@ -310,7 +318,11 @@ export function QuotationsPage() {
   };
 
   const handleSave = async () => {
-    if (!formData.customer || !formData.partName) return;
+    setFormError(null);
+    if (!formData.customer || !formData.partName) {
+      setFormError('Company and Product Name are required.');
+      return;
+    }
     
     const qty = Number(formData.quantity) || 0;
     const price = Number(formData.unitPrice) || 0;
@@ -332,7 +344,7 @@ export function QuotationsPage() {
       ...(linkedCustomer ? { customer_id: linkedCustomer.id } : {})
     };
 
-    setLoading(true);
+    setSaving(true);
 
     if (editId) {
       const { error } = await supabase.from('cnc_quotations').update(entryData).eq('id', editId);
@@ -340,7 +352,7 @@ export function QuotationsPage() {
         setQuotationsData(prev => prev.map(q => q.id === editId ? { 
           ...q, quoteNo: entryData.quote_no, customer: entryData.customer, enquiryNo: entryData.enquiry_no || '', partName: entryData.part_name, quantity: entryData.quantity, unitPrice: entryData.unit_price, totalValue: entryData.total_value, validTill: entryData.valid_till || '', paymentTerms: entryData.payment_terms, status: entryData.status
         } : q));
-        setShowAdd(false);
+        setSavedNote(formData.quoteNo);
         setEditId(null);
         setFormData(resetForm());
       } else {
@@ -366,8 +378,8 @@ export function QuotationsPage() {
           paymentTerms: insertData.payment_terms,
           status: insertData.status
         };
+        setSavedNote(insertData.quote_no);
         setQuotationsData([formatted, ...quotationsData]);
-        setShowAdd(false);
         setFormData(resetForm());
       } else {
         console.error('Failed to add quotation:', error);
@@ -375,6 +387,7 @@ export function QuotationsPage() {
       }
     }
     setLoading(false);
+    setSaving(false);
   };
 
   const columns: Column<QuotationRow>[] = [
@@ -405,6 +418,39 @@ export function QuotationsPage() {
   const totalCompleted = quotationsData.filter(q => isConverted(q.status) || q.status === 'Rejected').length;
   const winRate = totalCompleted > 0 ? Math.round((acceptedCount / totalCompleted) * 100) : 0;
 
+  // The quotation fields live in exactly one place: rendered by the always-visible
+  // New Quotation card above the table, and by the popup used when editing a record.
+  // Compact inline labels let the whole block read as an entry toolbar rather than a form card.
+  const quotationFormBody = (
+    <div className="flex flex-wrap items-center gap-2">
+      <FormField label="Quotation Number" required inline><input className={`${compactInput} w-[10rem]`} value={formData.quoteNo} onChange={e => setFormData({...formData, quoteNo: e.target.value})} /></FormField>
+      <FormField label="Company" required inline>
+        <select className={`${compactInput} w-[15rem]`} value={formData.customer} onChange={e => setFormData({...formData, customer: e.target.value})}>
+          <option value="">Select company...</option>{customerOptions.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+          {formData.customer && !customerOptions.some(c => c.name === formData.customer) && <option value={formData.customer}>{formData.customer}</option>}
+        </select>
+      </FormField>
+      <FormField label="Enquiry Reference" inline>
+        <select className={`${compactInput} w-[12rem]`} value={formData.enquiryNo} onChange={e => setFormData({...formData, enquiryNo: e.target.value})}>
+          <option value="">Select enquiry...</option>{enquiryOptions.map((e) => <option key={e.id} value={e.enquiry_no}>{e.enquiry_no}</option>)}
+          {formData.enquiryNo && !enquiryOptions.some(e => e.enquiry_no === formData.enquiryNo) && <option value={formData.enquiryNo}>{formData.enquiryNo}</option>}
+        </select>
+      </FormField>
+      <FormField label="Product Name" required inline><input className={`${compactInput} w-[13rem]`} value={formData.partName} onChange={e => setFormData({...formData, partName: e.target.value})} /></FormField>
+      <FormField label="Quantity" required inline><input type="number" className={`${compactInput} w-[5.5rem]`} value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} /></FormField>
+      <FormField label="Unit Price (₹)" required inline><input type="number" className={`${compactInput} w-[7.5rem]`} value={formData.unitPrice} onChange={e => setFormData({...formData, unitPrice: e.target.value})} /></FormField>
+      <FormField label="Valid Till" required inline><input type="date" className={`${compactInput} w-[10.5rem]`} value={formData.validTill} onChange={e => setFormData({...formData, validTill: e.target.value})} /></FormField>
+      <FormField label="Payment Terms" inline><select className={`${compactInput} w-[8rem]`} value={formData.paymentTerms} onChange={e => setFormData({...formData, paymentTerms: e.target.value})}><option>Net 30</option><option>Net 45</option><option>Net 60</option><option>Advance</option></select></FormField>
+      {editId && (
+        <FormField label="Status" inline>
+          <select className={`${compactInput} w-[9rem]`} value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
+            <option>Draft</option><option>Sent</option><option>Converted</option><option>Rejected</option>
+          </select>
+        </FormField>
+      )}
+    </div>
+  );
+
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Quotations" description="Manage price quotations for company enquiries" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<DateSelector /></div>} />
@@ -414,36 +460,33 @@ export function QuotationsPage() {
         <StatCard label="Converted" value={acceptedCount.toString()} icon={<FileText size={20} />} trend="12%" trendUp accent="success" />
         <StatCard label="Win Rate" value={`${winRate}%`} icon={<FileText size={20} />} trend="3%" trendUp accent="accent" />
       </div>
+      {/* Always-visible New Quotation card, directly above the table so the list sits
+          immediately below the entry row. Edit still opens in the popup below. */}
+      {showAdd && !editId && (
+        <section className={`rounded-xl border shadow-sm ${tint('Quotation').panel}`} data-testid="quotation-entry-form">
+          <div className="space-y-2.5 p-3">
+            {savedNote && (
+              <div role="status" data-testid="quotation-saved-note" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                <span>&#10003; Quotation {savedNote} saved. The table below has been refreshed.</span>
+                <button type="button" onClick={() => setSavedNote(null)} className="font-bold underline hover:text-emerald-900">Dismiss</button>
+              </div>
+            )}
+            {formError && (
+              <div role="alert" data-testid="quotation-error" className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{formError}</div>
+            )}
+            {quotationFormBody}
+            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-2.5">
+              <Button variant="secondary" size="sm" onClick={() => { setFormData(resetForm()); setSavedNote(null); setFormError(null); }}>Clear / Reset</Button>
+              <Button size="sm" onClick={() => void handleSave()} disabled={saving}>{saving ? 'Saving...' : 'Save Quotation'}</Button>
+            </div>
+          </div>
+        </section>
+      )}
+
       <DataTable data={quotationsData} columns={columns} searchKeys={['quoteNo', 'customer', 'partName']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Quotation" filterOptions={[{ label: 'Draft', value: 'Draft' }, { label: 'Sent', value: 'Sent' }, { label: 'Converted', value: 'Converted' }, { label: 'Rejected', value: 'Rejected' }]} />
       
-      <Modal open={showAdd} onClose={() => { setShowAdd(false); setEditId(null); setFormData(resetForm()); }} title={editId ? "Edit Quotation" : "New Quotation"} subtitle={editId ? "Update quotation details" : "Create a new quotation for a company"} size="lg" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>{editId ? 'Update Quotation' : 'Save Quotation'}</Button></>}>
-        <div className="grid grid-cols-2 gap-4">
-          <FormField label="Quotation Number" required><input className={inputClass} value={formData.quoteNo} onChange={e => setFormData({...formData, quoteNo: e.target.value})} /></FormField>
-          <FormField label="Company" required>
-            <select className={inputClass} value={formData.customer} onChange={e => setFormData({...formData, customer: e.target.value})}>
-              <option value="">Select company...</option>{customerOptions.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
-              {formData.customer && !customerOptions.some(c => c.name === formData.customer) && <option value={formData.customer}>{formData.customer}</option>}
-            </select>
-          </FormField>
-          <FormField label="Enquiry Reference">
-            <select className={inputClass} value={formData.enquiryNo} onChange={e => setFormData({...formData, enquiryNo: e.target.value})}>
-              <option value="">Select enquiry...</option>{enquiryOptions.map((e) => <option key={e.id} value={e.enquiry_no}>{e.enquiry_no}</option>)}
-              {formData.enquiryNo && !enquiryOptions.some(e => e.enquiry_no === formData.enquiryNo) && <option value={formData.enquiryNo}>{formData.enquiryNo}</option>}
-            </select>
-          </FormField>
-          <FormField label="Product Name" required><input className={inputClass} value={formData.partName} onChange={e => setFormData({...formData, partName: e.target.value})} /></FormField>
-          <FormField label="Quantity" required><input type="number" className={inputClass} value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} /></FormField>
-          <FormField label="Unit Price (₹)" required><input type="number" className={inputClass} value={formData.unitPrice} onChange={e => setFormData({...formData, unitPrice: e.target.value})} /></FormField>
-          <FormField label="Valid Till" required><input type="date" className={inputClass} value={formData.validTill} onChange={e => setFormData({...formData, validTill: e.target.value})} /></FormField>
-          <FormField label="Payment Terms"><select className={inputClass} value={formData.paymentTerms} onChange={e => setFormData({...formData, paymentTerms: e.target.value})}><option>Net 30</option><option>Net 45</option><option>Net 60</option><option>Advance</option></select></FormField>
-          {editId && (
-            <FormField label="Status">
-              <select className={inputClass} value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
-                <option>Draft</option><option>Sent</option><option>Converted</option><option>Rejected</option>
-              </select>
-            </FormField>
-          )}
-        </div>
+      <Modal open={!!editId} onClose={() => { setEditId(null); setFormData(resetForm()); }} title="Edit Quotation" subtitle="Update quotation details" size="lg" footer={<><Button variant="secondary" onClick={() => { setEditId(null); setFormData(resetForm()); }}>Cancel</Button><Button onClick={() => void handleSave()} disabled={saving}>{saving ? 'Saving...' : 'Update Quotation'}</Button></>}>
+        {quotationFormBody}
       </Modal>
 
       <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title="View Quotation Details" subtitle={viewTarget?.quoteNo}>

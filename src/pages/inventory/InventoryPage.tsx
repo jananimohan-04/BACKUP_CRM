@@ -1122,7 +1122,7 @@ function ViewItemModal({ row, initialTab, imageUrl, onClose, onOpenSource }: {
               ['Supplier', it.supplier_name],
               ['Warehouse / Location', [it.warehouse_name, it.location_name].filter(Boolean).join(' / ')],
               ['Status', <span className="inline-flex items-center gap-2"><StatusPill status={it.status} /> <span className="text-xs text-slate-500">{it.item_status}</span></span>],
-              ['Last Updated', it.updated_at ? new Date(it.updated_at).toLocaleString('en-IN') : ''],
+              ['Last Updated', it.updated_at ? new Date(it.updated_at).toLocaleString('en-IN', { hour12: false }) : ''],
             ]} />
             <p className="text-[11px] text-slate-400 mt-3">
               Reserved and in-production quantities are not tracked separately — the ledger balance (available quantity) is authoritative.

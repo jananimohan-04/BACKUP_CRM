@@ -262,7 +262,7 @@ export function UsersPage() {
             <dt className="text-slate-500">Role</dt><dd className="col-span-2 font-medium text-slate-800">{ROLE_LABELS[viewing.role]}</dd>
             <dt className="text-slate-500">Status</dt><dd className="col-span-2 font-medium text-slate-800">{viewing.status}</dd>
             <dt className="text-slate-500">Created</dt><dd className="col-span-2 font-medium text-slate-800">{formatDate(viewing.created_at)}</dd>
-            <dt className="text-slate-500">Last login</dt><dd className="col-span-2 font-medium text-slate-800">{viewing.last_login_at ? new Date(viewing.last_login_at).toLocaleString('en-IN') : 'Never'}</dd>
+            <dt className="text-slate-500">Last login</dt><dd className="col-span-2 font-medium text-slate-800">{viewing.last_login_at ? new Date(viewing.last_login_at).toLocaleString('en-IN', { hour12: false }) : 'Never'}</dd>
           </dl>
         )}
       </Modal>

@@ -5,7 +5,7 @@ import { Badge, Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { PlanEditor } from './PlanEditor';
 import {
-  addDays, emptyPlan, expandPlan, fmtTime12, isMissingTable, parseYmd, planError, segmentHours, toMinutes, ymd,
+  addDays, emptyPlan, expandPlan, fmtTime24, isMissingTable, parseYmd, planError, segmentHours, toMinutes, ymd,
   type PlanDraft,
 } from '@/lib/operationPlans';
 
@@ -245,7 +245,7 @@ export function PlannedTimeline() {
           ))}
           <div className="relative" style={{ height: 24 * HOUR_PX }}>
             {Array.from({ length: 24 }, (_, h) => (
-              <div key={h} className="absolute right-2 -translate-y-2 text-[10px] text-slate-400" style={{ top: h * HOUR_PX }}>{h === 0 ? '' : fmtTime12(`${h}:00`)}</div>
+              <div key={h} className="absolute right-2 -translate-y-2 text-[10px] text-slate-400" style={{ top: h * HOUR_PX }}>{h === 0 ? '' : fmtTime24(`${h}:00`)}</div>
             ))}
           </div>
           {days.map(d => {
@@ -258,7 +258,7 @@ export function PlannedTimeline() {
                 {drag && drag.date === d && (
                   <div className="absolute left-0.5 right-0.5 rounded-md border-2 border-dashed border-brand-500 bg-brand-100/60 pointer-events-none z-10" data-testid="plan-drag"
                     style={{ top: (Math.min(drag.a, drag.b) / 60) * HOUR_PX, height: Math.max(SNAP, Math.abs(drag.b - drag.a)) / 60 * HOUR_PX }}>
-                    <span className="text-[10px] font-bold text-brand-700 px-1">{fmtTime12(minToHhmm(Math.min(drag.a, drag.b)))} – {fmtTime12(minToHhmm(Math.min(24 * 60 - 1, Math.max(Math.max(drag.a, drag.b), Math.min(drag.a, drag.b) + SNAP))))}</span>
+                    <span className="text-[10px] font-bold text-brand-700 px-1">{fmtTime24(minToHhmm(Math.min(drag.a, drag.b)))} – {fmtTime24(minToHhmm(Math.min(24 * 60 - 1, Math.max(Math.max(drag.a, drag.b), Math.min(drag.a, drag.b) + SNAP))))}</span>
                   </div>
                 )}
                 {d === today && <div className="absolute inset-x-0 z-10 pointer-events-none" style={{ top: (nowMin / 60) * HOUR_PX }}><div className="h-0.5 bg-red-500" /><div className="absolute -left-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500" /></div>}
@@ -271,7 +271,7 @@ export function PlannedTimeline() {
                       className={`absolute left-0.5 right-0.5 overflow-hidden rounded-md border-l-4 px-1.5 py-0.5 text-left text-[10px] leading-tight shadow-sm hover:brightness-95 ${colorFor(String(r.work_order_id))} ${clash.has(r.id) ? 'ring-2 ring-red-500' : ''}`}
                       style={{ top, height }}>
                       <div className="font-bold truncate">{wo?.wo_no ?? 'Work order'}{r.process_name ? ` · ${r.process_name}` : ''}</div>
-                      <div className="truncate">{r.machine}{r.operator ? ` · ${r.operator}` : ''} · {fmtTime12(hh(r.start_time))}–{fmtTime12(hh(r.end_time))}</div>
+                      <div className="truncate">{r.machine}{r.operator ? ` · ${r.operator}` : ''} · {fmtTime24(hh(r.start_time))}–{fmtTime24(hh(r.end_time))}</div>
                     </button>
                   );
                 })}
@@ -310,7 +310,7 @@ export function PlannedTimeline() {
           <PlanEditor value={form.plan} onChange={plan => setForm(f => ({ ...f, plan }))} />
           {conflicts.length > 0 && (
             <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2" data-testid="plan-conflict">
-              {form.machine} is already planned at these times: {conflicts.slice(0, 3).map(c => `${woById.get(String(c.o.work_order_id))?.wo_no ?? 'another order'} on ${dayLabel(c.s.date)} ${fmtTime12(hh(c.o.start_time))}–${fmtTime12(hh(c.o.end_time))}`).join('; ')}{conflicts.length > 3 ? ` and ${conflicts.length - 3} more` : ''}.
+              {form.machine} is already planned at these times: {conflicts.slice(0, 3).map(c => `${woById.get(String(c.o.work_order_id))?.wo_no ?? 'another order'} on ${dayLabel(c.s.date)} ${fmtTime24(hh(c.o.start_time))}–${fmtTime24(hh(c.o.end_time))}`).join('; ')}{conflicts.length > 3 ? ` and ${conflicts.length - 3} more` : ''}.
             </p>
           )}
         </div>
@@ -329,7 +329,7 @@ export function PlannedTimeline() {
               <p>Operation: {picked.process_name || '—'}{picked.operation_sequence ? ` (Seq ${picked.operation_sequence})` : ''}</p>
               <p>Machine: {picked.machine || '—'}</p>
               <p>Operator: {picked.operator || '—'}</p>
-              <p>{dayLabel(String(picked.plan_date).slice(0, 10))}, {fmtTime12(hh(picked.start_time))} – {fmtTime12(hh(picked.end_time))}</p>
+              <p>{dayLabel(String(picked.plan_date).slice(0, 10))}, {fmtTime24(hh(picked.start_time))} – {fmtTime24(hh(picked.end_time))}</p>
               <p className="text-xs text-slate-500">This operation has {same.length} planned slot{same.length === 1 ? '' : 's'} in all.</p>
               {clash.has(picked.id) && <p className="text-xs text-red-600">Another plan uses this machine at the same time.</p>}
             </div>

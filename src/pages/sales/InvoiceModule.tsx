@@ -38,14 +38,14 @@ export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
-      <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-        <div className="flex items-center gap-3">
-          <button onClick={onBack} className="p-1.5 hover:bg-slate-200 rounded-md transition-colors text-slate-600">
-            <ArrowLeft className="w-5 h-5" />
+      <div className="px-3 py-1.5 border-b border-slate-200 flex flex-wrap justify-between items-center gap-2 gap-y-1 bg-slate-50">
+        <div className="flex items-center gap-2 min-w-0">
+          <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-600 shrink-0">
+            <ArrowLeft className="w-4 h-4" />
           </button>
-          <div>
-            <h2 className="text-lg font-bold text-slate-800">Invoices</h2>
-            <p className="text-xs text-slate-500">Manage final billing</p>
+          <div className="flex items-baseline gap-2 min-w-0">
+            <h2 className="text-sm font-bold text-slate-800 shrink-0">Invoices</h2>
+            <p className="text-xs text-slate-500 truncate">Manage final billing</p>
           </div>
         </div>
         <div className="flex items-center gap-2">

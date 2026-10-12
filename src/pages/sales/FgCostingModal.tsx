@@ -10,6 +10,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { todayISO } from '@/lib/format';
+import { tint } from '@/lib/entryTints';
+import { compactInput, inlineLbl } from '@/lib/compactFields';
 import { Badge, Button, statusToVariant } from '@/components/ui/Card';
 import { Modal, inputClass } from '@/components/ui/Modal';
 import { QtyTrackingSection } from './SalesPipelinePage';
@@ -841,20 +843,27 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
     const key = (v: string) => v.trim().toLowerCase();
     const products = Array.from(new Set(pickOptions.filter((o) => !pickCompany.trim() || key(o.company) === key(pickCompany)).map((o) => o.product).filter(Boolean)));
     return (
-      <Modal open inline={inline} onClose={onClose} title="Finished Goods + Costing" subtitle="Add Finished Goods" size="3xl" width={960}
-        footer={<><span className="flex-1" /><Button variant="secondary" icon={<X size={14} />} onClick={onClose}>Cancel</Button>
-          <Button disabled={!pickCompany.trim() || !pickProduct.trim()} onClick={() => onPick?.(pickCompany.trim(), pickProduct.trim())}>Continue</Button></>}>
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-3 border-b border-brand-100 pb-2">Section 1 — Transaction Details</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-            <div><p className="text-[10px] uppercase tracking-wider text-slate-400 mb-0.5">Company *</p>
-              <input className={inputClass} list="fg-pick-companies" placeholder="Type or select company" value={pickCompany} onChange={(e) => { setPickCompany(e.target.value); setPickProduct(''); }} />
-              <datalist id="fg-pick-companies">{companies.map((c) => <option key={c} value={c} />)}</datalist></div>
-            <div><p className="text-[10px] uppercase tracking-wider text-slate-400 mb-0.5">Product *</p>
-              <input className={inputClass} list="fg-pick-products" placeholder="Type or select product" value={pickProduct} onChange={(e) => setPickProduct(e.target.value)} />
-              <datalist id="fg-pick-products">{products.map((p) => <option key={p} value={p} />)}</datalist></div>
+      <Modal open inline={inline} onClose={onClose} title="Finished Goods + Costing" subtitle="Add Finished Goods" size="3xl" width={960} accent={tint('Finished Goods')}>
+        {/* Everything - section title, both fields, the hint and the actions - on one compact
+            line. The box is w-fit so it hugs its contents instead of spanning the whole modal;
+            the actions simply follow on from the hint. */}
+        <div className={`w-fit rounded-xl border p-2.5 ${tint('Finished Goods').panel}`}>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-brand-600">Section 1 — Transaction Details</h3>
+            <div className="flex items-center gap-1.5">
+              <span className={inlineLbl}>Company *</span>
+              <input className={`${compactInput} w-[15rem]`} list="fg-pick-companies" placeholder="Type or select company" value={pickCompany} onChange={(e) => { setPickCompany(e.target.value); setPickProduct(''); }} />
+              <datalist id="fg-pick-companies">{companies.map((c) => <option key={c} value={c} />)}</datalist>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className={inlineLbl}>Product *</span>
+              <input className={`${compactInput} w-[15rem]`} list="fg-pick-products" placeholder="Type or select product" value={pickProduct} onChange={(e) => setPickProduct(e.target.value)} />
+              <datalist id="fg-pick-products">{products.map((p) => <option key={p} value={p} />)}</datalist>
+            </div>
+            <p className="text-[11px] text-slate-400">Pick a product from an order, or type a new one.</p>
+            <Button variant="secondary" size="sm" icon={<X size={14} />} onClick={onClose}>Cancel</Button>
+            <Button size="sm" disabled={!pickCompany.trim() || !pickProduct.trim()} onClick={() => onPick?.(pickCompany.trim(), pickProduct.trim())}>Continue</Button>
           </div>
-          <p className="text-xs text-slate-400 mt-3">Pick a product from an order, or type a new one. Then enter how many are finished and review the costing.</p>
         </div>
       </Modal>
     );
@@ -864,6 +873,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
     <Modal
       open
       inline={inline}
+      accent={tint('Finished Goods')}
       onClose={onClose}
       title={mode === 'view' ? 'View Finished Goods + Costing' : mode === 'edit' ? 'Edit Finished Goods + Costing' : 'Finished Goods + Costing'}
       subtitle={mode === 'add' ? `Inward ${card?.refNo ?? inward.project_name ?? ''} → Finished Goods with pricing approval` : `Finished Goods ${card?.refNo ?? inward.project_name ?? ''}`}

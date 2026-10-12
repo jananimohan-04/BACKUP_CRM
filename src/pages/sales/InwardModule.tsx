@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, Fragment, type ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Search, ArrowLeft, FileText, Download, Receipt } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
@@ -107,40 +107,82 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
     (r.product_name || '').toLowerCase().includes(search.toLowerCase()) ||
     (r.part_name || '').toLowerCase().includes(search.toLowerCase())
   );
-  // Inwards group by product / project. Expenses group by sales order instead, so every
-  // expense sits under the order it belongs to with the order number on the header line.
-  const groupFor = (record: any): { key: string; label: string } => {
-    if (showExpenses) {
-      const so = record.sales_order_ref || record.project_name || record.enquiry_id || record.product_name || 'Unassigned Sales Order';
-      return { key: `so::${so}`, label: so };
-    }
-    const product = record.product_name || record.project_name || record.part_name || 'Unassigned Product';
-    return { key: `${record.enquiry_id || record.project_name || ''}::${product}`, label: product };
+  // Inwards group by product / project. Expenses are two levels: the party, then each of its
+  // orders. One company can hold several orders, so the sales order alone is not a unique key —
+  // the order group is identified by sales order + the entry date and time.
+  const orderStamp = (record: any) => {
+    const d = record?.created_at ? new Date(record.created_at) : null;
+    if (!d || Number.isNaN(d.getTime())) return '';
+    const date = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return `${date} · ${time}`;
   };
 
-  const productGroups: Array<{ key: string; label: string; records: any[] }> = Array.from(filteredRecords.reduce((groups: Map<string, { key: string; label: string; records: any[] }>, record: any) => {
-    const { key, label } = groupFor(record);
-    const group = groups.get(key) || { key, label, records: [] };
+  const orderSo = (record: any) => record.sales_order_ref || record.project_name || record.enquiry_id || 'No Sales Order';
+
+  type OrderGroup = { key: string; label: string; records: any[] };
+  type GroupRow = { key: string; label: string; records: any[]; orders?: OrderGroup[] };
+
+  // Party -> order -> expense rows, kept in the same newest-first order as filteredRecords.
+  const expenseParties: GroupRow[] = [];
+  const partyIndex = new Map<string, GroupRow>();
+  for (const record of filteredRecords) {
+    const party = record.party_name || 'Unassigned Party';
+    let group = partyIndex.get(party);
+    if (!group) {
+      group = { key: `party::${party}`, label: party, records: [], orders: [] };
+      partyIndex.set(party, group);
+      expenseParties.push(group);
+    }
+    // created_at makes two entries for the same order on the same day stay apart.
+    const orderKey = `${orderSo(record)}::${record.created_at || record.id || ''}`;
+    let order = group.orders!.find(o => o.key === orderKey);
+    if (!order) {
+      const stamp = orderStamp(record);
+      order = { key: orderKey, label: stamp ? `${orderSo(record)} · ${stamp}` : orderSo(record), records: [] };
+      group.orders!.push(order);
+    }
+    order.records.push(record);
+    group.records.push(record);
+  }
+
+  const productGroups: GroupRow[] = Array.from(filteredRecords.reduce((groups: Map<string, GroupRow>, record: any) => {
+    const product = record.product_name || record.project_name || record.part_name || 'Unassigned Product';
+    const key = `${record.enquiry_id || record.project_name || ''}::${product}`;
+    const group = groups.get(key) || { key, label: product, records: [] as any[] };
     group.records.push(record);
     groups.set(key, group);
     return groups;
-  }, new Map<string, { key: string; label: string; records: any[] }>()).values());
+  }, new Map<string, GroupRow>()).values());
 
-  // Inward No, Party, Part Name, Quantity, Total Amount, Sales Order (expenses only), Status, Actions
+  // Inwards:      Inward No, Party, Part Name, Quantity, Total Amount, Status, Actions
+  // Expenses:     Inward No, Part Name, Quantity, Total Amount, Sales Order, Date & Time, Status, Actions
+  // The party is the group header in the Expenses view, so it is not repeated on every row.
   const colCount = showExpenses ? 8 : 7;
 
-  const pager = usePager(productGroups, productGroups.length);
+  const pager = usePager<GroupRow>(showExpenses ? expenseParties : productGroups, `${showExpenses}:${filteredRecords.length}`);
+
+  // Shared so the two row templates cannot drift apart.
+  const actionCell = (record: any) => (
+    <td className="py-2 px-3">
+      <div className="flex flex-wrap gap-2">
+        <Button variant="secondary" size="sm" onClick={() => (onView ? onView(record) : openRecord(record))}>View Details</Button>
+        {onEdit && <Button variant="secondary" size="sm" onClick={() => onEdit(record)}>Edit</Button>}
+        {onDelete && <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => onDelete(record)}>Delete</Button>}
+      </div>
+    </td>
+  );
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <button onClick={onBack} className="p-1.5 hover:bg-slate-200 rounded-md transition-colors text-slate-600">
-            <ArrowLeft className="w-5 h-5" />
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 px-3 py-1.5 flex flex-wrap justify-between items-center gap-2 gap-y-1">
+        <div className="flex items-center gap-2 min-w-0">
+          <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-600 shrink-0">
+            <ArrowLeft className="w-4 h-4" />
           </button>
-          <div>
-            <h2 className="text-lg font-bold text-slate-800">{showExpenses ? 'Expenses' : 'Inwards'}</h2>
-            <p className="text-xs text-slate-500">{showExpenses ? 'Expenses grouped under their sales order' : 'Manage raw materials inward'}</p>
+          <div className="flex items-baseline gap-2 min-w-0">
+            <h2 className="text-sm font-bold text-slate-800 shrink-0">{showExpenses ? 'Expenses' : 'Inwards'}</h2>
+            <p className="text-xs text-slate-500 truncate">{showExpenses ? 'Expenses grouped by party, then by sales order' : 'Manage raw materials inward'}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -175,33 +217,57 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="py-2 px-3 font-semibold">Inward No</th>
-                <th className="py-2 px-3 font-semibold">Party</th>
+                {!showExpenses && <th className="py-2 px-3 font-semibold">Party</th>}
                 <th className="py-2 px-3 font-semibold">Part Name</th>
                 <th className="py-2 px-3 font-semibold">Quantity</th>
                 <th className="py-2 px-3 font-semibold">Total Amount</th>
                 {showExpenses && <th className="py-2 px-3 font-semibold">Sales Order</th>}
+                {showExpenses && <th className="py-2 px-3 font-semibold">Date &amp; Time</th>}
                 <th className="py-2 px-3 font-semibold">Status</th>
                 <th className="py-2 px-3 font-semibold">Actions</th>
               </tr>
             </thead>
             {pager.pageItems.map(group => <tbody key={group.key}>
+              {/* Party header (expenses) / product header (inwards). */}
               <tr className="border-b border-slate-200 bg-brand-50/70">
                 <td colSpan={colCount} className="py-1 px-3 text-sm font-bold text-brand-800">{group.label}<span className="ml-2 rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600">{group.records.length} {showExpenses ? 'expense' : 'inward'}{group.records.length === 1 ? '' : 's'}</span></td>
               </tr>
-              {group.records.map(record => (
-                <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                  <td className="py-2 px-3 text-sm font-mono font-medium text-slate-800">{record.inward_no || '-'}</td>
-                  <td className="py-2 px-3 text-sm font-semibold text-brand-700">{record.party_name || '-'}</td>
-                  <td className="py-2 px-3 text-sm text-slate-700">{record.part_name || '-'}</td>
-                  <td className="py-2 px-3 text-sm text-slate-700">{record.quantity ?? '-'}</td>
-                  <td className="py-2 px-3 text-sm font-mono font-semibold text-slate-800 whitespace-nowrap">{inr(rowTotal(record))}</td>
-                  {showExpenses && <td className="py-2 px-3 text-sm font-mono font-semibold text-brand-700">{record.sales_order_ref || record.project_name || '-'}</td>}
-                  <td className="py-2 px-3 text-sm text-slate-700">{record.status || '-'}</td>
-                  <td className="py-2 px-3">
-                    <div className="flex flex-wrap gap-2"><Button variant="secondary" size="sm" onClick={() => (onView ? onView(record) : openRecord(record))}>View Details</Button>{onEdit && <Button variant="secondary" size="sm" onClick={() => onEdit(record)}>Edit</Button>}{onDelete && <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => onDelete(record)}>Delete</Button>}</div>
-                  </td>
-                </tr>
-              ))}
+              {showExpenses
+                ? (group.orders ?? []).map(order => (
+                  <Fragment key={order.key}>
+                    {/* Order header: sales order + entry date/time, unique even when one
+                        company holds several orders. */}
+                    <tr className="border-b border-slate-100 bg-slate-50/80">
+                      <td colSpan={colCount} className="py-1 px-3 pl-8 text-xs font-semibold text-slate-600">
+                        <span className="font-mono">{order.label}</span>
+                        <span className="ml-2 rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-500 border border-slate-200">{order.records.length} expense{order.records.length === 1 ? '' : 's'}</span>
+                      </td>
+                    </tr>
+                    {order.records.map(record => (
+                      <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                        <td className="py-2 px-3 text-sm font-mono font-medium text-slate-800">{record.inward_no || '-'}</td>
+                        <td className="py-2 px-3 text-sm text-slate-700">{record.part_name || '-'}</td>
+                        <td className="py-2 px-3 text-sm text-slate-700">{record.quantity ?? '-'}</td>
+                        <td className="py-2 px-3 text-sm font-mono font-semibold text-slate-800 whitespace-nowrap">{inr(rowTotal(record))}</td>
+                        <td className="py-2 px-3 text-sm font-mono font-semibold text-brand-700">{orderSo(record)}</td>
+                        <td className="py-2 px-3 text-sm text-slate-600 whitespace-nowrap">{orderStamp(record) || '-'}</td>
+                        <td className="py-2 px-3 text-sm text-slate-700">{record.status || '-'}</td>
+                        {actionCell(record)}
+                      </tr>
+                    ))}
+                  </Fragment>
+                ))
+                : group.records.map(record => (
+                  <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                    <td className="py-2 px-3 text-sm font-mono font-medium text-slate-800">{record.inward_no || '-'}</td>
+                    <td className="py-2 px-3 text-sm font-semibold text-brand-700">{record.party_name || '-'}</td>
+                    <td className="py-2 px-3 text-sm text-slate-700">{record.part_name || '-'}</td>
+                    <td className="py-2 px-3 text-sm text-slate-700">{record.quantity ?? '-'}</td>
+                    <td className="py-2 px-3 text-sm font-mono font-semibold text-slate-800 whitespace-nowrap">{inr(rowTotal(record))}</td>
+                    <td className="py-2 px-3 text-sm text-slate-700">{record.status || '-'}</td>
+                    {actionCell(record)}
+                  </tr>
+                ))}
             </tbody>)}
               {filteredRecords.length === 0 && (
                 <tbody>

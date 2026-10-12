@@ -39,14 +39,14 @@ export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, o
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <button onClick={onBack} className="p-1.5 hover:bg-slate-200 rounded-md transition-colors text-slate-600">
-            <ArrowLeft className="w-5 h-5" />
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 px-3 py-1.5 flex flex-wrap justify-between items-center gap-2 gap-y-1">
+        <div className="flex items-center gap-2 min-w-0">
+          <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-600 shrink-0">
+            <ArrowLeft className="w-4 h-4" />
           </button>
-          <div>
-            <h2 className="text-lg font-bold text-slate-800">Finished Goods</h2>
-            <p className="text-xs text-slate-500">Manage completed production goods</p>
+          <div className="flex items-baseline gap-2 min-w-0">
+            <h2 className="text-sm font-bold text-slate-800 shrink-0">Finished Goods</h2>
+            <p className="text-xs text-slate-500 truncate">Manage completed production goods</p>
           </div>
         </div>
         <div className="flex items-center gap-2">

@@ -7,6 +7,8 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { financeApi, type InvoiceDetail, type InvoiceRow, type InvoiceSummary } from '@/lib/finance';
 import { exportCsv, escapeHtml, printHtml } from '@/lib/reportExport';
 import { formatDate, formatINR, todayISO } from '@/lib/format';
+import { tint } from '@/lib/entryTints';
+import { compactInput } from '@/lib/compactFields';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { downloadSalesInvoice, fetchCompanyPrintDetails } from '@/lib/brandedDocument';
@@ -259,17 +261,35 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
   // The invoice fields live in exactly one place: rendered by the always-visible
   // New Invoice card above the table, and by the popup used when editing a record.
   const invoiceFormBody = (<>
-      <div className="grid md:grid-cols-3 gap-3">
-        <FormField label="Invoice Type"><select className={inputClass} value={form.invoice_type} onChange={e=>setForm({...form,invoice_type:e.target.value})}><option>Sales Invoice</option><option>Proforma Invoice</option></select></FormField>
-        <FormField label="Invoice No (optional)"><input className={inputClass} value={form.invoice_no||''} onChange={e=>setForm({...form,invoice_no:e.target.value})} placeholder="Auto-number if blank"/></FormField>
-        <FormField label="Delivery Challan"><select className={inputClass} value={form.delivery_id||''} onChange={e=>chooseDelivery(e.target.value)}><option value="">Not linked</option>{deliveries.map(d=><option key={d.id} value={d.id}>{d.delivery_no||d.id} · {d.customer_name||''}</option>)}</select></FormField>
-        <FormField label="Company" required><select className={inputClass} value={form.customer_id||''} onChange={e=>{const c=customers.find(x=>x.id===e.target.value);setForm({...form,customer_id:e.target.value,customer_name:c?.name||''})}}><option value="">Select company</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></FormField>
-        <FormField label="Invoice Date"><input type="date" className={inputClass} value={form.invoice_date} onChange={e=>setForm({...form,invoice_date:e.target.value})}/></FormField>
-        <FormField label="Due Date"><input type="date" className={inputClass} value={form.due_date||''} onChange={e=>setForm({...form,due_date:e.target.value})}/></FormField>
-        <FormField label="PO No"><input className={inputClass} value={form.po_no||''} onChange={e=>setForm({...form,po_no:e.target.value})}/></FormField>
-        <FormField label="Payment Terms"><input className={inputClass} value={form.payment_terms||''} onChange={e=>setForm({...form,payment_terms:e.target.value})}/></FormField>
+      {/* One compact row for the header fields. flex-wrap keeps every field reachable on
+          narrow screens, where they simply flow onto extra lines. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <FormField label="Invoice Type" inline><select className={`${compactInput} w-[10rem]`} value={form.invoice_type} onChange={e=>setForm({...form,invoice_type:e.target.value})}><option>Sales Invoice</option><option>Proforma Invoice</option></select></FormField>
+        <FormField label="Invoice No (optional)" inline><input className={`${compactInput} w-[11rem]`} value={form.invoice_no||''} onChange={e=>setForm({...form,invoice_no:e.target.value})} placeholder="Auto-number if blank"/></FormField>
+        <FormField label="Delivery Challan" inline><select className={`${compactInput} w-[16rem]`} value={form.delivery_id||''} onChange={e=>chooseDelivery(e.target.value)}><option value="">Not linked</option>{deliveries.map(d=><option key={d.id} value={d.id}>{d.delivery_no||d.id} · {d.customer_name||''}</option>)}</select></FormField>
+        <FormField label="Company" required inline><select className={`${compactInput} w-[15rem]`} value={form.customer_id||''} onChange={e=>{const c=customers.find(x=>x.id===e.target.value);setForm({...form,customer_id:e.target.value,customer_name:c?.name||''})}}><option value="">Select company</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></FormField>
+        <FormField label="Invoice Date" inline><input type="date" className={`${compactInput} w-[10.5rem]`} value={form.invoice_date} onChange={e=>setForm({...form,invoice_date:e.target.value})}/></FormField>
+        <FormField label="Due Date" inline><input type="date" className={`${compactInput} w-[10.5rem]`} value={form.due_date||''} onChange={e=>setForm({...form,due_date:e.target.value})}/></FormField>
+        <FormField label="PO No" inline><input className={`${compactInput} w-[9rem]`} value={form.po_no||''} onChange={e=>setForm({...form,po_no:e.target.value})}/></FormField>
+        <FormField label="Payment Terms" inline><input className={`${compactInput} w-[11rem]`} value={form.payment_terms||''} onChange={e=>setForm({...form,payment_terms:e.target.value})}/></FormField>
       </div>
-      <div className="mt-4 space-y-3 border-t pt-4"><div className="flex items-center justify-between"><h3 className="text-sm font-semibold">Invoice Items</h3><Button size="sm" variant="secondary" icon={<Plus size={13}/>} onClick={()=>setLines([...lines,{description:'',quantity:'',unit:'',rate:'',gst_rate:'',discount_pct:'0'}])}>Add Item</Button></div>{lines.map((line,index)=><div key={index} className="grid md:grid-cols-7 gap-2 items-end rounded border p-2"><FormField label="Item"><input className={inputClass} value={line.description} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,description:e.target.value}:x))}/></FormField><FormField label="Quantity"><input type="number" min="0" className={inputClass} value={line.quantity} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,quantity:e.target.value}:x))}/></FormField><FormField label="Unit"><input className={inputClass} value={line.unit} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,unit:e.target.value}:x))}/></FormField><FormField label="Rate"><input type="number" min="0" className={inputClass} value={line.rate} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,rate:e.target.value}:x))}/></FormField><FormField label="GST %"><input type="number" min="0" className={inputClass} value={line.gst_rate} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,gst_rate:e.target.value}:x))} placeholder="Company default"/></FormField><FormField label="Discount %"><input type="number" min="0" className={inputClass} value={line.discount_pct} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,discount_pct:e.target.value}:x))}/></FormField><button type="button" aria-label="Remove item" disabled={lines.length===1} onClick={()=>setLines(lines.filter((_,i)=>i!==index))} className="h-9 rounded border text-rose-600 disabled:opacity-40"><Trash2 size={14} className="mx-auto"/></button></div>)}</div>
+      <div className="mt-2.5 space-y-2 border-t border-slate-200/70 pt-2.5">
+        <div className="flex items-center justify-between">
+          <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Invoice Items</h3>
+          <Button size="sm" variant="secondary" icon={<Plus size={13}/>} onClick={()=>setLines([...lines,{description:'',quantity:'',unit:'',rate:'',gst_rate:'',discount_pct:'0'}])}>Add Item</Button>
+        </div>
+        {lines.map((line,index)=>(
+          <div key={index} className="flex flex-wrap items-center gap-2 rounded border border-slate-200 bg-white/70 px-2 py-1.5">
+            <FormField label="Item" inline><input className={`${compactInput} w-[16rem]`} value={line.description} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,description:e.target.value}:x))}/></FormField>
+            <FormField label="Quantity" inline><input type="number" min="0" className={`${compactInput} w-[5.5rem]`} value={line.quantity} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,quantity:e.target.value}:x))}/></FormField>
+            <FormField label="Unit" inline><input className={`${compactInput} w-[5rem]`} value={line.unit} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,unit:e.target.value}:x))}/></FormField>
+            <FormField label="Rate" inline><input type="number" min="0" className={`${compactInput} w-[7rem]`} value={line.rate} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,rate:e.target.value}:x))}/></FormField>
+            <FormField label="GST %" inline><input type="number" min="0" className={`${compactInput} w-[6.5rem]`} value={line.gst_rate} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,gst_rate:e.target.value}:x))} placeholder="Company default"/></FormField>
+            <FormField label="Discount %" inline><input type="number" min="0" className={`${compactInput} w-[7rem]`} value={line.discount_pct} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,discount_pct:e.target.value}:x))}/></FormField>
+            <button type="button" aria-label="Remove item" disabled={lines.length===1} onClick={()=>setLines(lines.filter((_,i)=>i!==index))} className="h-8 shrink-0 rounded border border-slate-300 px-2 text-rose-600 transition-colors hover:border-rose-300 hover:bg-rose-50 disabled:opacity-40"><Trash2 size={14} className="mx-auto"/></button>
+          </div>
+        ))}
+      </div>
   </>);
  
   return <div className="p-4 lg:p-6 space-y-4 bg-slate-50 min-h-full">
@@ -292,11 +312,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
         the page opens, directly above the invoice table. Fields, validation, the item
         rows and save() are the same code as before - only the modal chrome is gone. */}
     {formOpen && !editId && (
-      <section className="rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="invoice-entry-form">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-100 px-3 py-2">
-          <h3 className="text-sm font-bold text-slate-800">New Invoice</h3>
-          <p className="text-xs text-slate-500">Tax totals and ledger postings are calculated by the database.</p>
-        </div>
+      <section className={`rounded-xl border shadow-sm ${tint('Invoice').panel}`} data-testid="invoice-entry-form">
         <div className="space-y-2.5 p-3">
           {savedNote && (
             <div role="status" data-testid="invoice-saved-note" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
@@ -306,8 +322,8 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
           )}
           {invoiceFormBody}
           <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-2.5">
-            <Button variant="secondary" onClick={() => { startNew(); setSavedNote(''); }}>Clear / Reset</Button>
-            <Button onClick={() => void save()} disabled={busy}>{busy ? 'Saving...' : 'Save Invoice'}</Button>
+            <Button variant="secondary" size="sm" onClick={() => { startNew(); setSavedNote(''); }}>Clear / Reset</Button>
+            <Button size="sm" onClick={() => void save()} disabled={busy}>{busy ? 'Saving...' : 'Save Invoice'}</Button>
           </div>
         </div>
       </section>
