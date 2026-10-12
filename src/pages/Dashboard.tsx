@@ -270,7 +270,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
       />
 
       {/* 1. Operations: counts */}
-      <KpiSection testId="kpi-operations" title="Operations" subtitle="Counts from the shop floor and the order book, as of today" accent="bg-indigo-600" icon={<Cog size={18} />}>
+      <KpiSection testId="kpi-operations" title="By Count" subtitle="Counts from the shop floor and the order book, as of today" accent="bg-indigo-600" icon={<Cog size={18} />}>
         <KpiTile tone="indigo" title="Open Work Orders" value={loading ? '—' : String(stats.openWOs.length)} note={`${workOrders.length} work orders in total`} icon={<Package size={20} />} />
         <KpiTile tone="violet" title="Active Jobs" value={loading ? '—' : String(stats.activeJobs)} note="Job cards in progress" icon={<Cog size={20} />} />
         <KpiTile tone="teal" title="Machines Running" value={loading ? '—' : String(stats.running)} unit={machines.length ? `/ ${machines.length}` : undefined} note="Out of all machines" icon={<Gauge size={20} />} />
@@ -282,7 +282,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
       </KpiSection>
 
       {/* 2. Financials: rupee values */}
-      <KpiSection testId="kpi-financials" title="Financials" subtitle={`Money values · ${dateRange.start.split('-').reverse().join('/')} to ${dateRange.end.split('-').reverse().join('/')} unless marked "today"`} accent="bg-emerald-600" icon={<Wallet size={18} />}>
+      <KpiSection testId="kpi-financials" title="By Value" subtitle={`Money values · ${dateRange.start.split('-').reverse().join('/')} to ${dateRange.end.split('-').reverse().join('/')} unless marked "today"`} accent="bg-emerald-600" icon={<Wallet size={18} />}>
         <KpiTile tone="emerald" title="Invoice Value" value={moneyLoading || money.invoiceValue === null ? '—' : inr(money.invoiceValue)} note={`${money.invoiceCount} invoice${money.invoiceCount === 1 ? '' : 's'} raised`} hint={money.invoiceValue === null ? undefined : `₹${money.invoiceValue.toLocaleString('en-IN')}`} icon={<Receipt size={20} />} />
         <KpiTile tone="teal" title="Received" value={moneyLoading || money.received === null ? '—' : inr(money.received)} note="Collected against those invoices" hint={money.received === null ? undefined : `₹${money.received.toLocaleString('en-IN')}`} icon={<TrendingUp size={20} />} />
         <KpiTile tone="amber" title="To Collect" value={moneyLoading || money.outstanding === null ? '—' : inr(money.outstanding)} note="Invoiced but not yet received" hint={money.outstanding === null ? undefined : `₹${money.outstanding.toLocaleString('en-IN')}`} icon={<AlertTriangle size={20} />} />
@@ -361,16 +361,16 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <ChartCard title="Machine Utilization" subtitle="Average across the machine master">
               <div className="flex justify-center items-center h-full pb-4">
-                <div className="relative w-48 h-48 flex items-center justify-center">
+                <div className="relative w-[300px] h-[300px] flex items-center justify-center">
                   <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
                     <path className="text-slate-100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="4" />
                     <path className="text-emerald-500" strokeDasharray={`${util ?? 0}, 100`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="4" />
                   </svg>
                   <div className="absolute flex flex-col items-center justify-center">
-                    <span className="text-4xl font-black text-slate-800 tracking-tighter">
-                      {util === null ? '—' : util.toFixed(1)}{util !== null && <span className="text-lg">%</span>}
+                    <span className="text-6xl font-black text-slate-800 tracking-tighter">
+                      {util === null ? '—' : util.toFixed(1)}{util !== null && <span className="text-2xl">%</span>}
                     </span>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{machines.length} machines</span>
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">{machines.length} machines</span>
                   </div>
                 </div>
               </div>
@@ -378,9 +378,9 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
 
             <ChartCard title="Order Execution Status" subtitle={`${salesOrders.length} sales orders`}>
               {orderStatusData.length > 0 ? (
-                <DonutChart data={orderStatusData} size={190} />
+                <DonutChart data={orderStatusData} size={300} />
               ) : (
-                <div className="h-[190px] flex items-center justify-center text-sm text-slate-400">{loading ? 'Loading…' : 'No sales orders yet.'}</div>
+                <div className="h-[300px] flex items-center justify-center text-sm text-slate-400">{loading ? 'Loading…' : 'No sales orders yet.'}</div>
               )}
             </ChartCard>
           </div>

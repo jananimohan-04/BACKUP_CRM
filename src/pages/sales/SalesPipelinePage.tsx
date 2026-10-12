@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { financeApi } from '@/lib/finance';
 import { Button } from '@/components/ui/Card';
@@ -40,6 +40,45 @@ async function uploadEnquiryProductFile(companyId: string, file: File) {
   if (error) throw new Error(`Unable to upload ${file.name}: ${error.message}`);
   return path;
 }
+
+// Blank Sales Order form. Used by the inline entry form on the Sales Orders list, by
+// Clear / Reset, and by the board's "Add Sales Order" button. A fresh order number is
+// generated on every reset so consecutive orders never share a number.
+const resetSoForm = () => ({
+  orderNo: `SO-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+  customer: '', orderDate: new Date().toISOString().split('T')[0],
+  deliveryDate: new Date().toISOString().split('T')[0], customerPoNo: '',
+  items: [{ id: crypto.randomUUID(), partName: '', quantity: '', rejectedQty: '', itemStatus: 'Confirmed', unitPrice: '', gst: '18' }],
+});
+
+// Blank Delivery Challan form. Used when the DC list opens, by Clear / Reset and by the
+// board's "Add DC" button. A fresh DC number is generated on every reset.
+const makeDcBlankForm = () => ({
+  dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+  date: new Date().toISOString().split('T')[0], partyName: '',
+  partyAddress: '', partyGstin: '', partyCode: '',
+  ewayBill: '', poNumber: '', salesOrderNo: '', placeOfSupply: '', packaging: '',
+  enquiryNo: '', vehicleNo: '', phone: '',
+  category: '', process: '',
+  receiverName: '', senderName: '', custSignature: null, authSignature: null,
+});
+const makeDcBlankItems = () => [{ name: '', avail: null, qty: '', selected: true, hsn: '', unit: 'Nos', price: '' }];
+
+// The inline DC form always has an "entry session" (a source card, or none for a blank
+// manual entry) - this is what used to be created when the popup was opened. It drives
+// the masters / approved-price lookups and the work-order quantity cap in saveDeliveryChallan.
+const DC_ENTRY_TARGET: KanbanCard = { id: 'dummy', stage: 'Finished Goods', type: 'finished_goods', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} };
+
+// Same idea for the inline Inward form: a blank entry session instead of a popup target.
+const INWARD_ENTRY_TARGET: KanbanCard = { id: 'dummy', stage: 'Sales Order', type: 'order', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} };
+
+// Blank Finished Goods card. card.raw.__pick tells FgCostingModal to show its
+// company / product picker first, so this is the form's starting state. The id carries a
+// nonce so resetting the inline form remounts it (clearing whatever was typed).
+const makeFgPickTarget = (): KanbanCard => ({
+  id: `fg-pick-${Date.now()}`, stage: 'Inward', type: 'inward', refNo: '', customer: '', part: '',
+  qty: 0, value: 0, date: '', raw: { __pick: true },
+});
 
 async function uploadInwardAttachment(companyId: string, inwardId: string, file: File) {
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_') || 'attachment';
@@ -136,7 +175,7 @@ function formatSaleOrderDateTime(order: any): string | null {
 
 function enquiryProductOptions(enquiries: any[], leadNo?: string, orders?: any[]) {
   // Sales-stage numbers carry a date-time stamp (1009-26Sep26-1208AM) while the
-  // enquiry stores the plain number (1009) â€” compare base numbers so both match.
+  // enquiry stores the plain number (1009) — compare base numbers so both match.
   const baseOf = (s: any) => String(s || '').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, '');
   const wantBase = baseOf(leadNo || '');
   const ordersByBase = new Map<string, any[]>();
@@ -243,6 +282,22 @@ export interface KanbanCard {
   qtyTrack?: OrderQtySummary | null;
 };
 
+/**
+ * The board's legal forward step for each column. This mirrors the branches of
+ * moveCardToStage one-for-one: a card may only advance to the stage its business rules
+ * allow, and Invoice is terminal. Rejected is not a board column (it is its own list),
+ * so it is not part of this type.
+ */
+export const NEXT_STAGE: Record<Stage, Stage | null> = {
+  'Enquiry': 'Quotation',
+  'Quotation': 'Sales Order',
+  'Sales Order': 'Inward',
+  'Inward': 'Finished Goods',
+  'Finished Goods': 'DC',
+  'DC': 'Invoice',
+  'Invoice': null,
+};
+
 const formatINR = (value: number) => {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(value);
 };
@@ -251,6 +306,8 @@ const formatINR = (value: number) => {
 import { CommentsModal } from './CommentsModal';
 import { PipelineListView } from './PipelineListView';
 import { PipelineCalendarView } from './PipelineCalendarView';
+// All Companies is shown as a toolbar view by reusing the existing /sales/leads page.
+import { LeadsPage } from './LeadsPage';
 
 // Defined at module level so inputs keep focus between keystrokes
 const ContactsList = ({ form, setForm, readOnly = false }: { form: any, setForm?: any, readOnly?: boolean }) => (
@@ -326,7 +383,7 @@ export function QtyTrackingSection({ q, userName, onSaved, allowReject = true }:
         idempotencyKey: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `rej-${Date.now()}`,
       });
       if ((res as any)?.pendingMigration) {
-        setMsg('Batch storage is not provisioned â€” apply the production-batches migration first.');
+        setMsg('Batch storage is not provisioned — apply the production-batches migration first.');
         return;
       }
       if (!(res as any)?.saved) { setMsg('Unable to record rejection. Nothing was saved.'); return; }
@@ -347,7 +404,7 @@ export function QtyTrackingSection({ q, userName, onSaved, allowReject = true }:
       <QtySummaryGrid q={q} />
       <div className="mt-2"><QtyProgress q={q} /></div>
       <details className="mt-2">
-        <summary className="text-xs font-semibold text-violet-700 cursor-pointer">Full reconciliation (batches Â· delivery Â· invoice)</summary>
+        <summary className="text-xs font-semibold text-violet-700 cursor-pointer">Full reconciliation (batches · delivery · invoice)</summary>
         <div className="mt-2"><QtyBreakdown q={q} /></div>
       </details>
       {allowReject && (
@@ -356,7 +413,7 @@ export function QtyTrackingSection({ q, userName, onSaved, allowReject = true }:
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2">
           <FormField label="In which product? *">
             <select className={inputClass} value={rejProduct} onChange={(e) => setRejProduct(e.target.value)}>
-              <option value="">Select productâ€¦</option>
+              <option value="">Select product…</option>
               {((q.products ?? []).some((p) => p.ordered > 0) ? (q.products ?? []).filter((p) => p.ordered > 0) : (q.products ?? [])).map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
             </select>
           </FormField>
@@ -365,7 +422,7 @@ export function QtyTrackingSection({ q, userName, onSaved, allowReject = true }:
           </FormField>
           <FormField label="Rejection Type *">
             <select className={inputClass} value={rejType} onChange={(e) => setRejType(e.target.value)}>
-              <option value="">Selectâ€¦</option>
+              <option value="">Select…</option>
               {REJECTION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </FormField>
@@ -379,10 +436,10 @@ export function QtyTrackingSection({ q, userName, onSaved, allowReject = true }:
           </FormField>
         </div>
         <div className="flex items-center gap-2 mt-2">
-          <Button size="sm" disabled={saving} onClick={() => void saveRejection()}>{saving ? 'Savingâ€¦' : 'Save Rejection'}</Button>
+          <Button size="sm" disabled={saving} onClick={() => void saveRejection()}>{saving ? 'Saving…' : 'Save Rejection'}</Button>
           {msg && <span className="text-xs text-slate-600">{msg}</span>}
         </div>
-        <p className="text-[11px] text-slate-400 mt-1">Good quantity is untouched â€” rejected stays traceable and never enters stock, DCs or invoices.</p>
+        <p className="text-[11px] text-slate-400 mt-1">Good quantity is untouched — rejected stays traceable and never enters stock, DCs or invoices.</p>
       </div>
       )}
     </div>
@@ -390,8 +447,8 @@ export function QtyTrackingSection({ q, userName, onSaved, allowReject = true }:
 }
 
 /** Enquiry edit form (view modal, edit mode): the same layout as the New
- *  Enquiry entry form â€” unique number, company, product rows with
- *  name/qty/upload/remarks â€” plus the summary banner strip. Saves with an
+ *  Enquiry entry form — unique number, company, product rows with
+ *  name/qty/upload/remarks — plus the summary banner strip. Saves with an
  *  UPDATE (no new record); uploads reuse the existing storage mechanism. */
 /** The entry form's input look; in view mode the same boxes are shown read-only so Add, Edit and View share one layout. */
 const fieldClass = (editable: boolean) => (editable ? inputClass : `${inputClass} !bg-slate-50 !text-slate-700 cursor-default focus:!ring-0 focus:!border-slate-300`);
@@ -536,10 +593,10 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
           </FormField>
         )}
         <div>
-          <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Products Required *</label>
+          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Products Required *</label>
           <div className="space-y-2">
             {items.map((item: any, idx: number) => (
-              <div key={idx} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_5.5rem_11rem_minmax(0,1fr)_auto] gap-3 items-center rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div key={idx} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_5.5rem_11rem_minmax(0,1fr)_auto] gap-2 items-center rounded-lg border border-slate-200 bg-slate-50 p-2">
                 <div>
                   {editMode ? (
                     <input className={inputClass} placeholder="Product Name" list="enquiry-edit-product-list" value={item.productName ?? item.partName ?? ''} onChange={(e) => {
@@ -586,7 +643,7 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
                       setItems(next);
                     }} />
                   ) : (
-                    <input readOnly aria-label="Remarks" className={fieldClass(false)} placeholder="â€”" value={item.remarks || ''} />
+                    <input readOnly aria-label="Remarks" className={fieldClass(false)} placeholder="—" value={item.remarks || ''} />
                   )}
                 </div>
                 {editMode ? (
@@ -600,7 +657,7 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
             ))}
             <datalist id="enquiry-edit-product-list">{productNames.map((n) => <option key={n} value={n} />)}</datalist>
             {editMode && (
-              <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-800 flex items-center gap-1 mt-2" onClick={() => {
+              <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-800 flex items-center gap-1 mt-1" onClick={() => {
                 setItems([...items, { productName: '', partName: '', quantity: '', remarks: '', filePaths: [], files: [] as File[] }]);
               }}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -626,7 +683,7 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
 }
 
 /** Quotation edit form (view modal, edit mode): the same layout as the Create
- *  Quotation entry form â€” context banner, quotation date, editable
+ *  Quotation entry form — context banner, quotation date, editable
  *  products/items table with computed totals, additional details. Saves with
  *  an UPDATE (totals recomputed with the entry formula); uploads reuse the
  *  existing storage mechanism. */
@@ -774,11 +831,11 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved, re
                 <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[4%]">#</th>
                 <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[22%]">Product Name</th>
                 <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[10%]">Qty</th>
-                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[13%]">Unit Price (â‚¹)</th>
+                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[13%]">Unit Price (₹)</th>
                 <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[9%]">Disc %</th>
-                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[12%]">Unit Disc (â‚¹)</th>
+                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[12%]">Unit Disc (₹)</th>
                 <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[8%]">GST %</th>
-                <th className="text-right px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[14%]">Total (â‚¹)</th>
+                <th className="text-right px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[14%]">Total (₹)</th>
                 <th className="text-center px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">File</th>
                 <th className="text-center px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">Action</th>
               </tr>
@@ -805,7 +862,7 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved, re
                   <td className="px-3 py-2">
                     <input type="number" min={0} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="18" value={item.gst ?? ''} onChange={(e) => upd(idx, { gst: e.target.value })} />
                   </td>
-                  <td className="px-3 py-2 text-right font-semibold text-slate-700 tabular-nums">â‚¹{lineTotal(item).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+                  <td className="px-3 py-2 text-right font-semibold text-slate-700 tabular-nums">₹{lineTotal(item).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
                   <td className="px-3 py-2 text-center">
                     <label className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
                       <UploadCloud size={13} />{((item.files || []).length + fileEntries(item.filePaths).length) ? `${(item.files || []).length + fileEntries(item.filePaths).length} file(s)` : 'Upload'}
@@ -837,7 +894,7 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved, re
             <tfoot className="bg-slate-50 border-t border-slate-200">
               <tr>
                 <td colSpan={7} className="px-3 py-2 text-right font-bold text-sm text-slate-600 uppercase">Grand Total</td>
-                <td className="px-3 py-2 text-right font-bold text-base text-brand-700 tabular-nums">â‚¹{grandTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+                <td className="px-3 py-2 text-right font-bold text-base text-brand-700 tabular-nums">₹{grandTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
                 <td colSpan={2}></td>
               </tr>
             </tfoot>
@@ -857,7 +914,7 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved, re
       {error && <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{error}</p>}
       {!readOnly && (
         <div className="flex justify-end mt-4">
-          <Button disabled={saving} onClick={() => void save()}>{saving ? 'Savingâ€¦' : 'Save Changes'}</Button>
+          <Button disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save Changes'}</Button>
         </div>
       )}
     </fieldset>
@@ -1051,7 +1108,7 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
   const textCell = (label: string, v: any) => (
     <div key={label}>
       <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{label}</span>
-      <span className="text-sm text-slate-800 font-medium break-words">{v === null || v === undefined || v === '' ? 'â€”' : String(v)}</span>
+      <span className="text-sm text-slate-800 font-medium break-words">{v === null || v === undefined || v === '' ? '—' : String(v)}</span>
     </div>
   );
 
@@ -1062,14 +1119,14 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div>
           <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">DC No</span>
-          <span className="text-sm text-slate-800 font-mono font-bold break-words">{first.delivery_no || 'â€”'}</span>
+          <span className="text-sm text-slate-800 font-mono font-bold break-words">{first.delivery_no || '—'}</span>
         </div>
         <div>
           <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Date</span>
           {editMode ? (
             <input type="date" className={inputCls} value={date} onChange={(e) => setDate(e.target.value)} />
           ) : (
-            <span className="text-sm text-slate-800 font-medium break-words">{date || 'â€”'}</span>
+            <span className="text-sm text-slate-800 font-medium break-words">{date || '—'}</span>
           )}
         </div>
         <div className="col-span-2 md:col-span-1">
@@ -1152,39 +1209,39 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
                 {editMode ? (
                   <input className={inputCls} placeholder="Part name" value={it.partName || ''} onChange={(e) => setLines((list) => list.map((r, i) => (i === idx ? { ...r, partName: e.target.value } : r)))} />
                 ) : (
-                  <span className="text-sm text-slate-800 font-medium break-words">{it.partName || 'â€”'}</span>
+                  <span className="text-sm text-slate-800 font-medium break-words">{it.partName || '—'}</span>
                 )}
               </div>
               <div>
                 {editMode ? (
                   <input className={inputCls} placeholder="Select HSN" list={HSN_LIST_ID} value={it.hsn || ''} onChange={(e) => setLines((list) => list.map((r, i) => (i === idx ? { ...r, hsn: e.target.value } : r)))} />
                 ) : (
-                  <span className="text-sm text-slate-800 font-medium break-words">{it.hsn || 'â€”'}</span>
+                  <span className="text-sm text-slate-800 font-medium break-words">{it.hsn || '—'}</span>
                 )}
               </div>
               <div>
                 {editMode ? (
                   <input type="number" min={0} className={`${inputCls} tabular-nums`} value={it.qty ?? ''} placeholder="0" onChange={(e) => setLines((list) => list.map((r, i) => (i === idx ? { ...r, qty: e.target.value } : r)))} />
                 ) : (
-                  <span className="text-sm text-slate-800 font-medium tabular-nums">{it.qty === '' || it.qty == null ? 'â€”' : it.qty}</span>
+                  <span className="text-sm text-slate-800 font-medium tabular-nums">{it.qty === '' || it.qty == null ? '—' : it.qty}</span>
                 )}
               </div>
               <div>
                 {editMode ? (
                   <input className={inputCls} placeholder="Nos" value={it.unit || ''} onChange={(e) => setLines((list) => list.map((r, i) => (i === idx ? { ...r, unit: e.target.value } : r)))} />
                 ) : (
-                  <span className="text-sm text-slate-800 font-medium break-words">{it.unit || 'â€”'}</span>
+                  <span className="text-sm text-slate-800 font-medium break-words">{it.unit || '—'}</span>
                 )}
               </div>
               <div>
                 {editMode ? (
                   <input type="number" min={0} className={inputCls} placeholder="0.00" value={it.price ?? ''} onChange={(e) => setLines((list) => list.map((r, i) => (i === idx ? { ...r, price: e.target.value } : r)))} />
                 ) : (
-                  <span className="text-sm text-slate-800 font-medium tabular-nums">{it.price === '' || it.price == null ? 'â€”' : `Rs. ${Number(it.price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}</span>
+                  <span className="text-sm text-slate-800 font-medium tabular-nums">{it.price === '' || it.price == null ? '—' : `Rs. ${Number(it.price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}</span>
                 )}
               </div>
               <div>
-                <span className="text-sm text-slate-800 font-bold tabular-nums">{amt ? `Rs. ${amt.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : 'â€”'}</span>
+                <span className="text-sm text-slate-800 font-bold tabular-nums">{amt ? `Rs. ${amt.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}</span>
               </div>
             </div>
           );
@@ -1196,7 +1253,7 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
           {editMode ? (
             <input className={inputCls} value={receiverName} onChange={(e) => setReceiverName(e.target.value)} />
           ) : (
-            <span className="text-sm text-slate-800 font-medium break-words">{receiverName || 'â€”'}</span>
+            <span className="text-sm text-slate-800 font-medium break-words">{receiverName || '—'}</span>
           )}
         </div>
         <div>
@@ -1206,7 +1263,7 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
           ) : custSignature ? (
             <img src={custSignature} alt="Customer signature" className="h-12 w-auto rounded border border-slate-200 bg-white" />
           ) : (
-            <span className="text-sm text-slate-400">â€”</span>
+            <span className="text-sm text-slate-400">—</span>
           )}
         </div>
         <div>
@@ -1214,7 +1271,7 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
           {editMode ? (
             <input className={inputCls} value={senderName} onChange={(e) => setSenderName(e.target.value)} />
           ) : (
-            <span className="text-sm text-slate-800 font-medium break-words">{senderName || 'â€”'}</span>
+            <span className="text-sm text-slate-800 font-medium break-words">{senderName || '—'}</span>
           )}
         </div>
         <div>
@@ -1224,7 +1281,7 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
           ) : authSignature ? (
             <img src={authSignature} alt="Authorized signature" className="h-12 w-auto rounded border border-slate-200 bg-white" />
           ) : (
-            <span className="text-sm text-slate-400">â€”</span>
+            <span className="text-sm text-slate-400">—</span>
           )}
         </div>
       </div>
@@ -1267,8 +1324,76 @@ export function SalesPipelinePage() {
       }, 260);
     }
   };
+
+  // ---- Checkbox stage progression: bulk "Move to Next Stage" --------------------
+  // Ticking cards (and the single-click-to-select behaviour above) already existed.
+  // What is added here is the toolbar action that advances the ticked cards, and it
+  // deliberately reuses moveCardToStage - the very same transition, validation,
+  // permissions, forms and backend writes that drag & drop uses.
+  const [bulkMoving, setBulkMoving] = useState(false);
+  const [bulkNotice, setBulkNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+
+  /** Forward steps that open a form or a costing gate rather than writing straight
+   *  away. Those can only take one card at a time - the user has to confirm in the
+   *  form before the next card can be sent to the same form. */
+  const moveOpensForm = (card: KanbanCard) =>
+    card.type === 'lead' || card.type === 'order' || card.type === 'inward'
+    || card.type === 'finished_goods' || card.type === 'dc';
+
+  const selectedCardObjects = cards.filter(c => selectedCards.has(c.id));
+  const selectedNextStages = Array.from(new Set(
+    selectedCardObjects.map(c => NEXT_STAGE[c.stage]).filter((s): s is Stage => Boolean(s)),
+  ));
+  const bulkTarget = selectedNextStages.length === 1 ? selectedNextStages[0] : null;
+  const bulkValid = selectedCardObjects.length > 0 && bulkTarget !== null;
+  const bulkBlockReason =
+    selectedCardObjects.length === 0 ? null
+    : selectedNextStages.length === 0
+      ? 'The selected cards are already at the end of the pipeline - there is no next stage.'
+      : selectedNextStages.length > 1
+        ? 'These cards sit in different stages, so they cannot move together. Advance them one stage at a time.'
+        : null;
+
+  const clearCardSelection = () => { setSelectedCards(new Set()); setBulkNotice(null); };
+
+  const bulkMoveToNextStage = async () => {
+    if (!bulkValid || bulkTarget === null || bulkMoving) return;
+    const target = bulkTarget;
+    const picked = selectedCardObjects;
+    // Only one card at a time when the step opens a form / costing gate.
+    const batch = picked.some(moveOpensForm) ? picked.slice(0, 1) : picked;
+    const word = batch.length === 1 ? 'card' : 'cards';
+
+    setBulkMoving(true);
+    setBulkNotice(null);
+    const failed: string[] = [];
+    const doneIds: string[] = [];
+    for (const card of batch) {
+      const ok = await moveCardToStage(card, target);
+      if (ok) doneIds.push(card.id);
+      else failed.push(card.refNo || String(card.id));
+    }
+    // Success takes those cards out of the selection. A failure deliberately leaves the
+    // selection exactly as it was so the user can retry it.
+    setSelectedCards(prev => { const next = new Set(prev); doneIds.forEach(id => next.delete(id)); return next; });
+
+    const left = picked.length - doneIds.length;
+    // A form-gated step (Enquiry -> Quotation, Sales Order -> Inward, Inward -> FG,
+    // FG -> DC, DC -> Invoice) hands the card to a form; it has not actually advanced
+    // until the user saves there, so it gets its own wording rather than "moved".
+    const openedForm = failed.length === 0 && batch.length === 1 && moveOpensForm(batch[0]);
+    setBulkNotice(failed.length
+      ? { kind: 'error', text: `${failed.length} of ${batch.length} could not move (${failed.join(', ')}). The rest of the selection was kept.` }
+      : openedForm
+        ? { kind: 'ok', text: `${batch[0].refNo || 'The card'} was sent to ${target}. Complete the form that opened - it only moves once you save it.${left > 1 ? ` ${left - 1} more stay ticked for the next round.` : ''}` }
+        : left > 0
+          ? { kind: 'ok', text: `Moved ${doneIds.length} to ${target}. ${left} still selected - press Move to Next Stage again to continue.` }
+          : { kind: 'ok', text: `${batch.length} ${word} advanced to ${target}.` });
+    await fetchPipeline();
+    setBulkMoving(false);
+  };
   const [, setLoading] = useState(true);
-  const [pipelineViewMode, setPipelineViewMode] = useState<'kanban' | 'list' | 'calendar'>('kanban');
+  const [pipelineViewMode, setPipelineViewMode] = useState<'kanban' | 'list' | 'companies' | 'calendar'>('kanban');
   // Per-column kanban search: term typed in each column's own search box.
   const [columnSearch, setColumnSearch] = useState<Record<string, string>>({});
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
@@ -1277,6 +1402,9 @@ export function SalesPipelinePage() {
   // Quotation tools (calculator, libraries ...) open inside this page instead of going to the side menu.
   const [quoteTool, setQuoteTool] = useState<string | null>(null);
   useEffect(() => { if (activeView !== 'quotation_list') setQuoteTool(null); }, [activeView]);
+  // A ticked selection only means something on the board itself, so it is dropped as
+  // soon as another view (list, companies, calendar) or a module list is shown.
+  useEffect(() => { if (pipelineViewMode !== 'kanban' || activeView !== 'pipeline') clearCardSelection(); }, [pipelineViewMode, activeView]);
   // Pieces rejected so far (the Rejected tile); kept as production batches, so nothing is added to the board.
   const [rejectedTotal, setRejectedTotal] = useState(0);
 
@@ -1327,15 +1455,30 @@ export function SalesPipelinePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cards, rejectedTotal, setKpis]);
 
-  const [enquiryModalOpen, setEnquiryModalOpen] = useState(false);
-  // Original enquiry number when the form was opened via Duplicate.
+  // The enquiry form is always visible at the top of the Enquiries list, so it has no
+  // open/closed flag any more. savingEnquiry blocks duplicate submits while a save is in
+  // flight; enquirySaveNotice is the inline confirmation shown after a successful save.
+  const [savingEnquiry, setSavingEnquiry] = useState(false);
+  const [enquirySaveNotice, setEnquirySaveNotice] = useState<string | null>(null);
+  // Original enquiry number when the form was pre-filled via Duplicate.
   const [duplicateSource, setDuplicateSource] = useState<string | null>(null);
   const [quotationModalTarget, setQuotationModalTarget] = useState<KanbanCard | null>(null);
   
-  const [inwardModalTarget, setInwardModalTarget] = useState<KanbanCard | null>(null);
+  // The Inward form is inline on the Inward list, so its "entry session" (source card, or
+  // INWARD_ENTRY_TARGET for a manual entry) exists from the first render instead of being
+  // created when a popup was opened. saveInward and the product picker read it.
+  const [inwardModalTarget, setInwardModalTarget] = useState<KanbanCard | null>(INWARD_ENTRY_TARGET);
   const [fgModalTarget, setFgModalTarget] = useState<KanbanCard | null>(null);
   const [fgForm, setFgForm] = useState<any>({});
+  // The Finished Goods + Costing flow. On the Finished Goods list it is the module's
+  // always-visible entry form (add mode); everywhere else - the board's drag gate, and
+  // edit / view - it stays a popup. Null means "nothing opened": the list page supplies
+  // its own blank picker (fgBlankPick) instead of priming this state, so the board
+  // does not pop the picker open on page load.
   const [costingModalTarget, setCostingModalTarget] = useState<KanbanCard | null>(null);
+  // Built once so the inline form's React key is stable across renders; resetting the
+  // form deliberately makes a fresh one (new id) to remount and clear what was typed.
+  const [fgBlankPick] = useState<KanbanCard>(() => makeFgPickTarget());
   const [costingMode, setCostingMode] = useState<'add' | 'edit' | 'view'>('add');
   const [fgPickOpen, setFgPickOpen] = useState(false);
   // The stage lists (opened from the top tiles) refetch whenever the board reloads, so edits and deletes show at once.
@@ -1353,15 +1496,20 @@ export function SalesPipelinePage() {
   }, [listRefresh]);
   const [fgPickId, setFgPickId] = useState('');
   const [invoiceCostingTarget, setInvoiceCostingTarget] = useState<KanbanCard | null>(null);
-  const [dcModalTarget, setDcModalTarget] = useState<KanbanCard | null>(null);
+  // The DC entry form is inline on the DC list, so its "session" (source card, or the
+  // blank DC_ENTRY_TARGET for a manual entry) starts open instead of being created when
+  // a popup was opened. It drives the masters / price lookups and the work-order cap.
+  const [dcModalTarget, setDcModalTarget] = useState<KanbanCard | null>(DC_ENTRY_TARGET);
   const [dcSaving, setDcSaving] = useState(false);
-  const [dcForm, setDcForm] = useState<any>({});
+  // Inline confirmation shown after a successful save (the form stays on screen).
+  const [dcSaveNotice, setDcSaveNotice] = useState<string | null>(null);
+  const [dcForm, setDcForm] = useState<any>(() => makeDcBlankForm());
   // Multi-product DC lines (drag path): one selectable row per order product
   // with its own dispatch qty; saved as one delivery row each under the same
   // DC number (which the invoice flow already reads as a multi-item challan).
-  const [dcItems, setDcItems] = useState<{ name: string; avail: number | null; qty: string; selected: boolean; hsn: string; unit: string; price: string }[]>([]);
+  const [dcItems, setDcItems] = useState<{ name: string; avail: number | null; qty: string; selected: boolean; hsn: string; unit: string; price: string }[]>(() => makeDcBlankItems());
   const dcItemNames = (dcItems || []).map((i: any) => i.name).join('|');
-  // Approved-price display for the DC form (same source as the DCâ†’Invoice
+  // Approved-price display for the DC form (same source as the DC→Invoice
   // gate: latest Approved costing sheet for the quotation). The DC line can
   // name several products ("p1, p2"), so prices resolve per product and show
   // as a breakdown. Saved challan flow is unchanged.
@@ -1369,8 +1517,9 @@ export function SalesPipelinePage() {
   // Product + process masters for the DC form (autofill only; masters are never written here).
   const [partsMaster, setPartsMaster] = useState<any[]>([]);
   const [processList, setProcessList] = useState<any[]>([]);
-  // Snapshot of the opened form so Clear restores the prefilled values.
-  const [dcSnapshot, setDcSnapshot] = useState<{ form: any; items: any[] } | null>(null);
+  // Snapshot of the opened form so Clear restores the prefilled values. On first render the
+  // inline form already holds the blank DC, so that blank state is the initial snapshot.
+  const [dcSnapshot, setDcSnapshot] = useState<{ form: any; items: any[] } | null>({ form: { ...dcForm }, items: dcItems.map((l) => ({ ...l })) });
   // Product + process masters for the DC form (autofill only; masters are never written here).
   useEffect(() => {
     if (!dcModalTarget) return;
@@ -1392,7 +1541,7 @@ export function SalesPipelinePage() {
     })();
     return () => { cancelled = true; };
   }, [dcModalTarget]);
-  // Approved-price lookup for the DC form (same source as the DCâ†’Invoice
+  // Approved-price lookup for the DC form (same source as the DC→Invoice
   // gate: latest Approved costing sheet for the quotation).
   useEffect(() => {
     let cancelled = false;
@@ -1469,7 +1618,11 @@ export function SalesPipelinePage() {
 
 
   const [invoiceModalTarget, setInvoiceModalTarget] = useState<KanbanCard | null>(null);
-  const [soModalTarget, setSoModalTarget] = useState<KanbanCard | null>(null);
+  // Sales Order creation is an always-visible inline form on the Sales Orders list, so
+  // it has no popup target. savingSo blocks duplicate submits; soSaveNotice is the
+  // inline confirmation shown after a successful save.
+  const [savingSo, setSavingSo] = useState(false);
+  const [soSaveNotice, setSoSaveNotice] = useState<string | null>(null);
   const [soForm, setSoForm] = useState<any>({});
 
   const [invoiceForm, setInvoiceForm] = useState<any>({});
@@ -1696,7 +1849,7 @@ export function SalesPipelinePage() {
     }
   };
 
-  // Inward history reads Product Name â†’ Part Name â†’ Category first.
+  // Inward history reads Product Name → Part Name → Category first.
   const orderDetailEntries = (title: string, entries: [string, any][]) => {
     if (title !== 'Inward') return entries;
     const first = ['product_name', 'part_name', 'category'];
@@ -1710,7 +1863,7 @@ export function SalesPipelinePage() {
   const inwardCellFor = (row: any, key: string, label: string) => {
     const v = row ? row[key] : undefined;
     const money = ['price', 'total_amount'].includes(key) && v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
-    const text = (v === null || v === undefined || v === '') ? 'â€”' : (money ? Number(v).toFixed(2) : String(v));
+    const text = (v === null || v === undefined || v === '') ? '—' : (money ? Number(v).toFixed(2) : String(v));
     return (
       <div>
         {label ? <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{label}</span> : null}
@@ -1726,7 +1879,7 @@ export function SalesPipelinePage() {
             }}
           />
         ) : (
-          <input readOnly aria-label={label || key} className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-slate-50 text-slate-700 cursor-default focus:outline-none" value={text === 'â€”' ? '' : text} />
+          <input readOnly aria-label={label || key} className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-slate-50 text-slate-700 cursor-default focus:outline-none" value={text === '—' ? '' : text} />
         )}
       </div>
     );
@@ -1738,7 +1891,7 @@ export function SalesPipelinePage() {
     const inwardCell = (key: string, label: string) => {
       const v = raw[key];
       const money = ['price', 'total_amount'].includes(key) && v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
-      const text = (v === null || v === undefined || v === '') ? 'â€”' : (money ? Number(v).toFixed(2) : String(v));
+      const text = (v === null || v === undefined || v === '') ? '—' : (money ? Number(v).toFixed(2) : String(v));
       return (
         <div>
           <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{label}</span>
@@ -1754,7 +1907,7 @@ export function SalesPipelinePage() {
               }}
             />
           ) : (
-            <input readOnly aria-label={label || key} className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-slate-50 text-slate-700 cursor-default focus:outline-none" value={text === 'â€”' ? '' : text} />
+            <input readOnly aria-label={label || key} className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-slate-50 text-slate-700 cursor-default focus:outline-none" value={text === '—' ? '' : text} />
           )}
         </div>
       );
@@ -1978,7 +2131,7 @@ export function SalesPipelinePage() {
       };
     }
     // ---- Delivery Challan: gather EVERY item from the same DC object/data shown
-    // in the Details screen â€” never just the first product or the header quantity.
+    // in the Details screen — never just the first product or the header quantity.
     const stripSummary = (v: any) => String(v ?? '').replace(/(\s*\(?\d+\s*products?\)?\s*)+$/i, '').trim();
     const isBareId = (v: string) => /^[\d\s,.\-()]+$/.test(v);
     const docNo = String(record.delivery_no || record.dc_no || record.challan_no || '').trim();
@@ -1998,7 +2151,7 @@ export function SalesPipelinePage() {
       }));
     }
     if (!items.length && orderItems.length) items = orderItems;
-    // Product ID â†’ Product Master â†’ Product Name (+ unit). Bare IDs are looked up
+    // Product ID → Product Master → Product Name (+ unit). Bare IDs are looked up
     // in finished-goods and raw-material masters, one batched query each.
     const ownNameOf = (item: any) => [item.partName, item.productName, item.part_name, item.description]
       .map(x => String(x ?? '').trim()).find(Boolean) || '';
@@ -2010,7 +2163,7 @@ export function SalesPipelinePage() {
       try {
         const { data } = await supabase.from('cnc_parts').select('part_no,part_name,unit').in('part_no', bareIds);
         (data || []).forEach((r: any) => { if (r.part_no) masterById.set(String(r.part_no), { name: r.part_name || '', unit: r.unit || '' }); });
-      } catch { /* master unavailable â€” fall back below */ }
+      } catch { /* master unavailable — fall back below */ }
       const missing = bareIds.filter(id => !masterById.has(id));
       if (missing.length) {
         try {
@@ -2043,7 +2196,7 @@ export function SalesPipelinePage() {
       }
       const header = String(record.part_name || record.description || '').trim();
       if (!own && header && !isBareId(header)) return stripSummary(header);
-      return stripSummary(own) || 'â€”';
+      return stripSummary(own) || '—';
     };
     const itemUnit = (item: any) => {
       const hit = masterHit(item);
@@ -2079,7 +2232,7 @@ export function SalesPipelinePage() {
     }
     if (!dcLines.length) {
       dcLines = [{
-        partName: stripSummary(record.part_name || record.description) || 'â€”',
+        partName: stripSummary(record.part_name || record.description) || '—',
         hsn: String(record.hsn || '').trim(),
         qty: Number(record.dispatch_qty ?? record.quantity) || 0,
         unit: String(record.unit || '').trim() || 'Nos',
@@ -2162,7 +2315,7 @@ export function SalesPipelinePage() {
   const emptyInwardItem = (defaults: any = {}) => ({ partyName: defaults.partyName || '', productKey: defaults.productKey || '', productName: defaults.productName || '', enquiryId: defaults.enquiryId || '', projectName: defaults.projectName || '', partName: '', partNumber: '', quantity: '', price: '', discount: '0', gst: '18', remarks: defaults.remarks || '' });
   const emptyInwardPart = (defaults: any = {}) => ({ category: defaults.category || 'GOODS PURCHASE', referenceNo: defaults.referenceNo || '', inwardDate: defaults.inwardDate || new Date().toISOString().split('T')[0], remarks: defaults.remarks || '', files: [] as File[], productKey: defaults.productKey || '', productName: defaults.productName || '', enquiryId: defaults.enquiryId || '', projectName: defaults.projectName || '', partyName: defaults.partyName || '', items: [emptyInwardItem({ partyName: defaults.partyName || '' })] });
   const [inwardForm, setInwardForm] = useState<any>({
-    inwardNo: '', category: 'GOODS PURCHASE', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: '', partyName: '', remarks: '',
+    inwardNo: '', category: 'GOODS PURCHASE', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: '', remarks: '',
     productName: '', productKey: '', productOptions: [], enquiryId: '', parts: [emptyInwardPart()],
     contacts: [{ person: '', phone: '', email: '' }]
   });
@@ -2211,7 +2364,7 @@ export function SalesPipelinePage() {
     return Array.from(map.values()).sort((a, b) => a.company.localeCompare(b.company));
   }, [customerList, knownCompanies]);
 
-  // Already-entered product names across enquiries â€” for the Product Name dropdown
+  // Already-entered product names across enquiries — for the Product Name dropdown
   // (user can still type a brand-new product name).
   const existingProductNames = useMemo(() => {
     const map = new Map<string, string>();
@@ -2321,7 +2474,7 @@ export function SalesPipelinePage() {
       });
       groups.forEach((list, key) => {
         const first = list[0];
-        const parts = Array.from(new Set(list.map(x => x.product_name ? `${x.product_name} Â· ${x.part_name}` : x.part_name).filter(Boolean)));
+        const parts = Array.from(new Set(list.map(x => x.product_name ? `${x.product_name} · ${x.part_name}` : x.part_name).filter(Boolean)));
         // Display the stamped unique number (like order/FG/DC cards); the
         // group key stays stamp-stripped so repeats still land on one card.
         const soMatch = (allOrders || []).find((o: any) => {
@@ -2366,7 +2519,7 @@ export function SalesPipelinePage() {
       fgGroups.forEach((list, key) => {
         const first = list[0];
         const names = Array.from(new Set(list.map(x => x.part_name).filter(Boolean)));
-        // Per-product order quantities (for remaining = ordered âˆ’ finished).
+        // Per-product order quantities (for remaining = ordered − finished).
         const soRow = (allOrders || []).find((o: any) => String(o.order_no ?? '') !== '' && (String(o.order_no) === String(first.sales_order ?? '') || String(o.lead_no ?? '') === String(key)));
         let itemQty: Record<string, number> = {};
         try {
@@ -2513,7 +2666,7 @@ export function SalesPipelinePage() {
         }
         const byName = new Map<string, { name: string; recv: number }>();
         rows.forEach((x: any) => {
-          const n = String(x?.part_name || x?.product_name || '').trim() || 'â€”';
+          const n = String(x?.part_name || x?.product_name || '').trim() || '—';
           const e = byName.get(n.toLowerCase()) ?? { name: n, recv: 0 };
           e.recv += Number(x?.quantity) || 0;
           byName.set(n.toLowerCase(), e);
@@ -2782,8 +2935,21 @@ export function SalesPipelinePage() {
   useEffect(() => { setListRefresh(n => n + 1); }, [cards]);
 
   // Add a record of a stage: the same form the board's "Add ..." button opens, also used by the stage lists.
+  // The Kanban board's "Add" buttons open their form as a popup again. While the entry
+  // forms were made inline they were pointed at the list pages (where the same forms now
+  // sit inline above their tables); this puts the popup behaviour back for the board.
+  // It reuses the very same renderXEntryForm() JSX and save handlers - the list pages,
+  // their entryForm props and their inline rendering are deliberately untouched.
+  const [addPopup, setAddPopup] = useState<null | 'Enquiry' | 'Sales Order' | 'Inward' | 'DC'>(null);
+  const addPopupTitle = (stage: string): string => ({
+    'Enquiry': 'New Enquiry',
+    'Sales Order': 'New Sales Order',
+    'Inward': 'New Inward Entry',
+    'DC': 'New Delivery Challan',
+  } as Record<string, string>)[stage] || 'New Entry';
+
   const addForStage = (stageId: string) => {
-                    if (stageId === 'Enquiry') { setEnquiryForm(resetEnquiryForm()); setEnquiryModalOpen(true); }
+                    if (stageId === 'Enquiry') { setEnquiryForm(resetEnquiryForm()); setDuplicateSource(null); setEnquirySaveNotice(null); setAddPopup('Enquiry'); }
                     else if (stageId === 'Quotation') {
                       setQuoteForm({
                         quoteNo: `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', leadNo: '', quoteDate: new Date().toISOString().split('T')[0], validTill: '', salesperson: userName, contacts: [{ person: '', phone: '', email: '' }], partName: '', partNumber: '', description: '', quantity: '', unitPrice: '', discount: '0', unitDiscount: '0', gst: '18',
@@ -2792,32 +2958,23 @@ export function SalesPipelinePage() {
                       });
                       setQuotationModalTarget({ id: 'dummy', stage: 'Enquiry', type: 'lead', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stageId === 'Sales Order') {
-                      setSoForm({
-                        orderNo: `SO-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', orderDate: new Date().toISOString().split('T')[0], deliveryDate: new Date().toISOString().split('T')[0], customerPoNo: '',
-                        items: [{ id: crypto.randomUUID(), partName: '', quantity: '', rejectedQty: '', itemStatus: 'Confirmed', unitPrice: '', gst: '18' }],
-                      });
-                      setSoModalTarget({ id: 'dummy', stage: 'Quotation', type: 'quotation', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
+                      setSoForm(resetSoForm());
+                      setSoSaveNotice(null);
+                      setAddPopup('Sales Order');
                     } else if (stageId === 'Inward') {
                       openDummyInward();
+                      setAddPopup('Inward');
                     } else if (stageId === 'Finished Goods') {
-                      // Add Finished Good: the Finished Goods + Costing popup opens first; company and product are chosen inside it.
+                      // Add Finished Good: the Finished Goods + Costing form opens first; company and product are chosen inside it.
                       setCostingMode('add');
-                      setCostingModalTarget({ id: 'fg-pick', stage: 'Inward', type: 'inward', refNo: '', customer: '', part: '', qty: 0, value: 0, date: '', raw: { __pick: true } } as KanbanCard);
+                      setCostingModalTarget(makeFgPickTarget());
                     } else if (stageId === 'DC') {
-                      const dcBlankForm = {
-                        dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-                        date: new Date().toISOString().split('T')[0], partyName: '',
-                        partyAddress: '', partyGstin: '', partyCode: '',
-                        ewayBill: '', poNumber: '', salesOrderNo: '', placeOfSupply: '', packaging: '',
-                        enquiryNo: '', vehicleNo: '', phone: '',
-                        category: '', process: '',
-                        receiverName: '', senderName: '', custSignature: null, authSignature: null,
-                      };
-                      const dcBlankItems = [{ name: '', avail: null, qty: '', selected: true, hsn: '', unit: 'Nos', price: '' }];
-                      setDcForm(dcBlankForm);
-                      setDcItems(dcBlankItems);
-                      setDcSnapshot({ form: { ...dcBlankForm }, items: dcBlankItems.map((l) => ({ ...l })) });
-                      setDcModalTarget({ id: 'dummy', stage: 'Finished Goods', type: 'finished_goods', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
+                      setDcForm(makeDcBlankForm());
+                      setDcItems(makeDcBlankItems());
+                      setDcSnapshot(null);
+                      setDcModalTarget(DC_ENTRY_TARGET);
+                      setDcSaveNotice(null);
+                      setAddPopup('DC');
                     } else if (stageId === 'Invoice') {
                       setInvoiceForm({
                         invoiceNo: '', partyName: '', dcNumber: '', date: new Date().toISOString().split('T')[0], partName: '', quantity: '', price: '', cgst: '', sgst: '', igst: ''
@@ -2972,7 +3129,7 @@ export function SalesPipelinePage() {
             };
           }
         } catch { /* header-only fallback */ }
-        // Source lineage: Quotation â†’ Sales Order â†’ Finished Goods â†’ DC â†’ Invoice.
+        // Source lineage: Quotation → Sales Order → Finished Goods → DC → Invoice.
         try {
           let dc: any = null;
           if (card.raw.delivery_id) {
@@ -3071,16 +3228,15 @@ export function SalesPipelinePage() {
     setDraggedCard(card);
   };
 
-  const handleDrop = async (e: React.DragEvent, toStage: Stage) => {
-    e.preventDefault();
-    const cardId = e.dataTransfer.getData('text/plain');
-    const card = draggedCard || cards.find(c => String(c.id) === String(cardId));
-    if (!card) {
-      alert("Error: Could not identify the dragged card. Please try again.");
-      return;
-    }
-    if (card.stage === toStage) return;
-    
+  /**
+   * The single stage-transition routine for the whole pipeline. Drag & drop and the
+   * checkbox "Move to Next Stage" action both land here, so validation, the forms and
+   * costing gates some transitions open, quantity reconciliation and every backend
+   * write are shared - there is deliberately no second transition path.
+   */
+  const moveCardToStage = async (card: KanbanCard, toStage: Stage): Promise<boolean> => {
+    if (card.stage === toStage) return false;
+
     try {
 
     if (card.type === 'lead' && toStage === 'Quotation') {
@@ -3204,6 +3360,7 @@ export function SalesPipelinePage() {
         fetchPipeline();
       } else {
         alert("Error creating sales order: " + error.message);
+        return false;
       }
     } else if (card.type === 'order' && toStage === 'Inward') {
       const orderPool = [...(salesOrdersList || [])];
@@ -3217,6 +3374,10 @@ export function SalesPipelinePage() {
         contacts: parseContacts(card.raw)
       });
       setInwardModalTarget(card);
+      // The Inward form is inline on the Inward list: take the user there with the
+      // pre-filled inward ready to confirm.
+      setInwardSavedCount(0);
+      setActiveView('inward_list');
     } else if (card.type === 'inward' && toStage === 'Finished Goods') {
       // Costing gate: open the Finished Goods + Costing modal instead of moving.
       // Nothing is written until the user approves inside the modal; Cancel
@@ -3227,7 +3388,7 @@ export function SalesPipelinePage() {
       // Prefill with the deliverable quantity: never more than the good FG
       // available for the order (good completed minus already delivered).
       // Customer, product and quantity details come from the source
-      // transaction â€” nothing is re-typed. Re-validated on save.
+      // transaction — nothing is re-typed. Re-validated on save.
       const cardCust = card.customer || '';
       const cmatch: any = (customerList || []).find((c: any) => String(c.name || '').trim().toLowerCase() === String(cardCust).trim().toLowerCase()) || {};
       const kcmatch: any = (allKnownCompanies || []).find((c: any) => String(c.company || '').trim().toLowerCase() === String(cardCust).trim().toLowerCase()) || {};
@@ -3256,6 +3417,10 @@ export function SalesPipelinePage() {
       setDcItems(dcInitItems);
       setDcSnapshot({ form: { ...dcInitForm }, items: dcInitItems.map((l: any) => ({ ...l })) });
       setDcModalTarget(card);
+      // The DC form is inline on the DC list, so bringing a finished good forward
+      // takes the user there with the pre-filled challan ready to confirm.
+      setDcSaveNotice(null);
+      setActiveView('dc_list');
 
 
     } else if (card.type === 'dc' && toStage === 'Invoice') {
@@ -3266,12 +3431,30 @@ export function SalesPipelinePage() {
       if ((card.type === 'inward' && toStage === 'DC') || (card.type === 'inward' && toStage === 'Invoice') || (card.type === 'finished_goods' && toStage === 'Invoice')) {
          alert(`Please complete ${card.type === 'inward' ? 'Finished Goods entry' : 'the Delivery Challan'} before moving to ${toStage}.`);
       } else {
-         alert(`Cannot drag ${card.stage} directly to ${toStage}. Please follow the sequence.`);
+         alert(`Cannot move ${card.stage} directly to ${toStage}. Please follow the sequence.`);
       }
+      // An alert here always means the card did not go anywhere.
+      return false;
     }
+    // Either the card advanced, or it was handed to the form / costing gate that has to
+    // be confirmed before it advances. Both count as "the transition was accepted".
+    return true;
     } catch(err: any) {
-      alert("Runtime Error in handleDrop: " + err.message);
+      alert("Runtime Error moving " + card.stage + " to " + toStage + ": " + err.message);
+      return false;
     }
+  };
+
+  /** Drag & drop entry point: resolve the dragged card, then share the one transition. */
+  const handleDrop = async (e: React.DragEvent, toStage: Stage) => {
+    e.preventDefault();
+    const cardId = e.dataTransfer.getData('text/plain');
+    const card = draggedCard || cards.find(c => String(c.id) === String(cardId));
+    if (!card) {
+      alert("Error: Could not identify the dragged card. Please try again.");
+      return;
+    }
+    await moveCardToStage(card, toStage);
   };
 
   // Duplicate = new enquiry using the old one as a template (new number,
@@ -3318,10 +3501,14 @@ export function SalesPipelinePage() {
       items: mapped.length ? mapped : [{ productName: '', partName: '', quantity: '', remarks: '', filePaths: [] as string[], files: [] as File[] }],
     });
     setDuplicateSource(raw.lead_no || raw.enquiry_no || card.refNo || '');
-    setEnquiryModalOpen(true);
+    setEnquirySaveNotice(null);
+    // The entry form lives on the Enquiries list, so take the user there with the
+    // duplicated template pre-filled and ready to review.
+    setActiveView('enquiry_list');
   };
 
   const saveEnquiry = async () => {
+    if (savingEnquiry) return; // the form stays on screen after saving, so guard double clicks
     if (!enquiryForm.company) { alert("Please enter a company name."); return; }
     const enteredProducts = (enquiryForm.items || []).filter((item: any) => String(item.productName || item.partName || '').trim());
     if (!enteredProducts.length) { alert('Please enter at least one product name.'); return; }
@@ -3330,7 +3517,7 @@ export function SalesPipelinePage() {
       alert('Select a company before uploading product files.');
       return;
     }
-    setLoading(true);
+    setSavingEnquiry(true);
     try {
       const itemsToSave = await Promise.all(enteredProducts.map(async (item: any) => {
         const uploadedPaths = company?.id
@@ -3361,17 +3548,18 @@ export function SalesPipelinePage() {
 
       const { error } = await supabase.from('cnc_enquiries').insert([payload]);
       if (!error) { 
-        setEnquiryModalOpen(false); 
         setEnquiryForm(resetEnquiryForm()); 
         setDuplicateSource(null);
-        fetchPipeline(); 
+        setEnquirySaveNotice(payload.enquiry_no);
+        fetchPipeline();                // recomputes the board cards and the dashboard counts
+        setListRefresh(n => n + 1);     // ...and refetches the enquiries table under the form
       } else { 
         alert("Error saving enquiry: " + error.message); 
       }
     } catch (err: any) {
       alert("Error saving enquiry: " + (err?.message || "Unknown error"));
     } finally {
-      setLoading(false);
+      setSavingEnquiry(false);
     }
   };
 
@@ -3422,8 +3610,6 @@ export function SalesPipelinePage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quotationModalTarget]);
-
-  const closeSoPopup = () => { setSoModalTarget(null); };
 
   // Inwards of these categories flow to Production as Draft work orders
   // (released manually there). 'NEW PROJECT' is the legacy label of NEW PART.
@@ -3560,7 +3746,7 @@ export function SalesPipelinePage() {
         }
       }
       if (dropped.includes('attachments') && rows.some(r => (r.attachments || []).length > 0)) {
-        alert('Inward entries saved, but file attachments were skipped (database update pending â€” apply the inward_attachments migration to enable files).');
+        alert('Inward entries saved, but file attachments were skipped (database update pending — apply the inward_attachments migration to enable files).');
       }
     } catch (error: any) {
       console.error('Create inward failed:', error);
@@ -3585,8 +3771,10 @@ export function SalesPipelinePage() {
       setInwardSavedCount((n) => n + 1);
       return;
     }
+    // Submit: the inline form goes back to a fresh blank inward (what closing and
+    // reopening the popup used to do) and the list above it is already refreshed.
     setInwardSavedCount(0);
-    setInwardModalTarget(null);
+    openDummyInward();
   };
 
   const saveFinishedGoods = async () => {
@@ -3786,7 +3974,15 @@ export function SalesPipelinePage() {
       const { error: soUpdErr } = await supabase.from('cnc_sales_orders').update({ delivered, status }).eq('id', so.id);
       if (soUpdErr) console.error("Failed to update sales order delivery:", soUpdErr);
     }
-    setDcModalTarget(null); fetchPipeline();
+      // The challan is saved: reset the inline form for the next one, confirm, refresh.
+      const nextForm = makeDcBlankForm();
+      const nextItems = makeDcBlankItems();
+      setDcForm(nextForm);
+      setDcItems(nextItems);
+      setDcSnapshot({ form: { ...nextForm }, items: nextItems.map((l: any) => ({ ...l })) });
+      setDcSaveNotice(f.dcNo || 'saved');
+      fetchPipeline();
+      setListRefresh(n => n + 1);
     } finally {
       setDcSaving(false);
     }
@@ -3794,7 +3990,7 @@ export function SalesPipelinePage() {
 
 
     const saveStandaloneSalesOrder = async () => {
-    if (!soModalTarget) return;
+    if (savingSo) return; // the form stays on screen after saving, so guard double clicks
     if (!String(soForm.customer || '').trim()) { alert('Enter the company.'); return; }
     const entered = ((soForm.items || []) as any[])
       .map((it: any) => ({ ...it, partName: String(it.partName || '').trim() }))
@@ -3804,10 +4000,11 @@ export function SalesPipelinePage() {
     if (entered.some((it: any) => Number(it.rejectedQty) < 0)) { alert('Rejected quantities cannot be negative.'); return; }
     const hasFiles = entered.some((it: any) => (it.files || []).length);
     if (hasFiles && !company?.id) { alert('Select a company before uploading files.'); return; }
+    setSavingSo(true);
     let uploadedPaths: string[][];
     try {
       uploadedPaths = await Promise.all(entered.map((it: any) => Promise.all(((it.files || []) as File[]).map(f => uploadOrderFile(company!.id, f)))));
-    } catch (e: any) { alert(e?.message || 'Could not upload the files.'); return; }
+    } catch (e: any) { setSavingSo(false); alert(e?.message || 'Could not upload the files.'); return; }
     const finalItems = entered.map((it: any, fileIdx: number) => ({
        id: it.id || crypto.randomUUID(),
        filePaths: uploadedPaths[fileIdx] ?? [],
@@ -3849,10 +4046,15 @@ export function SalesPipelinePage() {
     }]);
     
     if (!error) {
+      // The form stays on screen for the next order: reset it, confirm, and refresh.
+      setSoForm(resetSoForm());
+      setSoSaveNotice(soForm.orderNo);
       fetchPipeline();
-      closeSoPopup();
+      setListRefresh(n => n + 1);
+      setSavingSo(false);
     } else {
       alert("Error creating sales order: " + error.message);
+      setSavingSo(false);
     }
   };
   
@@ -3944,8 +4146,24 @@ export function SalesPipelinePage() {
     setInwardModalTarget({ id: 'dummy', stage: 'Sales Order', type: 'order', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
   };
 
+  // The Inward entry form is on screen as soon as the Inward list opens, so its blank
+  // session is opened once the enquiry / sales-order lists the product picker is built
+  // from have loaded (clicking "Add Inward" used to do this). The guard makes sure an
+  // inward that the user - or the board's drag-to-Inward - already filled in is never
+  // overwritten by a later data load.
+  const inwardBooted = useRef(false);
+  useEffect(() => {
+    if (inwardBooted.current) return;
+    if (!rawLeadsList.length && !salesOrdersList.length) return;
+    inwardBooted.current = true;
+    const touched = (inwardForm.parts || []).some((p: any) =>
+      (p.partyName || p.referenceNo) || (p.items || []).some((it: any) => it.partName || it.quantity || it.productKey));
+    if (!touched) openDummyInward();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawLeadsList, salesOrdersList]);
+
   // Company-master popup: Company ID is generated in the background at save
-  // time â€” it never appears in the UI. No enquiry/product is created here;
+  // time — it never appears in the UI. No enquiry/product is created here;
   // enquiries are added separately when needed.
   const openNewLeadModal = () => {
     setNewLeadForm({
@@ -4030,6 +4248,558 @@ export function SalesPipelinePage() {
     }
   };
 
+  // ── New Enquiry entry form ──────────────────────────────────────────────
+  // This used to be the body of the "New Enquiry" popup. It is now rendered by
+  // EnquiryModule directly above the enquiries table, so the page loads with the
+  // form already open. Every field, the company search/autocomplete, Add New
+  // Company, the multi-row products, the file uploads and saveEnquiry are
+  // untouched — only the modal chrome (backdrop, positioning, close button and
+  // footer) has been replaced by a card with Save Enquiry / Clear Reset buttons.
+  const renderEnquiryEntryForm = () => (
+    <section className="rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="enquiry-entry-form">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-100 px-3 py-2">
+        <h3 className="text-sm font-bold text-slate-800">New Enquiry</h3>
+        <p className="text-xs text-slate-500">Enter the company and the products required, then save. The form stays open so you can add the next enquiry straight away.</p>
+      </div>
+
+      <div className="space-y-2.5 p-3">
+        {duplicateSource && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-xs font-semibold text-brand-800">
+            <span>Duplicated from: {duplicateSource} · saving creates a brand-new enquiry with its own company ID.</span>
+            <button type="button" onClick={() => setDuplicateSource(null)} className="font-bold text-brand-600 underline hover:text-brand-900">Dismiss</button>
+          </div>
+        )}
+
+        {enquirySaveNotice && (
+          <div role="status" data-testid="enquiry-saved-note" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+            <span>✓ Enquiry {enquirySaveNotice} saved. The list below has been refreshed.</span>
+            <button type="button" onClick={() => setEnquirySaveNotice(null)} className="font-bold underline hover:text-emerald-900">Dismiss</button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 items-end gap-2 md:grid-cols-[minmax(0,32rem)_auto]">
+          <CustomerAutocomplete
+            label="Company Name"
+            required
+            value={enquiryForm.company}
+            onChange={val => handleCompanyChange(val)}
+            onSelectCustomer={c => handleCompanyChange(c.company)}
+            companies={allKnownCompanies}
+            inputClass={inputClass}
+            placeholder="Type or select company..."
+          />
+          <button type="button" onClick={openNewLeadModal} className="h-10 whitespace-nowrap rounded-lg border border-brand-200 bg-brand-50/50 px-3 text-xs font-bold text-brand-600 transition-colors hover:border-brand-400 hover:text-brand-800">+ Add New Company</button>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Products Required *</label>
+          <div className="space-y-2">
+            {(enquiryForm.items || [{ productName: '', partName: '', quantity: '', remarks: '', filePaths: [] as string[], files: [] as File[] }]).map((item: any, idx: number) => (
+              <div key={idx} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_5.5rem_11rem_minmax(0,1fr)_auto] gap-2 items-center rounded-lg border border-slate-200 bg-slate-50 p-2">
+                <div>
+                  <input className={inputClass} placeholder="Product Name" list="enquiry-product-list" value={item.productName ?? item.partName ?? ''} onChange={e => {
+                    const newItems = [...(enquiryForm.items || [])];
+                    newItems[idx] = { ...newItems[idx], productName: e.target.value, partName: e.target.value };
+                    setEnquiryForm({...enquiryForm, items: newItems});
+                  }} />
+                </div>
+                <div>
+                  <input type="number" className={inputClass} placeholder="Qty" value={item.quantity} onChange={e => {
+                    const newItems = [...(enquiryForm.items || [])];
+                    newItems[idx] = { ...newItems[idx], quantity: e.target.value };
+                    setEnquiryForm({...enquiryForm, items: newItems});
+                  }} />
+                </div>
+                <div>
+                  <label className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
+                    <UploadCloud size={15}/>{(item.files || []).length ? `${item.files.length} file(s) selected` : 'Upload image / file / PDF'}
+                    <input type="file" multiple accept="*/*" className="hidden" onChange={e => {
+                      const selectedFiles = Array.from(e.currentTarget.files || []);
+                      const newItems = [...(enquiryForm.items || [])];
+                      newItems[idx] = { ...newItems[idx], files: [...(newItems[idx].files || []), ...selectedFiles] };
+                      setEnquiryForm({...enquiryForm, items: newItems});
+                      e.currentTarget.value = '';
+                    }} />
+                  </label>
+                  {(item.files || []).length > 0 && <div className="mt-1 space-y-1">{item.files.map((file: File, fileIdx: number) => <div key={`${file.name}-${fileIdx}`} className="flex items-center justify-between gap-2 text-[11px] text-slate-600"><span className="truncate">{file.name}</span><button type="button" className="text-rose-600 hover:text-rose-800" onClick={() => { const newItems = [...enquiryForm.items]; newItems[idx] = {...newItems[idx], files: newItems[idx].files.filter((_: File, j: number) => j !== fileIdx)}; setEnquiryForm({...enquiryForm, items: newItems}); }}>Remove</button></div>)}</div>}
+                </div>
+                <div>
+                  <input className={inputClass} placeholder="Remarks..." value={item.remarks || ''} onChange={e => {
+                    const newItems = [...(enquiryForm.items || [])];
+                    newItems[idx] = { ...newItems[idx], remarks: e.target.value };
+                    setEnquiryForm({...enquiryForm, items: newItems});
+                  }} />
+                </div>
+                {idx > 0 && (
+                  <button type="button" className="p-2 text-red-500 hover:bg-red-50 rounded mt-1" onClick={() => {
+                    const newItems = enquiryForm.items.filter((_: any, i: number) => i !== idx);
+                    setEnquiryForm({...enquiryForm, items: newItems});
+                  }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                  </button>
+                )}
+              </div>
+            ))}
+            <datalist id="enquiry-product-list">{existingProductNames.map(n => <option key={n} value={n} />)}</datalist>
+            <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-800 flex items-center gap-1 mt-1" onClick={() => {
+              setEnquiryForm({...enquiryForm, items: [...(enquiryForm.items || []), { productName: '', partName: '', quantity: '', remarks: '', filePaths: [] as string[], files: [] as File[] }]});
+            }}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              Add Another Product
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-2.5">
+          <Button variant="secondary" onClick={() => { setEnquiryForm(resetEnquiryForm()); setDuplicateSource(null); setEnquirySaveNotice(null); }}>Clear / Reset</Button>
+          <Button onClick={saveEnquiry} disabled={savingEnquiry}>{savingEnquiry ? 'Saving...' : 'Save Enquiry'}</Button>
+        </div>
+      </div>
+    </section>
+  );
+
+  // ── New Sales Order entry form ──────────────────────────────────────────
+  // This used to be the body of the "Create Sales Order" popup. It is now rendered by
+  // SalesOrderModule directly above its table, so the page loads with the form already
+  // open. Every field, the company search/autocomplete, the dynamic product rows, the
+  // drawing uploads and saveStandaloneSalesOrder are unchanged — only the modal chrome
+  // (backdrop, positioning, close button and footer) is gone.
+  const renderSalesOrderEntryForm = () => (
+    <section className="rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="so-entry-form">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-100 px-3 py-2">
+        <h3 className="text-sm font-bold text-slate-800">New Sales Order</h3>
+        <p className="text-xs text-slate-500">Enter the company and the product lines, then save. The form stays open so you can add the next order straight away.</p>
+      </div>
+
+      <div className="space-y-2.5 p-3">
+        {soSaveNotice && (
+          <div role="status" data-testid="so-saved-note" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+            <span>✓ Sales order {soSaveNotice} saved. The list below has been refreshed.</span>
+            <button type="button" onClick={() => setSoSaveNotice(null)} className="font-bold underline hover:text-emerald-900">Dismiss</button>
+          </div>
+        )}
+
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-2">
+            <CustomerAutocomplete
+              label="Company"
+              required
+              value={soForm.customer || ''}
+              onChange={val => setSoForm((prev: any) => ({ ...prev, customer: val }))}
+              companies={allKnownCompanies}
+              inputClass={inputClass}
+              placeholder="Type or select company..."
+            />
+            <FormField label="Order Date" required><input type="date" className={inputClass} value={soForm.orderDate || ''} onChange={e=>setSoForm({...soForm, orderDate: e.target.value})} /></FormField>
+          </div>
+          {(soForm.items || []).length > 0 && (
+            <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_7.5rem_6.5rem] gap-2 items-center px-1">
+              <span></span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Product Name</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Qty</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Unit Price (₹)</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">GST %</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Status</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Drawings</span>
+            </div>
+          )}
+          {(soForm.items || []).map((item: any, idx: number) => {
+            const upd = (patch: any) => setSoForm((prev: any) => ({ ...prev, items: (prev.items || []).map((r: any, i: number) => (i === idx ? { ...r, ...patch } : r)) }));
+            return (
+              <div key={item.id || idx} className="rounded-lg border border-slate-200 bg-white px-2 py-2">
+                <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_7.5rem_6.5rem] gap-2 items-center">
+                  <span className="text-[11px] font-bold text-slate-400 text-center">{idx + 1}</span>
+                  <input className={inputClass} placeholder="Product name" value={item.partName || ''} onChange={e=>upd({ partName: e.target.value })} />
+                  <input type="number" min={0} className={inputClass} placeholder="Qty" value={item.quantity ?? ''} onChange={e=>upd({ quantity: e.target.value })} />
+                  <input type="number" min={0} className={inputClass} placeholder="Unit Price (₹)" value={item.unitPrice ?? ''} onChange={e=>upd({ unitPrice: e.target.value })} />
+                  <input type="number" min={0} className={inputClass} placeholder="GST %" value={item.gst ?? ''} onChange={e=>upd({ gst: e.target.value })} />
+                  <select className={inputClass} value={item.itemStatus || 'Confirmed'} onChange={e=>upd({ itemStatus: e.target.value })}>
+                    {['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'].map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                  <label className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-slate-300 bg-white px-2 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach drawings or any file (all formats)">
+                    <UploadCloud size={14} />{(item.files || []).length ? `${item.files.length} file${item.files.length === 1 ? '' : 's'}` : 'Upload'}
+                    <input type="file" multiple accept="*/*" className="hidden" aria-label={`Drawings for product ${idx + 1}`} onChange={e => { const picked = Array.from(e.currentTarget.files || []); e.currentTarget.value = ''; if (picked.length) upd({ files: [...(item.files || []), ...picked] }); }} />
+                  </label>
+                </div>
+                {(item.files || []).length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5 pl-9" data-testid="so-files">
+                    {(item.files as File[]).map((f, fi) => (
+                      <span key={`${f.name}-${fi}`} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-700">
+                        <span className="max-w-[200px] truncate">{f.name}</span>
+                        <button type="button" className="text-rose-500 hover:text-rose-700" aria-label={`Remove ${f.name}`} onClick={() => upd({ files: (item.files as File[]).filter((_, j) => j !== fi) })}>×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          <button type="button" onClick={() => setSoForm((prev: any) => ({ ...prev, items: [...(prev.items || []), { id: crypto.randomUUID(), partName: '', quantity: '', rejectedQty: '', itemStatus: 'Confirmed', unitPrice: '', gst: '18', files: [] }] }))}
+            className="text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
+            <span className="text-lg">+</span> Add Another Product
+          </button>
+          <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-2">
+            <FormField label="Delivery Date" required><input type="date" className={inputClass} value={soForm.deliveryDate || ''} onChange={e=>setSoForm({...soForm, deliveryDate: e.target.value})} /></FormField>
+            <FormField label="PO Number"><input className={inputClass} placeholder="Customer PO no." value={soForm.customerPoNo || ''} onChange={e=>setSoForm({...soForm, customerPoNo: e.target.value})} /></FormField>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-2.5">
+          <Button variant="secondary" onClick={() => { setSoForm(resetSoForm()); setSoSaveNotice(null); }}>Clear / Reset</Button>
+          <Button onClick={saveStandaloneSalesOrder} disabled={savingSo}>{savingSo ? 'Saving...' : 'Save Order'}</Button>
+        </div>
+      </div>
+    </section>
+  );
+
+
+  // -- New Delivery Challan entry form ------------------------------------
+  // This used to be the body of the "Delivery Challan Form" popup. DeliveryChallanModule
+  // renders it directly above its table, so the page opens with the form ready. Every
+  // field, the party search/autocomplete, the multi-product rows, the signature pads,
+  // the approved-price panel and saveDeliveryChallan are unchanged - only the modal
+  // wrapper (backdrop, positioning, close button, footer) is gone.
+  const clearDcForm = () => {
+    if (dcSnapshot) {
+      const c = JSON.parse(JSON.stringify(dcSnapshot));
+      setDcForm({ ...c.form, dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}` });
+      setDcItems(c.items.map((l: any) => ({ ...l })));
+    }
+    setDcSaveNotice(null);
+  };
+  const renderDeliveryChallanEntryForm = () => (
+    <section className="rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="dc-entry-form">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-100 px-3 py-2">
+        <h3 className="text-sm font-bold text-slate-800">New Delivery Challan</h3>
+        <p className="text-xs text-slate-500">Enter the party and the dispatch lines, then save. The form stays open so you can add the next challan straight away.</p>
+      </div>
+      <div className="space-y-2.5 p-3">
+        {dcSaveNotice && (
+          <div role="status" data-testid="dc-saved-note" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+            <span>&#10003; Delivery Challan {dcSaveNotice} saved. The list below has been refreshed.</span>
+            <button type="button" onClick={() => setDcSaveNotice(null)} className="font-bold underline hover:text-emerald-900">Dismiss</button>
+          </div>
+        )}
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <FormField label="DC No" required><input className={inputClass} value={dcForm.dcNo || ''} onChange={e=>setDcForm({...dcForm, dcNo: e.target.value})} /></FormField>
+            <FormField label="Date" required><input type="date" className={inputClass} value={dcForm.date || ''} onChange={e=>setDcForm({...dcForm, date: e.target.value})} /></FormField>
+            <CustomerAutocomplete
+              label="Party Name"
+              required
+              value={dcForm.partyName || ''}
+              onChange={val => setDcForm((prev: any) => ({ ...prev, partyName: val }))}
+              onSelectCustomer={(c: any) => {
+                const nm = String(c.company || '');
+                const m: any = (customerList || []).find((x: any) => String(x.name || '').trim().toLowerCase() === nm.trim().toLowerCase()) || {};
+                setDcForm((prev: any) => ({
+                  ...prev, partyName: nm,
+                  partyCode: m.id || '',
+                  partyAddress: m.city || c.city || '',
+                  partyGstin: m.gst || m.gstin || (c as any).gst || '',
+                  phone: m.phone || c.phone || '',
+                }));
+              }}
+              companies={allKnownCompanies}
+              inputClass={inputClass}
+              placeholder="Type or select party..."
+            />
+            <FormField label="Party Address"><input className={inputClass} value={dcForm.partyAddress || ''} onChange={e=>setDcForm({...dcForm, partyAddress: e.target.value})} /></FormField>
+            <FormField label="Party GSTIN"><input className={inputClass} value={dcForm.partyGstin || ''} onChange={e=>setDcForm({...dcForm, partyGstin: e.target.value})} /></FormField>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <FormField label="Party Code"><input className={inputClass} value={dcForm.partyCode || ''} onChange={e=>setDcForm({...dcForm, partyCode: e.target.value})} /></FormField>
+            <FormField label="E-Way Bill No"><input className={inputClass} value={dcForm.ewayBill || ''} onChange={e=>setDcForm({...dcForm, ewayBill: e.target.value})} /></FormField>
+            <FormField label="PO Number"><input className={inputClass} value={dcForm.poNumber || ''} onChange={e=>setDcForm({...dcForm, poNumber: e.target.value})} /></FormField>
+            <FormField label="Place of Supply"><input className={inputClass} value={dcForm.placeOfSupply || ''} onChange={e=>setDcForm({...dcForm, placeOfSupply: e.target.value})} /></FormField>
+            <FormField label="Packaging Details"><input className={inputClass} value={dcForm.packaging || ''} onChange={e=>setDcForm({...dcForm, packaging: e.target.value})} /></FormField>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <FormField label="Enquiry No"><input className={inputClass} value={dcForm.enquiryNo || ''} onChange={e=>setDcForm({...dcForm, enquiryNo: e.target.value})} /></FormField>
+            <FormField label="Vehicle No"><input className={inputClass} value={dcForm.vehicleNo || ''} onChange={e=>setDcForm({...dcForm, vehicleNo: e.target.value})} /></FormField>
+            <FormField label="Phone No"><input className={inputClass} value={dcForm.phone || ''} onChange={e=>setDcForm({...dcForm, phone: e.target.value})} /></FormField>
+            <FormField label="Category"><input className={inputClass} list="dc-category-list" value={dcForm.category || ''} onChange={e=>setDcForm({...dcForm, category: e.target.value})} placeholder="Select or type category" /></FormField>
+            <FormField label="Process"><input className={inputClass} list="dc-process-list" value={dcForm.process || ''} onChange={e=>setDcForm({...dcForm, process: e.target.value})} placeholder="Select or type process" /></FormField>
+          </div>
+          <datalist id="dc-category-list">
+            {(partsMaster.some((p: any) => p.category) ? Array.from(new Set(partsMaster.map((p: any) => p.category).filter(Boolean))) : ['GOODS PURCHASE', 'SERVICE PURCHASE', 'CUSTOMER DC', 'NEW PART', 'NO DC', 'EXPENSES']).map((c: string) => <option key={c} value={c} />)}
+          </datalist>
+          <datalist id="dc-process-list">
+            {processList.map((p: any) => <option key={p.id || p.process_code} value={`${p.process_code} — ${p.process_name}`} />)}
+          </datalist>
+          <div>
+            <div className="grid grid-cols-[auto_minmax(0,1.5fr)_5rem_4.5rem_4rem_5.5rem_6rem] gap-2 items-center mb-1 px-1">
+              <span></span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Part Name</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">HSN</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Qty</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Unit</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Price</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Amount</span>
+            </div>
+            {dcItems.map((it, idx) => {
+              const amt = (Number(it.qty) || 0) * (Number(it.price) || 0);
+              return (
+                <div key={idx} className={`grid grid-cols-[auto_minmax(0,1.5fr)_5rem_4.5rem_4rem_5.5rem_6rem] gap-2 items-center rounded-lg border px-3 py-2 mb-2 ${it.selected ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200'}`}>
+                  <input
+                    type="checkbox"
+                    checked={it.selected}
+                    onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, selected: e.target.checked } : x)))}
+                    className="h-4 w-4 accent-orange-600"
+                    aria-label={`Select ${it.name || 'product'}`}
+                  />
+                  <div>
+                    <input
+                      className={inputClass} list="dc-product-list" placeholder="Part name" value={it.name || ''}
+                      onChange={(e) => {
+                        const nm = e.target.value;
+                        const key = nm.trim().toLowerCase();
+                        const m = partsMaster.find((p: any) => String(p.part_name || '').trim().toLowerCase() === key);
+                        const l = dcPricing.lines.find((x) => x.name.trim().toLowerCase() === key);
+                        setDcItems((prev) => prev.map((x, i) => (i === idx ? {
+                          ...x, name: nm,
+                          hsn: x.hsn || (m as any)?.hsn || '',
+                          unit: x.unit || m?.unit || 'Nos',
+                          price: x.price || (l ? String(l.unit) : x.price),
+                        } : x)));
+                      }}
+                    />
+                  </div>
+                  <input className={inputClass} placeholder="HSN" value={it.hsn || ''} onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, hsn: e.target.value } : x)))} />
+                  <div>
+                    <input
+                      type="number" min={0}
+                      disabled={!it.selected}
+                      value={it.qty}
+                      onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))}
+                      className={`${inputClass} !py-1.5 tabular-nums disabled:bg-slate-100`}
+                    />
+                    {it.avail != null && <p className="text-[10px] font-semibold text-violet-700 tabular-nums mt-0.5">Available: {it.avail}</p>}
+                  </div>
+                  <input className={inputClass} placeholder="Nos" value={it.unit || ''} onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, unit: e.target.value } : x)))} />
+                  <input type="number" min={0} className={inputClass} placeholder="0.00" value={it.price || ''} onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, price: e.target.value } : x)))} />
+                  <input className={`${inputClass} bg-white font-bold tabular-nums`} value={amt ? amt.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : 0} disabled />
+                </div>
+              );
+            })}
+            <datalist id="dc-product-list">
+              {partsMaster.map((p: any) => <option key={p.id || p.part_name} value={p.part_name} />)}
+            </datalist>
+            <button type="button" onClick={() => setDcItems((prev) => [...prev, { name: '', avail: null, qty: '', selected: true, hsn: '', unit: 'Nos', price: '' }])} className="mt-1 text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
+              <span className="text-lg">+</span> Add Part
+            </button>
+            {dcPricing.loading ? (
+              <p className="text-[11px] text-slate-400 mt-2">Resolving approved price…</p>
+            ) : dcPricing.lines.length > 0 && (
+              <div className="text-xs bg-brand-50/60 border border-brand-100 rounded-lg px-3 py-2 mt-3 space-y-0.5">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-brand-700">Approved price (costing sheet)</p>
+                {dcPricing.lines.map((l) => (
+                  <p key={l.name} className="font-semibold text-slate-700 tabular-nums">
+                    {l.name} — {formatINR(l.unit)}/pc <span className="font-normal text-slate-500">({l.sheetRef})</span>
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <FormField label="Receiver Name"><input className={inputClass} value={dcForm.receiverName || ''} onChange={e=>setDcForm({...dcForm, receiverName: e.target.value})} /></FormField>
+            <div>
+              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Customer Signature</span>
+              <SignaturePad value={dcForm.custSignature || null} onChange={(v) => setDcForm((prev: any) => ({ ...prev, custSignature: v }))} />
+            </div>
+            <FormField label="Sender Name"><input className={inputClass} value={dcForm.senderName || ''} onChange={e=>setDcForm({...dcForm, senderName: e.target.value})} /></FormField>
+            <div>
+              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Authorized Signature</span>
+              <SignaturePad value={dcForm.authSignature || null} onChange={(v) => setDcForm((prev: any) => ({ ...prev, authSignature: v }))} />
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-2.5">
+          <Button variant="secondary" onClick={clearDcForm}>Clear / Reset</Button>
+          <Button onClick={saveDeliveryChallan} disabled={dcSaving}>{dcSaving ? 'Saving...' : 'Save'}</Button>
+        </div>
+      </div>
+    </section>
+  );
+ 
+  // -- New Inward Entry form ---------------------------------------------
+  // This used to be the body of the "Create Inward Entry" popup. InwardModule renders it
+  // directly above its table, so the page opens with the form ready. The parts/items
+  // structure, file uploads, per-line validation, saveInward, the "Save & Add Another
+  // Inward" flow and the saved-count badge are all unchanged - only the modal wrapper is
+  // gone. Done/Cancel became Clear / Reset, because there is no popup to close.
+  const clearInwardForm = () => { setInwardSavedCount(0); openDummyInward(); };
+  const renderInwardEntryForm = () => (
+    <section className="rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="inward-entry-form">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-100 px-3 py-2">
+        <h3 className="text-sm font-bold text-slate-800">New Inward Entry</h3>
+        <p className="text-xs text-slate-500">Add the parts to buy for this product, then submit. The form stays open so you can record the next inward straight away.</p>
+      </div>
+      <div className="space-y-2.5 p-3">
+        <div className="flex flex-col gap-4">
+          <datalist id="inward-customer-list">
+            {(allKnownCompanies || []).map((c: any) => <option key={c.company} value={c.company} />)}
+          </datalist>
+
+          <div className="flex items-center justify-between border-t border-slate-100 pt-4">
+            <div><h4 className="font-semibold text-sm text-slate-800">Parts to Buy for {inwardForm.productName || 'Selected Product'}</h4><p className="text-xs text-slate-500">Each inward can hold multiple parts — one line per part.</p></div>
+            {inwardSavedCount > 0 && <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700" data-testid="inward-saved-note">✓ {inwardSavedCount} saved — add the next inward</span>}
+
+          </div>
+          <div className="space-y-4">
+            {(inwardForm.parts || []).map((group: any, index: number) => {
+              const setGroup = (patch: any) => { const parts=[...inwardForm.parts]; parts[index]={...group, ...patch}; setInwardForm({...inwardForm, parts}); };
+              const setItem = (ii: number, patch: any) => { const items=[...(group.items || [])]; items[ii]={...items[ii], ...patch}; setGroup({ items }); };
+              const lineTotal = (it: any) => (Number(it.quantity)||0)*(Number(it.price)||0)*(1-(Number(it.discount)||0)/100)*(1+(Number(it.gst)||0)/100);
+              const productOptions = inwardModalTarget?.id === 'dummy'
+                ? (inwardForm.productOptions || []).filter((o: any) => { const p = (group.partyName || inwardForm.partyName || '').trim().toLowerCase(); const u = (inwardForm.projectName || '').trim(); const base = (s: any) => String(s||'').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, ''); return (!p || String(o.customer || '').trim().toLowerCase() === p) && (!u || base(o.leadNo) === base(u)); })
+                : (inwardForm.productOptions || []);
+              const onSelectProduct = (ii: number, key: string) => {
+                const selected = (inwardForm.productOptions || []).find((option: any) => option.key === key);
+                const cust = selected?.customer || '';
+                const patch = { productKey: selected?.key || '', productName: selected?.name || '', enquiryId: selected?.enquiryId || '', projectName: selected?.leadNo || '' };
+                const items=[...(group.items || [])]; items[ii]={...items[ii], ...patch};
+                const gpatch: any = { ...patch };
+                if (cust && !String(group.partyName || '').trim()) gpatch.partyName = cust;
+                const parts=[...inwardForm.parts]; parts[index]={...group, ...gpatch, items};
+                setInwardForm({ ...inwardForm, parts, ...patch, partyName: cust || inwardForm.partyName });
+              };
+              return (
+              <div key={index} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-3 flex items-center justify-between"><span className="text-xs font-bold uppercase text-slate-600">Inward {index + 1}</span>{inwardForm.parts.length > 1 && <button type="button" onClick={() => setInwardForm({...inwardForm, parts: inwardForm.parts.filter((_: any, i: number) => i !== index)})} className="text-xs font-medium text-rose-600 hover:text-rose-800">Remove</button>}</div>
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-4 mb-3">
+                  <FormField label="Category" required>
+                    <select className={inputClass} value={group.category || 'GOODS PURCHASE'} onChange={e=>setGroup({ category: e.target.value })}>
+                      <option>EXPENSES</option>
+                      <option>CUSTOMER DC</option>
+                      <option>NEW PART</option>
+                      <option>NO DC</option>
+                      <option>GOODS PURCHASE</option>
+                      <option>SERVICE PURCHASE</option>
+                    </select>
+                  </FormField>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Company</span>
+                    <input className={inputClass} placeholder="Company" list="inward-customer-list" value={group.partyName ?? inwardForm.partyName ?? ''} onChange={e=>setGroup({ partyName: e.target.value })} />
+                  </div>
+                  <FormField label="Inward Date" required><input type="date" className={inputClass} value={group.inwardDate || ''} onChange={e=>setGroup({ inwardDate: e.target.value })} /></FormField>
+                  <FormField label="Reference No."><input className={inputClass} value={group.referenceNo || ''} onChange={e=>setGroup({ referenceNo: e.target.value })} placeholder="e.g. DC/Invoice No" /></FormField>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Files</span>
+                    <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600 hover:text-brand-700">
+                      <span className="rounded-md border border-dashed border-slate-300 bg-white px-3 py-2 hover:border-brand-400">Choose Files</span>
+                      {(group.files || []).length ? <span className="max-w-[12rem] truncate text-slate-500">{group.files.map((f: File) => f.name).join(', ')}</span> : <span className="text-slate-400">No file chosen</span>}
+                      <input type="file" multiple accept="*/*" className="hidden" onChange={e=>{ setGroup({ files: [...(group.files || []), ...Array.from(e.target.files || [])] }); e.currentTarget.value=''; }} />
+                    </label>
+                  </div>
+                </div>
+                {(group.items || []).map((item: any, ii: number) => {
+                  const lbl = 'block text-[10px] font-bold text-slate-500 uppercase mb-0.5';
+                  return (
+                    <div key={ii} className="grid grid-cols-6 gap-x-2 gap-y-2 mb-3 pb-3 border-b border-slate-200 last:border-b-0 last:pb-0">
+                      <label className="col-span-6 sm:col-span-2 min-w-0"><span className={lbl}>Product</span>
+                        {(group.category || 'GOODS PURCHASE') === 'EXPENSES' ? (
+                          <>
+                            <input className={inputClass} list={`expense-products-${index}`} placeholder="Type the product / project" value={item.productName || ''}
+                              onChange={e => { const v = e.target.value; const m = (inwardForm.productOptions || []).find((o: any) => String(o.name).trim().toLowerCase() === v.trim().toLowerCase()); setItem(ii, { productName: v, productKey: v.trim() ? (m?.key || 'expense') : '', enquiryId: m?.enquiryId || '', projectName: m?.leadNo || v }); }} />
+                            <datalist id={`expense-products-${index}`}>{(inwardForm.productOptions || []).map((o: any) => <option key={o.key} value={o.name} />)}</datalist>
+                          </>
+                        ) : (
+                        <select className={inputClass} value={item.productKey || ''} onChange={e=>onSelectProduct(ii, e.target.value)}>
+                          <option value="">Select product</option>
+                          {productOptions.map((option: any) => <option key={option.key} value={option.key}>{option.name} — {option.customer || option.leadNo}{option.saleLabel ? ` · ${option.saleLabel}` : ''}</option>)}
+                        </select>)}</label>
+                      <label className="col-span-6 sm:col-span-2 min-w-0"><span className={lbl}>Part Name *</span>
+                        <input className={inputClass} placeholder="Part Name" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} /></label>
+                      <label className="col-span-6 sm:col-span-2 min-w-0"><span className={lbl}>Remarks</span>
+                        <input className={inputClass} placeholder="Remarks..." value={item.remarks ?? ''} onChange={e=>setItem(ii, { remarks: e.target.value })} /></label>
+                      <label className="col-span-2 sm:col-span-1 min-w-0"><span className={lbl}>Qty *</span>
+                        <input type="number" min="0" className={inputClass} placeholder="Qty" value={item.quantity || ''} onChange={e=>setItem(ii, { quantity: e.target.value })} /></label>
+                      <label className="col-span-2 sm:col-span-1 min-w-0"><span className={lbl}>Price *</span>
+                        <input type="number" min="0" className={inputClass} placeholder="Price" value={item.price || ''} onChange={e=>setItem(ii, { price: e.target.value })} /></label>
+                      <label className="col-span-1 min-w-0"><span className={lbl}>Disc %</span>
+                        <input type="number" min="0" className={inputClass} placeholder="%" value={item.discount || ''} onChange={e=>setItem(ii, { discount: e.target.value })} /></label>
+                      <label className="col-span-1 min-w-0"><span className={lbl}>GST %</span>
+                        <input type="number" min="0" className={inputClass} placeholder="%" value={item.gst || ''} onChange={e=>setItem(ii, { gst: e.target.value })} /></label>
+                      <label className="col-span-2 sm:col-span-1 min-w-0"><span className={lbl}>Total</span>
+                        <input className={`${inputClass} bg-white font-bold`} value={lineTotal(item) || 0} disabled /></label>
+                      <div className="col-span-1 flex items-end justify-end">
+                        {(group.items || []).length > 1 && (
+                          <button type="button" className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded" title="Remove line" onClick={() => setGroup({ items: (group.items || []).filter((_: any, j: number) => j !== ii) })}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {(inwardForm.productOptions || []).length === 0 && (group.category || 'GOODS PURCHASE') !== 'EXPENSES' && <span className="mt-1 block text-xs text-amber-700">No enquired products found. Add the product to an Enquiry first.</span>}
+                <div className="flex items-center justify-between mt-1">
+                  <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-800 flex items-center gap-1" onClick={() => setGroup({ items: [...(group.items || []), emptyInwardItem()] })}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    Add part
+                  </button>
+                </div>
+              </div>);
+            })}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-2.5">
+          <Button variant="secondary" onClick={clearInwardForm}>Clear / Reset</Button>
+          <Button variant="secondary" onClick={() => void saveInward(true)}>Save &amp; Add Another Inward</Button>
+          <Button onClick={() => void saveInward(false)}>Submit</Button>
+        </div>
+      </div>
+    </section>
+  );
+ 
+  // -- Finished Goods + Costing entry form --------------------------------
+  // One element, two homes: inline on the Finished Goods list (add mode, above its
+  // table), or as a popup from the board drag gate and from Edit / View. Everything
+  // inside - the company/product picker, the costing sheet, the pricing-approval gate,
+  // saveDraft and approveAndMove - is FgCostingModal's own code, unchanged.
+  const fgCostingInline = costingMode === 'add' && activeView === 'fg_list';
+  const resetFgEntry = () => {
+    // Inline, "Cancel" / "Approve & Move" put the form back on the blank picker so it is
+    // ready for the next finished good. As a popup it is simply dismissed, as before.
+    if (activeView === 'fg_list') { setCostingMode('add'); setCostingModalTarget(makeFgPickTarget()); }
+    else setCostingModalTarget(null);
+  };
+  const renderFgCosting = (inline: boolean, target: KanbanCard | null) => (
+    <ErrorBoundary title="Finished Goods costing failed to open" onClose={() => setCostingModalTarget(null)}>
+      <FgCostingModal
+        key={`${inline ? 'inline' : 'popup'}-${target?.id ?? ''}`}
+        card={target}
+        pickOptions={(salesOrdersList || []).flatMap((o: any) => {
+          let items: any[] = [];
+          try { const r = typeof o.items === 'string' ? JSON.parse(o.items) : o.items; if (Array.isArray(r)) items = r; } catch { /* no lines */ }
+          return items.map((it: any) => ({ company: String(o.customer || o.customer_name || ''), product: String(it.partName || it.productName || it.part_name || it.description || '').trim() })).filter((x: any) => x.product);
+        })}
+        pickCompanies={allKnownCompanies.map((c: any) => String(c.company || ""))}
+        onPick={(company, product) => {
+          const k = (v: any) => String(v ?? '').trim().toLowerCase();
+          // The product of an existing order is costed against that order; anything else is a direct entry.
+          const order: any = (salesOrdersList || []).find((o: any) => {
+            if (k(o.customer || o.customer_name) !== k(company)) return false;
+            try { const r = typeof o.items === 'string' ? JSON.parse(o.items) : o.items; return Array.isArray(r) && r.some((it: any) => k(it.partName || it.productName || it.part_name || it.description) === k(product)); } catch { return false; }
+          });
+          const base = { id: `fg-${Date.now()}`, stage: 'Inward', type: 'inward', customer: company, part: product, qty: 0, value: 0, date: '' };
+          setCostingModalTarget((order
+            ? { ...base, refNo: order.lead_no || order.order_no, raw: { sales_order_ref: order.order_no || '', project_name: order.lead_no || order.order_no, _groupIds: [] } }
+            : { ...base, refNo: '', raw: { sales_order_ref: '', project_name: '', part_name: product, product_name: product, _groupIds: [] } }) as KanbanCard);
+        }}
+        mode={costingMode}
+        inline={inline}
+        onClose={resetFgEntry}
+        onMoved={() => { resetFgEntry(); fetchPipeline(); }}
+      />
+    </ErrorBoundary>
+  );
+ 
+  // Hoisted so the JSX below cannot narrow `activeView` part-way through the tree
+  // (which would make later, perfectly valid comparisons fail to typecheck).
+  const onPipelineView = activeView === 'pipeline';
+  const onQuotationView = activeView === 'quotation_list';
 
   return (
     <div className="p-4 bg-[#F8FAFC] min-h-full flex flex-col font-sans">
@@ -4037,7 +4807,12 @@ export function SalesPipelinePage() {
 
 
       {/* 3. Tabs & Filters */}
-      <div className="flex flex-wrap items-center gap-3 mb-3">
+      {/* The board's tabs and filters belong to the pipeline view itself. The list
+          modules (Enquiries, Orders, Inward, DC ...) each render their own PageHeader
+          with a back arrow, search and view toggles, so showing the board tabs above
+          them stacked two headers and a gap for no reason. */}
+      <div className={`flex flex-wrap items-center gap-3 ${onPipelineView || onQuotationView ? 'mb-3' : ''}`}>
+        {onPipelineView && (
         <div className="flex p-1 shrink-0 bg-white rounded-lg shadow-sm border border-slate-200">
             <button 
               onClick={() => { setActiveView('pipeline'); setPipelineViewMode('kanban'); }}
@@ -4046,11 +4821,15 @@ export function SalesPipelinePage() {
               onClick={() => { setActiveView('pipeline'); setPipelineViewMode('list'); }}
               className={`px-4 py-1.5 text-sm font-semibold rounded-md shadow-sm transition-all ${pipelineViewMode === 'list' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>List View</button>
             <button 
+              onClick={() => { setActiveView('pipeline'); setPipelineViewMode('companies'); }}
+              className={`px-4 py-1.5 text-sm font-semibold rounded-md shadow-sm transition-all whitespace-nowrap ${pipelineViewMode === 'companies' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>All Companies</button>
+            <button 
               onClick={() => { setActiveView('pipeline'); setPipelineViewMode('calendar'); }}
               className={`px-4 py-1.5 text-sm font-semibold rounded-md shadow-sm transition-all ${pipelineViewMode === 'calendar' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>Calendar</button>
         </div>
+        )}
         
-        {activeView === 'quotation_list' && (
+        {onQuotationView && (
           <nav aria-label="Quotation tools" data-testid="quotation-tools" className="flex flex-nowrap items-center gap-1 min-w-0 md:flex-1 md:justify-end">
             {([
               ['Metal Calculator', 'Calculator', '/quotation/metal-calculator', Calculator, 'text-orange-500'],
@@ -4070,7 +4849,10 @@ export function SalesPipelinePage() {
           </nav>
         )}
 
-        {pipelineViewMode !== 'list' && (
+        {/* The company / search / filter controls drive the pipeline cards, so they are
+            hidden for List View (which has its own toolbar) and for All Companies, whose
+            reused LeadsPage brings its own search, filters and Add action. */}
+        {onPipelineView && pipelineViewMode !== 'list' && pipelineViewMode !== 'companies' && (
         <div className="flex items-center gap-2 flex-nowrap min-w-0 w-full md:w-auto">
           <select 
             className="border border-slate-200 rounded-lg text-sm px-3 py-2 bg-white text-slate-700 focus:outline-none focus:border-brand-500 shadow-sm font-medium min-w-0 flex-1 md:flex-none md:w-48 truncate"
@@ -4082,7 +4864,7 @@ export function SalesPipelinePage() {
               <option key={customer} value={customer}>{customer}</option>
             ))}
           </select>
-          {activeView !== 'quotation_list' && <>
+          {!onQuotationView && <>
           <div className="relative shrink-0">
             <input type="text" placeholder="Search cards..." className="pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm w-32 md:w-48 focus:outline-none focus:border-brand-500 bg-white shadow-sm" />
             <svg className="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
@@ -4101,13 +4883,13 @@ export function SalesPipelinePage() {
       {/* 4. Kanban Pipeline (Horizontal Scroll) */}
       {activeView === 'enquiry_list' ? (
         <div className="min-h-[500px] mb-4">
-          <EnquiryModule onBack={() => setActiveView('pipeline')} onView={listView('lead', 'Enquiry')} onAdd={() => addForStage('Enquiry')} onEdit={listEdit('lead', 'Enquiry')} onDelete={listDelete('lead', 'Enquiry')} refreshSignal={listRefresh} />
+          <EnquiryModule onBack={() => setActiveView('pipeline')} onView={listView('lead', 'Enquiry')} entryForm={renderEnquiryEntryForm()} onEdit={listEdit('lead', 'Enquiry')} onDelete={listDelete('lead', 'Enquiry')} refreshSignal={listRefresh} />
         </div>
       ) : activeView === 'quotation_list' ? (
         <div className="min-h-[500px] mb-4">
           {quoteTool ? (
             <div data-testid="quotation-tool">
-              <button type="button" onClick={() => setQuoteTool(null)} className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-brand-600">â† Back to quotations</button>
+              <button type="button" onClick={() => setQuoteTool(null)} className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-brand-600">← Back to quotations</button>
               {quoteTool === '/quotation/metal-calculator' && <MetalCalculatorPage />}
               {quoteTool === '/quotation/create' && <CreateQuotationPage />}
               {quoteTool === '/quotation/client-library' && <ClientLibraryPage />}
@@ -4122,11 +4904,11 @@ export function SalesPipelinePage() {
         </div>
       ) : activeView === 'sales_order_list' ? (
         <div className="min-h-[500px] mb-4">
-          <SalesOrderModule onBack={() => setActiveView('pipeline')} onView={listView('order', 'Sales Order')} onEdit={listEdit('order', 'Sales Order')} onAdd={() => addForStage('Sales Order')} onDelete={listDelete('order', 'Sales Order')} refreshSignal={listRefresh} />
+          <SalesOrderModule onBack={() => setActiveView('pipeline')} onView={listView('order', 'Sales Order')} onEdit={listEdit('order', 'Sales Order')} entryForm={renderSalesOrderEntryForm()} onDelete={listDelete('order', 'Sales Order')} refreshSignal={listRefresh} />
         </div>
       ) : activeView === 'inward_list' ? (
         <div className="min-h-[500px] mb-4">
-          <InwardModule onBack={() => setActiveView('pipeline')} onView={listView('inward', 'Inward')} onAddInward={openDummyInward} refreshSignal={inwardRefreshSignal + listRefresh} onEdit={listEdit('inward', 'Inward')} onDelete={listDelete('inward', 'Inward')} />
+          <InwardModule onBack={() => setActiveView('pipeline')} onView={listView('inward', 'Inward')} entryForm={renderInwardEntryForm()} refreshSignal={inwardRefreshSignal + listRefresh} onEdit={listEdit('inward', 'Inward')} onDelete={listDelete('inward', 'Inward')} />
         </div>
       ) : activeView === 'rejected_list' ? (
         <div className="min-h-[500px] mb-4">
@@ -4134,15 +4916,22 @@ export function SalesPipelinePage() {
         </div>
       ) : activeView === 'fg_list' ? (
         <div className="min-h-[500px] mb-4">
-          <FinishedGoodsModule onBack={() => setActiveView('pipeline')} onAdd={() => addForStage('Finished Goods')} onView={listView('finished_goods', 'Finished Goods')} onEdit={listEdit('finished_goods', 'Finished Goods')} onDelete={listDelete('finished_goods', 'Finished Goods')} refreshSignal={listRefresh} />
+          <FinishedGoodsModule onBack={() => setActiveView('pipeline')} entryForm={fgCostingInline ? renderFgCosting(true, costingModalTarget ?? fgBlankPick) : null} onView={listView('finished_goods', 'Finished Goods')} onEdit={listEdit('finished_goods', 'Finished Goods')} onDelete={listDelete('finished_goods', 'Finished Goods')} refreshSignal={listRefresh} />
         </div>
       ) : activeView === 'dc_list' ? (
         <div className="min-h-[500px] mb-4">
-          <DeliveryChallanModule onBack={() => setActiveView('pipeline')} onView={listView('dc', 'DC')} onAdd={() => addForStage('DC')} onEdit={listEdit('dc', 'DC')} onDelete={listDelete('dc', 'DC')} refreshSignal={listRefresh} />
+          <DeliveryChallanModule onBack={() => setActiveView('pipeline')} onView={listView('dc', 'DC')} onEdit={listEdit('dc', 'DC')} entryForm={renderDeliveryChallanEntryForm()} onDelete={listDelete('dc', 'DC')} refreshSignal={listRefresh} />
         </div>
       ) : activeView === 'invoice_list' ? (
         <div className="min-h-[500px] mb-4">
           <InvoiceModule key={listRefresh} onBack={() => setActiveView('pipeline')} />
+        </div>
+      ) : pipelineViewMode === 'companies' ? (
+        // All Companies is the existing /sales/leads view, reused verbatim as another
+        // toolbar view. The -m-4 cancels this page's own p-4 so LeadsPage's p-4 / bg-grid
+        // line up with the page edge instead of stacking padding on padding.
+        <div className="-m-4 min-h-full">
+          <LeadsPage />
         </div>
       ) : pipelineViewMode === 'list' ? (
         <div>
@@ -4158,6 +4947,47 @@ export function SalesPipelinePage() {
           <PipelineCalendarView cards={cards} onView={openViewModal} />
         </div>
       ) : (
+      <>
+        {/* Bulk stage progression: appears only while cards are ticked, and sits above
+            (not inside) the horizontally scrolling columns so it never scrolls away. */}
+        {selectedCards.size > 0 && (
+          <div data-testid="pipeline-bulk-toolbar" className="flex flex-wrap items-center gap-2.5 mb-3 px-3 py-2 rounded-xl border border-brand-200 bg-brand-50/70 shadow-sm">
+            <span className="text-sm font-bold text-brand-800" data-testid="pipeline-bulk-count">
+              {selectedCards.size} card{selectedCards.size === 1 ? '' : 's'} selected
+            </span>
+            <button
+              type="button"
+              onClick={() => void bulkMoveToNextStage()}
+              disabled={!bulkValid || bulkMoving}
+              data-testid="pipeline-bulk-move"
+              title={bulkValid ? `Move the selected card(s) forward to ${bulkTarget}` : (bulkBlockReason || 'This selection cannot be moved')}
+              className="px-3 py-1.5 text-sm font-semibold rounded-lg shadow-sm transition-colors bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {bulkMoving ? 'Moving…' : `Move to Next Stage${bulkTarget ? ` → ${bulkTarget}` : ''}`}
+            </button>
+            <button
+              type="button"
+              onClick={clearCardSelection}
+              data-testid="pipeline-bulk-clear"
+              title="Deselect every ticked card"
+              className="px-3 py-1.5 text-sm font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 shadow-sm transition-colors"
+            >
+              Clear Selection
+            </button>
+            {bulkBlockReason && (
+              <span className="text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">{bulkBlockReason}</span>
+            )}
+            {bulkNotice && (
+              <span
+                role="status"
+                data-testid="pipeline-bulk-notice"
+                className={`text-xs font-medium rounded-lg px-2.5 py-1.5 border ${bulkNotice.kind === 'ok' ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-red-700 bg-red-50 border-red-200'}`}
+              >
+                {bulkNotice.text}
+              </span>
+            )}
+          </div>
+        )}
       <div className="overflow-x-auto scrollbar-thin pb-4 mt-2">
         <div className="flex gap-4 h-[550px] items-stretch min-w-max px-1">
           {[
@@ -4238,10 +5068,15 @@ export function SalesPipelinePage() {
                           <input
                             type="checkbox"
                             checked={selectedCards.has(card.id)}
+                            draggable={false}
+                            // Keep the tick out of the card's own handlers: it must not
+                            // start the parent's drag, nor single/double-click the card.
+                            onDragStart={(e) => { e.stopPropagation(); }}
                             onClick={(e) => e.stopPropagation()}
                             onChange={() => toggleCardSelect(card.id)}
                             className="w-3.5 h-3.5 accent-brand-600 cursor-pointer shrink-0"
-                            title="Select"
+                            title="Tick to select this card, then use Move to Next Stage in the toolbar above the board"
+                            aria-label={`Select ${card.refNo} for a bulk move to the next stage`}
                           />
                           <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded font-mono ${stage.code}`}>{card.refNo}</span>
                         </div>
@@ -4254,7 +5089,7 @@ export function SalesPipelinePage() {
                       <div className="flex justify-between items-end">
                         <div>
                           {card.value > 0 ? (
-                             <p className={`text-sm font-bold ${stage.amount}`}>â‚¹{Number(card.value).toLocaleString('en-IN')}</p>
+                             <p className={`text-sm font-bold ${stage.amount}`}>₹{Number(card.value).toLocaleString('en-IN')}</p>
                           ) : (
                              <p className="text-xs font-semibold text-slate-800">{card.qty} pcs</p>
                           )}
@@ -4268,7 +5103,7 @@ export function SalesPipelinePage() {
                             if (!up) up = Number(raw.unit_price) || 0;
                             if (!up && card.value && Number(card.qty)) up = Number(card.value) / Number(card.qty);
                             if (!up) return null;
-                            return <p className="text-[11px] font-semibold text-slate-700 tabular-nums">Unit Price â‚¹{up.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>;
+                            return <p className="text-[11px] font-semibold text-slate-700 tabular-nums">Unit Price ₹{up.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>;
                           })()}
                         </div>
                         <div className="flex items-center gap-2">
@@ -4288,7 +5123,7 @@ export function SalesPipelinePage() {
                         <div className="mt-1.5 space-y-1">
                           <QtyProgress q={card.qtyTrack} />
                           <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
-                            Ord {card.qtyTrack.ordered} Â· Good {card.qtyTrack.good} Â· Rej {card.qtyTrack.rejected} Â· Rem {card.qtyTrack.remaining} Â· Del {card.qtyTrack.delivered} Â· Inv {card.qtyTrack.invoiced}
+                            Ord {card.qtyTrack.ordered} · Good {card.qtyTrack.good} · Rej {card.qtyTrack.rejected} · Rem {card.qtyTrack.remaining} · Del {card.qtyTrack.delivered} · Inv {card.qtyTrack.invoiced}
                           </p>
                         </div>
                       )}
@@ -4299,7 +5134,7 @@ export function SalesPipelinePage() {
                             <p className="text-sm font-extrabold tabular-nums text-white leading-tight">{card.qtyTrack.fgAvailable} pcs</p>
                           </div>
                           <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
-                            Order {card.qtyTrack.ordered} Â· Finished {card.qtyTrack.good} Â· Remaining {card.qtyTrack.remaining} Â· Delivered {card.qtyTrack.delivered} Â· Avail {card.qtyTrack.fgAvailable}
+                            Order {card.qtyTrack.ordered} · Finished {card.qtyTrack.good} · Remaining {card.qtyTrack.remaining} · Delivered {card.qtyTrack.delivered} · Avail {card.qtyTrack.fgAvailable}
                           </p>
                           {card.qtyTrack.products.slice(0, 3).map((p) => (
                             <div key={p.name} className="rounded-md border border-slate-200 bg-white/70 px-1.5 py-1">
@@ -4308,7 +5143,7 @@ export function SalesPipelinePage() {
                                 {p.rejected > 0 && <span className="text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded px-1">Rej {p.rejected}</span>}
                               </div>
                               <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
-                                Finished {p.good} / {p.ordered} Â· Available {p.available}
+                                Finished {p.good} / {p.ordered} · Available {p.available}
                               </p>
                             </div>
                           ))}
@@ -4323,7 +5158,7 @@ export function SalesPipelinePage() {
                         const itemQty = (card.raw?._itemQty ?? {}) as Record<string, number>;
                         const byName = new Map<string, number>();
                         rows.forEach((x: any) => {
-                          const n = String(x?.part_name ?? '').trim() || 'â€”';
+                          const n = String(x?.part_name ?? '').trim() || '—';
                           byName.set(n, (byName.get(n) ?? 0) + (Number(x?.completed) || 0));
                         });
                         const lines = [...byName.entries()].map(([n, done]) => {
@@ -4337,13 +5172,13 @@ export function SalesPipelinePage() {
                                 <span key={l.n} className="inline-flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[10px] tabular-nums">
                                   <span className="font-semibold text-slate-700">{l.n}</span>
                                   <b className="text-emerald-700">{l.done} done</b>
-                                  {l.left != null && <b className="text-amber-700">Â· {l.left} left</b>}
+                                  {l.left != null && <b className="text-amber-700">· {l.left} left</b>}
                                 </span>
                               ))}
                               {lines.length > 3 && <span className="text-[10px] text-slate-400">+{lines.length - 3} more</span>}
                             </div>
                             <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
-                              Good {g} Â· Rej {rj}{card.qtyTrack ? ` Â· Order ${card.qtyTrack.good}/${card.qtyTrack.ordered} Â· Avail ${card.qtyTrack.fgAvailable}` : ''}
+                              Good {g} · Rej {rj}{card.qtyTrack ? ` · Order ${card.qtyTrack.good}/${card.qtyTrack.ordered} · Avail ${card.qtyTrack.fgAvailable}` : ''}
                             </p>
                           </div>
                         );
@@ -4351,7 +5186,7 @@ export function SalesPipelinePage() {
                       {card.type === 'inward' && card.qtyTrack && (card.qtyTrack.products ?? []).length > 0 ? (
                         <div className="mt-1.5 space-y-1">
                           <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
-                            Ordered {card.qtyTrack.ordered} Â· Finished {card.qtyTrack.good}
+                            Ordered {card.qtyTrack.ordered} · Finished {card.qtyTrack.good}
                           </p>
                           {card.qtyTrack.remaining > 0 || card.qtyTrack.ordered <= 0 ? (
                             <div className="rounded-lg bg-amber-500 px-2 py-1 text-center">
@@ -4370,7 +5205,7 @@ export function SalesPipelinePage() {
                                 {p.rejected > 0 && <span className="text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded px-1">Rej {p.rejected}</span>}
                               </div>
                               <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
-                                {p.good} / {p.ordered} finished Â· <b className="text-amber-700">Remaining {p.remaining}</b>
+                                {p.good} / {p.ordered} finished · <b className="text-amber-700">Remaining {p.remaining}</b>
                               </p>
                             </div>
                           ))}
@@ -4384,7 +5219,7 @@ export function SalesPipelinePage() {
                             <span key={l.name} className="inline-flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] tabular-nums">
                               <span className="font-semibold text-slate-700">{l.name}</span>
                               <span className="text-slate-500">{l.recv} in</span>
-                              <b className="text-amber-700">Â· {l.left} left</b>
+                              <b className="text-amber-700">· {l.left} left</b>
                             </span>
                           ))}
                           {card.raw._inwardProd.length > 3 && <span className="text-[10px] text-slate-400">+{card.raw._inwardProd.length - 3} more</span>}
@@ -4392,12 +5227,12 @@ export function SalesPipelinePage() {
                       ))}
                       {card.type === 'dc' && (
                         <p className="mt-1.5 text-[10px] text-slate-500 tabular-nums leading-tight">
-                          Dispatched {card.qty}{card.qtyTrack ? ` Â· Deliverable left ${card.qtyTrack.fgAvailable} of order ${card.qtyTrack.ordered}` : ''}
+                          Dispatched {card.qty}{card.qtyTrack ? ` · Deliverable left ${card.qtyTrack.fgAvailable} of order ${card.qtyTrack.ordered}` : ''}
                         </p>
                       )}
                       {card.type === 'invoice' && card.qtyTrack && (
                         <p className="mt-1.5 text-[10px] text-slate-500 tabular-nums leading-tight">
-                          Invoiced {card.qtyTrack.invoiced} Â· Invoiceable left {card.qtyTrack.invoiceable}
+                          Invoiced {card.qtyTrack.invoiced} · Invoiceable left {card.qtyTrack.invoiceable}
                         </p>
                       )}
                       <div className="mt-2 pt-2 border-t border-slate-50 flex justify-between items-center transition-opacity">
@@ -4433,7 +5268,28 @@ export function SalesPipelinePage() {
           })}
         </div>
       </div>
+      </>
       )}
+
+      {/* Board "Add" popups: the Kanban columns' Add buttons reopen the entry form as a
+          dialog instead of navigating to the list page. Same form JSX, same handlers,
+          same validation - only the surrounding chrome differs from the inline version. */}
+      <Modal
+        open={!!addPopup}
+        onClose={() => setAddPopup(null)}
+        title={addPopup ? addPopupTitle(addPopup) : ''}
+        subtitle="Fill in the details and save. The board refreshes once the record is created."
+        size="2xl"
+        width={1000}
+        draggable={false}
+      >
+        <div className="max-h-[62vh] overflow-y-auto scrollbar-thin pr-1">
+          {addPopup === 'Enquiry' && renderEnquiryEntryForm()}
+          {addPopup === 'Sales Order' && renderSalesOrderEntryForm()}
+          {addPopup === 'Inward' && renderInwardEntryForm()}
+          {addPopup === 'DC' && renderDeliveryChallanEntryForm()}
+        </div>
+      </Modal>
 
       {/* New Lead Modal */}
       <Modal open={showNewLead} onClose={() => setShowNewLead(false)} title="Create New Company" size="lg" width={720} footer={<><Button variant="secondary" onClick={() => setShowNewLead(false)}>Cancel</Button><Button onClick={saveNewLead}>Save Company</Button></>}>
@@ -4492,94 +5348,10 @@ export function SalesPipelinePage() {
         </div>
       </Modal>
 
-      {/* Enquiry Modal */}
-      <Modal open={enquiryModalOpen} onClose={() => { setEnquiryModalOpen(false); setEnquiryForm(resetEnquiryForm()); setDuplicateSource(null); }} title={duplicateSource ? `New Enquiry â€” Duplicated from ${duplicateSource}` : 'New Enquiry'} size="lg" width={720} footer={<><Button variant="secondary" onClick={() => { setEnquiryModalOpen(false); setDuplicateSource(null); }}>Cancel</Button><Button onClick={saveEnquiry}>Save Enquiry</Button></>}>
-        <div className="grid grid-cols-2 gap-4">
-          {duplicateSource && (
-            <div className="col-span-2 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-xs font-semibold text-brand-800">
-              Duplicated from: {duplicateSource} Â· saving creates a brand-new enquiry with its own company ID.
-            </div>
-          )}
-          <div className="col-span-2 flex justify-end">
-            <button type="button" onClick={() => { setEnquiryModalOpen(false); openNewLeadModal(); }} className="text-xs font-bold text-brand-600 hover:text-brand-800 border border-brand-200 hover:border-brand-400 rounded-lg px-3 py-1.5 bg-brand-50/50 transition-colors whitespace-nowrap">+ Add New Company</button>
-          </div>
-          <div className="col-span-2">
-          <CustomerAutocomplete
-            label="Company Name"
-            required
-            value={enquiryForm.company}
-            onChange={val => handleCompanyChange(val)}
-            onSelectCustomer={c => handleCompanyChange(c.company)}
-            companies={allKnownCompanies}
-            inputClass={inputClass}
-            placeholder="Type or select company..."
-          />
-          </div>
-          
-          <div className="col-span-2">
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Products Required *</label>
-            <div className="space-y-2">
-              {(enquiryForm.items || [{ productName: '', partName: '', quantity: '', remarks: '', filePaths: [] as string[], files: [] as File[] }]).map((item: any, idx: number) => (
-                <div key={idx} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_5.5rem_11rem_minmax(0,1fr)_auto] gap-3 items-center rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <div>
-                    <input className={inputClass} placeholder="Product Name" list="enquiry-product-list" value={item.productName ?? item.partName ?? ''} onChange={e => {
-                      const newItems = [...(enquiryForm.items || [])];
-                      newItems[idx] = { ...newItems[idx], productName: e.target.value, partName: e.target.value };
-                      setEnquiryForm({...enquiryForm, items: newItems});
-                    }} />
-                  </div>
-                  <div>
-                    <input type="number" className={inputClass} placeholder="Qty" value={item.quantity} onChange={e => {
-                      const newItems = [...(enquiryForm.items || [])];
-                      newItems[idx] = { ...newItems[idx], quantity: e.target.value };
-                      setEnquiryForm({...enquiryForm, items: newItems});
-                    }} />
-                  </div>
-                  <div>
-                    <label className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
-                      <UploadCloud size={15}/>{(item.files || []).length ? `${item.files.length} file(s) selected` : 'Upload image / file / PDF'}
-                      <input type="file" multiple accept="*/*" className="hidden" onChange={e => {
-                        const selectedFiles = Array.from(e.currentTarget.files || []);
-                        const newItems = [...(enquiryForm.items || [])];
-                        newItems[idx] = { ...newItems[idx], files: [...(newItems[idx].files || []), ...selectedFiles] };
-                        setEnquiryForm({...enquiryForm, items: newItems});
-                        e.currentTarget.value = '';
-                      }} />
-                    </label>
-                    {(item.files || []).length > 0 && <div className="mt-1 space-y-1">{item.files.map((file: File, fileIdx: number) => <div key={`${file.name}-${fileIdx}`} className="flex items-center justify-between gap-2 text-[11px] text-slate-600"><span className="truncate">{file.name}</span><button type="button" className="text-rose-600 hover:text-rose-800" onClick={() => { const newItems = [...enquiryForm.items]; newItems[idx] = {...newItems[idx], files: newItems[idx].files.filter((_: File, j: number) => j !== fileIdx)}; setEnquiryForm({...enquiryForm, items: newItems}); }}>Remove</button></div>)}</div>}
-                  </div>
-                  <div>
-                    <input className={inputClass} placeholder="Remarks..." value={item.remarks || ''} onChange={e => {
-                      const newItems = [...(enquiryForm.items || [])];
-                      newItems[idx] = { ...newItems[idx], remarks: e.target.value };
-                      setEnquiryForm({...enquiryForm, items: newItems});
-                    }} />
-                  </div>
-                  {idx > 0 && (
-                    <button type="button" className="p-2 text-red-500 hover:bg-red-50 rounded mt-1" onClick={() => {
-                      const newItems = enquiryForm.items.filter((_: any, i: number) => i !== idx);
-                      setEnquiryForm({...enquiryForm, items: newItems});
-                    }}>
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-                    </button>
-                  )}
-                </div>
-              ))}
-              <datalist id="enquiry-product-list">{existingProductNames.map(n => <option key={n} value={n} />)}</datalist>
-              <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-800 flex items-center gap-1 mt-2" onClick={() => {
-                setEnquiryForm({...enquiryForm, items: [...(enquiryForm.items || []), { productName: '', partName: '', quantity: '', remarks: '', filePaths: [] as string[], files: [] as File[] }]});
-              }}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                Add Another Product
-              </button>
-            </div>
-          </div>
-        </div>
-      </Modal>
 
       {/* Quotation Modal */}
       <HsnDatalist />
-      <Modal open={!!quotationModalTarget} onClose={closeQuotationPopup} title="Create Quotation" subtitle={quotationModalTarget?.customer ? `From enquiry Â· ${quotationModalTarget.customer}` : undefined} size="full" width={1040} draggable={false}>
+      <Modal open={!!quotationModalTarget} onClose={closeQuotationPopup} title="Create Quotation" subtitle={quotationModalTarget?.customer ? `From enquiry · ${quotationModalTarget.customer}` : undefined} size="full" width={1040} draggable={false}>
         {quotationModalTarget && (
           <CreateQuotationPage key={quotationModalTarget.refNo + quoteForm.quoteNo} embed={quotationEmbed} />
         )}
@@ -4587,150 +5359,13 @@ export function SalesPipelinePage() {
 
       
 
-      {/* Inward Modal */}
-      <Modal open={!!inwardModalTarget} onClose={() => setInwardModalTarget(null)} title="Create Inward Entry" size="lg" width={820} footer={<><Button variant="secondary" onClick={() => { setInwardSavedCount(0); setInwardModalTarget(null); }}>{inwardSavedCount > 0 ? 'Done' : 'Cancel'}</Button><Button variant="secondary" onClick={() => void saveInward(true)}>Save &amp; Add Another Inward</Button><Button onClick={() => void saveInward(false)}>Submit</Button></>}>
-        <div className="flex flex-col gap-4">
-          <datalist id="inward-customer-list">
-            {(allKnownCompanies || []).map((c: any) => <option key={c.company} value={c.company} />)}
-          </datalist>
-
-          <div className="flex items-center justify-between border-t border-slate-100 pt-4">
-            <div><h4 className="font-semibold text-sm text-slate-800">Parts to Buy for {inwardForm.productName || 'Selected Product'}</h4><p className="text-xs text-slate-500">Each inward can hold multiple parts â€” one line per part.</p></div>
-            {inwardSavedCount > 0 && <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700" data-testid="inward-saved-note">âœ“ {inwardSavedCount} saved â€” add the next inward</span>}
-
-          </div>
-          <div className="space-y-4">
-            {(inwardForm.parts || []).map((group: any, index: number) => {
-              const setGroup = (patch: any) => { const parts=[...inwardForm.parts]; parts[index]={...group, ...patch}; setInwardForm({...inwardForm, parts}); };
-              const setItem = (ii: number, patch: any) => { const items=[...(group.items || [])]; items[ii]={...items[ii], ...patch}; setGroup({ items }); };
-              const lineTotal = (it: any) => (Number(it.quantity)||0)*(Number(it.price)||0)*(1-(Number(it.discount)||0)/100)*(1+(Number(it.gst)||0)/100);
-              const productOptions = inwardModalTarget?.id === 'dummy'
-                ? (inwardForm.productOptions || []).filter((o: any) => { const p = (group.partyName || inwardForm.partyName || '').trim().toLowerCase(); const u = (inwardForm.projectName || '').trim(); const base = (s: any) => String(s||'').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, ''); return (!p || String(o.customer || '').trim().toLowerCase() === p) && (!u || base(o.leadNo) === base(u)); })
-                : (inwardForm.productOptions || []);
-              const onSelectProduct = (ii: number, key: string) => {
-                const selected = (inwardForm.productOptions || []).find((option: any) => option.key === key);
-                const cust = selected?.customer || '';
-                const patch = { productKey: selected?.key || '', productName: selected?.name || '', enquiryId: selected?.enquiryId || '', projectName: selected?.leadNo || '' };
-                const items=[...(group.items || [])]; items[ii]={...items[ii], ...patch};
-                const gpatch: any = { ...patch };
-                if (cust && !String(group.partyName || '').trim()) gpatch.partyName = cust;
-                const parts=[...inwardForm.parts]; parts[index]={...group, ...gpatch, items};
-                setInwardForm({ ...inwardForm, parts, ...patch, partyName: cust || inwardForm.partyName });
-              };
-              return (
-              <div key={index} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <div className="mb-3 flex items-center justify-between"><span className="text-xs font-bold uppercase text-slate-600">Inward {index + 1}</span>{inwardForm.parts.length > 1 && <button type="button" onClick={() => setInwardForm({...inwardForm, parts: inwardForm.parts.filter((_: any, i: number) => i !== index)})} className="text-xs font-medium text-rose-600 hover:text-rose-800">Remove</button>}</div>
-                <div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-4 mb-3">
-                  <FormField label="Category" required>
-                    <select className={inputClass} value={group.category || 'GOODS PURCHASE'} onChange={e=>setGroup({ category: e.target.value })}>
-                      <option>EXPENSES</option>
-                      <option>CUSTOMER DC</option>
-                      <option>NEW PART</option>
-                      <option>NO DC</option>
-                      <option>GOODS PURCHASE</option>
-                      <option>SERVICE PURCHASE</option>
-                    </select>
-                  </FormField>
-                  <div>
-                    <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Company</span>
-                    <input className={inputClass} placeholder="Company" list="inward-customer-list" value={group.partyName ?? inwardForm.partyName ?? ''} onChange={e=>setGroup({ partyName: e.target.value })} />
-                  </div>
-                  <FormField label="Inward Date" required><input type="date" className={inputClass} value={group.inwardDate || ''} onChange={e=>setGroup({ inwardDate: e.target.value })} /></FormField>
-                  <FormField label="Reference No."><input className={inputClass} value={group.referenceNo || ''} onChange={e=>setGroup({ referenceNo: e.target.value })} placeholder="e.g. DC/Invoice No" /></FormField>
-                  <div>
-                    <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Files</span>
-                    <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600 hover:text-brand-700">
-                      <span className="rounded-md border border-dashed border-slate-300 bg-white px-3 py-2 hover:border-brand-400">Choose Files</span>
-                      {(group.files || []).length ? <span className="max-w-[12rem] truncate text-slate-500">{group.files.map((f: File) => f.name).join(', ')}</span> : <span className="text-slate-400">No file chosen</span>}
-                      <input type="file" multiple accept="*/*" className="hidden" onChange={e=>{ setGroup({ files: [...(group.files || []), ...Array.from(e.target.files || [])] }); e.currentTarget.value=''; }} />
-                    </label>
-                  </div>
-                </div>
-                {(group.items || []).map((item: any, ii: number) => {
-                  const lbl = 'block text-[10px] font-bold text-slate-500 uppercase mb-0.5';
-                  return (
-                    <div key={ii} className="grid grid-cols-6 gap-x-2 gap-y-2 mb-3 pb-3 border-b border-slate-200 last:border-b-0 last:pb-0">
-                      <label className="col-span-6 sm:col-span-2 min-w-0"><span className={lbl}>Product</span>
-                        {(group.category || 'GOODS PURCHASE') === 'EXPENSES' ? (
-                          <>
-                            <input className={inputClass} list={`expense-products-${index}`} placeholder="Type the product / project" value={item.productName || ''}
-                              onChange={e => { const v = e.target.value; const m = (inwardForm.productOptions || []).find((o: any) => String(o.name).trim().toLowerCase() === v.trim().toLowerCase()); setItem(ii, { productName: v, productKey: v.trim() ? (m?.key || 'expense') : '', enquiryId: m?.enquiryId || '', projectName: m?.leadNo || v }); }} />
-                            <datalist id={`expense-products-${index}`}>{(inwardForm.productOptions || []).map((o: any) => <option key={o.key} value={o.name} />)}</datalist>
-                          </>
-                        ) : (
-                        <select className={inputClass} value={item.productKey || ''} onChange={e=>onSelectProduct(ii, e.target.value)}>
-                          <option value="">Select product</option>
-                          {productOptions.map((option: any) => <option key={option.key} value={option.key}>{option.name} â€” {option.customer || option.leadNo}{option.saleLabel ? ` Â· ${option.saleLabel}` : ''}</option>)}
-                        </select>)}</label>
-                      <label className="col-span-6 sm:col-span-2 min-w-0"><span className={lbl}>Part Name *</span>
-                        <input className={inputClass} placeholder="Part Name" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} /></label>
-                      <label className="col-span-6 sm:col-span-2 min-w-0"><span className={lbl}>Remarks</span>
-                        <input className={inputClass} placeholder="Remarks..." value={item.remarks ?? ''} onChange={e=>setItem(ii, { remarks: e.target.value })} /></label>
-                      <label className="col-span-2 sm:col-span-1 min-w-0"><span className={lbl}>Qty *</span>
-                        <input type="number" min="0" className={inputClass} placeholder="Qty" value={item.quantity || ''} onChange={e=>setItem(ii, { quantity: e.target.value })} /></label>
-                      <label className="col-span-2 sm:col-span-1 min-w-0"><span className={lbl}>Price *</span>
-                        <input type="number" min="0" className={inputClass} placeholder="Price" value={item.price || ''} onChange={e=>setItem(ii, { price: e.target.value })} /></label>
-                      <label className="col-span-1 min-w-0"><span className={lbl}>Disc %</span>
-                        <input type="number" min="0" className={inputClass} placeholder="%" value={item.discount || ''} onChange={e=>setItem(ii, { discount: e.target.value })} /></label>
-                      <label className="col-span-1 min-w-0"><span className={lbl}>GST %</span>
-                        <input type="number" min="0" className={inputClass} placeholder="%" value={item.gst || ''} onChange={e=>setItem(ii, { gst: e.target.value })} /></label>
-                      <label className="col-span-2 sm:col-span-1 min-w-0"><span className={lbl}>Total</span>
-                        <input className={`${inputClass} bg-white font-bold`} value={lineTotal(item) || 0} disabled /></label>
-                      <div className="col-span-1 flex items-end justify-end">
-                        {(group.items || []).length > 1 && (
-                          <button type="button" className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded" title="Remove line" onClick={() => setGroup({ items: (group.items || []).filter((_: any, j: number) => j !== ii) })}>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-                {(inwardForm.productOptions || []).length === 0 && (group.category || 'GOODS PURCHASE') !== 'EXPENSES' && <span className="mt-1 block text-xs text-amber-700">No enquired products found. Add the product to an Enquiry first.</span>}
-                <div className="flex items-center justify-between mt-1">
-                  <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-800 flex items-center gap-1" onClick={() => setGroup({ items: [...(group.items || []), emptyInwardItem()] })}>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    Add part
-                  </button>
-                </div>
-              </div>);
-            })}
-          </div>
-        </div>
-      </Modal>
 
       {/* Generic View Modal */}
 
-      {/* Finished Goods + Costing gate (Inward drag opens this, not the entry form) */}
-      {costingModalTarget && (
-        <ErrorBoundary title="Finished Goods costing failed to open" onClose={() => setCostingModalTarget(null)}>
-          <FgCostingModal
-            key={costingModalTarget.id}
-            card={costingModalTarget}
-            pickOptions={(salesOrdersList || []).flatMap((o: any) => {
-              let items: any[] = [];
-              try { const r = typeof o.items === 'string' ? JSON.parse(o.items) : o.items; if (Array.isArray(r)) items = r; } catch { /* no lines */ }
-              return items.map((it: any) => ({ company: String(o.customer || o.customer_name || ''), product: String(it.partName || it.productName || it.part_name || it.description || '').trim() })).filter((x: any) => x.product);
-            })}
-            pickCompanies={allKnownCompanies.map((c: any) => String(c.company || ""))}
-            onPick={(company, product) => {
-              const k = (v: any) => String(v ?? '').trim().toLowerCase();
-              // The product of an existing order is costed against that order; anything else is a direct entry.
-              const order: any = (salesOrdersList || []).find((o: any) => {
-                if (k(o.customer || o.customer_name) !== k(company)) return false;
-                try { const r = typeof o.items === 'string' ? JSON.parse(o.items) : o.items; return Array.isArray(r) && r.some((it: any) => k(it.partName || it.productName || it.part_name || it.description) === k(product)); } catch { return false; }
-              });
-              const base = { id: `fg-${Date.now()}`, stage: 'Inward', type: 'inward', customer: company, part: product, qty: 0, value: 0, date: '' };
-              setCostingModalTarget((order
-                ? { ...base, refNo: order.lead_no || order.order_no, raw: { sales_order_ref: order.order_no || '', project_name: order.lead_no || order.order_no, _groupIds: [] } }
-                : { ...base, refNo: '', raw: { sales_order_ref: '', project_name: '', part_name: product, product_name: product, _groupIds: [] } }) as KanbanCard);
-            }}
-            mode={costingMode}
-            onClose={() => setCostingModalTarget(null)}
-            onMoved={() => { setCostingModalTarget(null); fetchPipeline(); }}
-          />
-        </ErrorBoundary>
-      )}
+      {/* Finished Goods + Costing gate. Inline on the Finished Goods list (that module
+          renders it above its table); a popup everywhere else - including the board drag
+          gate and Edit / View, which always stay popups. */}
+      {costingModalTarget && !fgCostingInline && renderFgCosting(false, costingModalTarget)}
 
       {/* Add Finished Good: choose the inward, then the Finished Goods + Costing popup */}
       <Modal open={fgPickOpen} onClose={() => setFgPickOpen(false)} title="Add Finished Good" size="sm" width={460}
@@ -4748,10 +5383,10 @@ export function SalesPipelinePage() {
           <select className={inputClass} value={fgPickId} onChange={e => setFgPickId(e.target.value)}>
             <option value="">Select sales order or inward</option>
             <optgroup label="Sales orders (direct, no inward)">
-              {cards.filter(c => c.type === 'order').map(c => <option key={c.id} value={c.id}>{c.refNo} â€” {c.customer} â€” {c.part}</option>)}
+              {cards.filter(c => c.type === 'order').map(c => <option key={c.id} value={c.id}>{c.refNo} — {c.customer} — {c.part}</option>)}
             </optgroup>
             <optgroup label="Inwards">
-              {cards.filter(c => c.type === 'inward').map(c => <option key={c.id} value={c.id}>{c.refNo} â€” {c.customer} â€” {c.part}</option>)}
+              {cards.filter(c => c.type === 'inward').map(c => <option key={c.id} value={c.id}>{c.refNo} — {c.customer} — {c.part}</option>)}
             </optgroup>
           </select>
         </FormField>
@@ -4771,146 +5406,9 @@ export function SalesPipelinePage() {
         </div>
       </Modal>
 
-      {/* Delivery Challan Modal */}
-      <Modal open={!!dcModalTarget} onClose={() => setDcModalTarget(null)} title="Delivery Challan Form" size="lg" width={780} footer={<><Button onClick={saveDeliveryChallan} disabled={dcSaving}>{dcSaving ? 'Saving...' : 'Save'}</Button><Button variant="secondary" onClick={() => { if (dcSnapshot) { const c = JSON.parse(JSON.stringify(dcSnapshot)); setDcForm({ ...c.form, dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}` }); setDcItems(c.items.map((l: any) => ({ ...l }))); } }}>Clear</Button></>}>
-        <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <FormField label="DC No" required><input className={inputClass} value={dcForm.dcNo || ''} onChange={e=>setDcForm({...dcForm, dcNo: e.target.value})} /></FormField>
-            <FormField label="Date" required><input type="date" className={inputClass} value={dcForm.date || ''} onChange={e=>setDcForm({...dcForm, date: e.target.value})} /></FormField>
-            <CustomerAutocomplete
-              label="Party Name"
-              required
-              value={dcForm.partyName || ''}
-              onChange={val => setDcForm((prev: any) => ({ ...prev, partyName: val }))}
-              onSelectCustomer={(c: any) => {
-                const nm = String(c.company || '');
-                const m: any = (customerList || []).find((x: any) => String(x.name || '').trim().toLowerCase() === nm.trim().toLowerCase()) || {};
-                setDcForm((prev: any) => ({
-                  ...prev, partyName: nm,
-                  partyCode: m.id || '',
-                  partyAddress: m.city || c.city || '',
-                  partyGstin: m.gst || m.gstin || (c as any).gst || '',
-                  phone: m.phone || c.phone || '',
-                }));
-              }}
-              companies={allKnownCompanies}
-              inputClass={inputClass}
-              placeholder="Type or select party..."
-            />
-            <FormField label="Party Address"><input className={inputClass} value={dcForm.partyAddress || ''} onChange={e=>setDcForm({...dcForm, partyAddress: e.target.value})} /></FormField>
-            <FormField label="Party GSTIN"><input className={inputClass} value={dcForm.partyGstin || ''} onChange={e=>setDcForm({...dcForm, partyGstin: e.target.value})} /></FormField>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <FormField label="Party Code"><input className={inputClass} value={dcForm.partyCode || ''} onChange={e=>setDcForm({...dcForm, partyCode: e.target.value})} /></FormField>
-            <FormField label="E-Way Bill No"><input className={inputClass} value={dcForm.ewayBill || ''} onChange={e=>setDcForm({...dcForm, ewayBill: e.target.value})} /></FormField>
-            <FormField label="PO Number"><input className={inputClass} value={dcForm.poNumber || ''} onChange={e=>setDcForm({...dcForm, poNumber: e.target.value})} /></FormField>
-            <FormField label="Place of Supply"><input className={inputClass} value={dcForm.placeOfSupply || ''} onChange={e=>setDcForm({...dcForm, placeOfSupply: e.target.value})} /></FormField>
-            <FormField label="Packaging Details"><input className={inputClass} value={dcForm.packaging || ''} onChange={e=>setDcForm({...dcForm, packaging: e.target.value})} /></FormField>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <FormField label="Enquiry No"><input className={inputClass} value={dcForm.enquiryNo || ''} onChange={e=>setDcForm({...dcForm, enquiryNo: e.target.value})} /></FormField>
-            <FormField label="Vehicle No"><input className={inputClass} value={dcForm.vehicleNo || ''} onChange={e=>setDcForm({...dcForm, vehicleNo: e.target.value})} /></FormField>
-            <FormField label="Phone No"><input className={inputClass} value={dcForm.phone || ''} onChange={e=>setDcForm({...dcForm, phone: e.target.value})} /></FormField>
-            <FormField label="Category"><input className={inputClass} list="dc-category-list" value={dcForm.category || ''} onChange={e=>setDcForm({...dcForm, category: e.target.value})} placeholder="Select or type category" /></FormField>
-            <FormField label="Process"><input className={inputClass} list="dc-process-list" value={dcForm.process || ''} onChange={e=>setDcForm({...dcForm, process: e.target.value})} placeholder="Select or type process" /></FormField>
-          </div>
-          <datalist id="dc-category-list">
-            {(partsMaster.some((p: any) => p.category) ? Array.from(new Set(partsMaster.map((p: any) => p.category).filter(Boolean))) : ['GOODS PURCHASE', 'SERVICE PURCHASE', 'CUSTOMER DC', 'NEW PART', 'NO DC', 'EXPENSES']).map((c: string) => <option key={c} value={c} />)}
-          </datalist>
-          <datalist id="dc-process-list">
-            {processList.map((p: any) => <option key={p.id || p.process_code} value={`${p.process_code} â€” ${p.process_name}`} />)}
-          </datalist>
-          <div>
-            <div className="grid grid-cols-[auto_minmax(0,1.5fr)_5rem_4.5rem_4rem_5.5rem_6rem] gap-2 items-center mb-1 px-1">
-              <span></span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Part Name</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">HSN</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Qty</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Unit</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Price</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Amount</span>
-            </div>
-            {dcItems.map((it, idx) => {
-              const amt = (Number(it.qty) || 0) * (Number(it.price) || 0);
-              return (
-                <div key={idx} className={`grid grid-cols-[auto_minmax(0,1.5fr)_5rem_4.5rem_4rem_5.5rem_6rem] gap-2 items-center rounded-lg border px-3 py-2 mb-2 ${it.selected ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200'}`}>
-                  <input
-                    type="checkbox"
-                    checked={it.selected}
-                    onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, selected: e.target.checked } : x)))}
-                    className="h-4 w-4 accent-orange-600"
-                    aria-label={`Select ${it.name || 'product'}`}
-                  />
-                  <div>
-                    <input
-                      className={inputClass} list="dc-product-list" placeholder="Part name" value={it.name || ''}
-                      onChange={(e) => {
-                        const nm = e.target.value;
-                        const key = nm.trim().toLowerCase();
-                        const m = partsMaster.find((p: any) => String(p.part_name || '').trim().toLowerCase() === key);
-                        const l = dcPricing.lines.find((x) => x.name.trim().toLowerCase() === key);
-                        setDcItems((prev) => prev.map((x, i) => (i === idx ? {
-                          ...x, name: nm,
-                          hsn: x.hsn || (m as any)?.hsn || '',
-                          unit: x.unit || m?.unit || 'Nos',
-                          price: x.price || (l ? String(l.unit) : x.price),
-                        } : x)));
-                      }}
-                    />
-                  </div>
-                  <input className={inputClass} placeholder="HSN" value={it.hsn || ''} onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, hsn: e.target.value } : x)))} />
-                  <div>
-                    <input
-                      type="number" min={0}
-                      disabled={!it.selected}
-                      value={it.qty}
-                      onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))}
-                      className={`${inputClass} !py-1.5 tabular-nums disabled:bg-slate-100`}
-                    />
-                    {it.avail != null && <p className="text-[10px] font-semibold text-violet-700 tabular-nums mt-0.5">Available: {it.avail}</p>}
-                  </div>
-                  <input className={inputClass} placeholder="Nos" value={it.unit || ''} onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, unit: e.target.value } : x)))} />
-                  <input type="number" min={0} className={inputClass} placeholder="0.00" value={it.price || ''} onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, price: e.target.value } : x)))} />
-                  <input className={`${inputClass} bg-white font-bold tabular-nums`} value={amt ? amt.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : 0} disabled />
-                </div>
-              );
-            })}
-            <datalist id="dc-product-list">
-              {partsMaster.map((p: any) => <option key={p.id || p.part_name} value={p.part_name} />)}
-            </datalist>
-            <button type="button" onClick={() => setDcItems((prev) => [...prev, { name: '', avail: null, qty: '', selected: true, hsn: '', unit: 'Nos', price: '' }])} className="mt-1 text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
-              <span className="text-lg">+</span> Add Part
-            </button>
-            {dcPricing.loading ? (
-              <p className="text-[11px] text-slate-400 mt-2">Resolving approved priceâ€¦</p>
-            ) : dcPricing.lines.length > 0 && (
-              <div className="text-xs bg-brand-50/60 border border-brand-100 rounded-lg px-3 py-2 mt-3 space-y-0.5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-brand-700">Approved price (costing sheet)</p>
-                {dcPricing.lines.map((l) => (
-                  <p key={l.name} className="font-semibold text-slate-700 tabular-nums">
-                    {l.name} â€” {formatINR(l.unit)}/pc <span className="font-normal text-slate-500">({l.sheetRef})</span>
-                  </p>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <FormField label="Receiver Name"><input className={inputClass} value={dcForm.receiverName || ''} onChange={e=>setDcForm({...dcForm, receiverName: e.target.value})} /></FormField>
-            <div>
-              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Customer Signature</span>
-              <SignaturePad value={dcForm.custSignature || null} onChange={(v) => setDcForm((prev: any) => ({ ...prev, custSignature: v }))} />
-            </div>
-            <FormField label="Sender Name"><input className={inputClass} value={dcForm.senderName || ''} onChange={e=>setDcForm({...dcForm, senderName: e.target.value})} /></FormField>
-            <div>
-              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Authorized Signature</span>
-              <SignaturePad value={dcForm.authSignature || null} onChange={(v) => setDcForm((prev: any) => ({ ...prev, authSignature: v }))} />
-            </div>
-          </div>
-        </div>
-      </Modal>
 
 
-      {/* DC â†’ Invoice gate (approved FG price, no manual re-entry) */}
+      {/* DC → Invoice gate (approved FG price, no manual re-entry) */}
       {invoiceCostingTarget && (
         <ErrorBoundary title="Invoice entry failed to open" onClose={() => setInvoiceCostingTarget(null)}>
           <DcInvoiceModal
@@ -4987,74 +5485,10 @@ export function SalesPipelinePage() {
       </Modal>
 
       
-      {/* Sales Order Modal */}
-      <Modal open={!!soModalTarget} onClose={closeSoPopup} title="Create Sales Order" size="lg" width={900} footer={<><Button variant="secondary" onClick={closeSoPopup}>Cancel</Button><Button onClick={saveStandaloneSalesOrder}>Save Order</Button></>}>
-        <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-4">
-            <CustomerAutocomplete
-              label="Company"
-              required
-              value={soForm.customer || ''}
-              onChange={val => setSoForm((prev: any) => ({ ...prev, customer: val }))}
-              companies={allKnownCompanies}
-              inputClass={inputClass}
-              placeholder="Type or select company..."
-            />
-            <FormField label="Order Date" required><input type="date" className={inputClass} value={soForm.orderDate || ''} onChange={e=>setSoForm({...soForm, orderDate: e.target.value})} /></FormField>
-          </div>
-          {(soForm.items || []).length > 0 && (
-            <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_7.5rem_6.5rem] gap-2 items-center px-1">
-              <span></span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Product Name</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Qty</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Unit Price (â‚¹)</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">GST %</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Status</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Drawings</span>
-            </div>
-          )}
-          {(soForm.items || []).map((item: any, idx: number) => {
-            const upd = (patch: any) => setSoForm((prev: any) => ({ ...prev, items: (prev.items || []).map((r: any, i: number) => (i === idx ? { ...r, ...patch } : r)) }));
-            return (
-              <div key={item.id || idx} className="rounded-lg border border-slate-200 bg-white px-2 py-2">
-                <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_7.5rem_6.5rem] gap-2 items-center">
-                  <span className="text-[11px] font-bold text-slate-400 text-center">{idx + 1}</span>
-                  <input className={inputClass} placeholder="Product name" value={item.partName || ''} onChange={e=>upd({ partName: e.target.value })} />
-                  <input type="number" min={0} className={inputClass} placeholder="Qty" value={item.quantity ?? ''} onChange={e=>upd({ quantity: e.target.value })} />
-                  <input type="number" min={0} className={inputClass} placeholder="Unit Price (â‚¹)" value={item.unitPrice ?? ''} onChange={e=>upd({ unitPrice: e.target.value })} />
-                  <input type="number" min={0} className={inputClass} placeholder="GST %" value={item.gst ?? ''} onChange={e=>upd({ gst: e.target.value })} />
-                  <select className={inputClass} value={item.itemStatus || 'Confirmed'} onChange={e=>upd({ itemStatus: e.target.value })}>
-                    {['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'].map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                  <label className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-slate-300 bg-white px-2 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach drawings or any file (all formats)">
-                    <UploadCloud size={14} />{(item.files || []).length ? `${item.files.length} file${item.files.length === 1 ? '' : 's'}` : 'Upload'}
-                    <input type="file" multiple accept="*/*" className="hidden" aria-label={`Drawings for product ${idx + 1}`} onChange={e => { const picked = Array.from(e.currentTarget.files || []); e.currentTarget.value = ''; if (picked.length) upd({ files: [...(item.files || []), ...picked] }); }} />
-                  </label>
-                </div>
-                {(item.files || []).length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1.5 pl-9" data-testid="so-files">
-                    {(item.files as File[]).map((f, fi) => (
-                      <span key={`${f.name}-${fi}`} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-700">
-                        <span className="max-w-[200px] truncate">{f.name}</span>
-                        <button type="button" className="text-rose-500 hover:text-rose-700" aria-label={`Remove ${f.name}`} onClick={() => upd({ files: (item.files as File[]).filter((_, j) => j !== fi) })}>Ã—</button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          <button type="button" onClick={() => setSoForm((prev: any) => ({ ...prev, items: [...(prev.items || []), { id: crypto.randomUUID(), partName: '', quantity: '', rejectedQty: '', itemStatus: 'Confirmed', unitPrice: '', gst: '18', files: [] }] }))}
-            className="text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
-            <span className="text-lg">+</span> Add Another Product
-          </button>
-          <div className="grid grid-cols-2 gap-4">
-            <FormField label="Delivery Date" required><input type="date" className={inputClass} value={soForm.deliveryDate || ''} onChange={e=>setSoForm({...soForm, deliveryDate: e.target.value})} /></FormField>
-            <FormField label="PO Number"><input className={inputClass} placeholder="Customer PO no." value={soForm.customerPoNo || ''} onChange={e=>setSoForm({...soForm, customerPoNo: e.target.value})} /></FormField>
-          </div>
-        </div>
-      </Modal>
-<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} â€” Company ID: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" width={900} footer={<>{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {
+      {/* Shared View / Edit modal: opened from every stage list's View / Edit actions.
+          The entry forms are inline now, so this popup is only for inspecting or
+          revising a record that already exists. */}
+<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Company ID: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" width={900} footer={<>{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {
                       if (viewEditMode && viewModalTarget?.stage === 'Sales Order' && soSaveRef.current) {
                         const ok = await soSaveRef.current();
                         if (!ok) return;
@@ -5140,7 +5574,7 @@ export function SalesPipelinePage() {
                                 return <button key={`${ri}-${ai}`} type="button" className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-blue-700 hover:border-brand-300" onClick={() => void openProductFile(p)}><FileText size={12} />{n}</button>;
                               }))}
                               {!g.some((r: any) => Array.isArray(r.attachments) && r.attachments.length > 0) && (
-                                <span className="text-sm text-slate-400">â€”</span>
+                                <span className="text-sm text-slate-400">—</span>
                               )}
                             </div>
                           </div>
@@ -5160,14 +5594,14 @@ export function SalesPipelinePage() {
                                 value={row.product_name || ''}
                                 onChange={(e) => { if (e.target.value !== (row.product_name || '')) void handleInlineEdit('Inward', row.id, 'product_name', e.target.value); }}
                               >
-                                <option value="">Select productâ€¦</option>
+                                <option value="">Select product…</option>
                                 {Array.from(new Set([...enquiryProductOptions(rawLeadsList, row.project_name).map((o: any) => o.name), row.product_name || ''].filter(Boolean))).map((n: string) => <option key={n} value={n}>{n}</option>)}
                               </select>
                             </div>
                             {lineKeys.map(k => <div key={k} className="contents">{inwardCellFor(row, k, '')}</div>)}
                             <div>{inwardCellFor(row, 'remarks', '')}</div>
                             {viewEditMode && g.length > 1 ? (
-                              <button type="button" data-testid="delete-inward-line" title="Delete this part line" onClick={() => void deleteInwardRows([String(row.id)], `the part line â€œ${row.part_name || row.product_name || ri + 1}â€`)}
+                              <button type="button" data-testid="delete-inward-line" title="Delete this part line" onClick={() => void deleteInwardRows([String(row.id)], `the part line “${row.part_name || row.product_name || ri + 1}”`)}
                                 className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 size={14} /></button>
                             ) : <span />}
                           </div>
@@ -5217,7 +5651,7 @@ export function SalesPipelinePage() {
               const cur = viewModalTarget?.stage || '';
               // Enquiry Details section only shows when opened from an Enquiry card.
               // From a Sales Order card the quotation block would repeat the same
-              // products, so it is hidden â€” the sales-order block carries them.
+              // products, so it is hidden — the sales-order block carries them.
               const visible = sections.filter(s => s.key !== 'Enquiry' || cur === 'Enquiry')
                 .filter(s => !(cur === 'Sales Order' && s.key === 'Quotation'));
               const ordered = [...visible.filter(s => s.key === cur), ...visible.filter(s => s.key !== cur)];

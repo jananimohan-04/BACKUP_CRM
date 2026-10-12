@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Search, Calendar, List, Kanban as KanbanIcon, ArrowLeft, FileText, Plus } from 'lucide-react';
+import { Search, Calendar, List, Kanban as KanbanIcon, ArrowLeft, FileText } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 
-export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onAdd, onView }: { onBack: () => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onAdd?: () => void; onView?: (record: any) => void }) {
+export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView, entryForm }: { onBack: () => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onView?: (record: any) => void; entryForm?: ReactNode }) {
   const [enquiries, setEnquiries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -72,8 +72,8 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onAdd, 
   const pager = usePager(filteredEnquiries, filteredEnquiries.length);
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
-      <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+    <div className="flex flex-col gap-4">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex justify-between items-center">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-1.5 hover:bg-slate-200 rounded-md transition-colors text-slate-600">
             <ArrowLeft className="w-5 h-5" />
@@ -84,11 +84,6 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onAdd, 
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {onAdd && (
-            <button onClick={onAdd} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-brand-700 border border-brand-200 rounded-lg hover:bg-brand-50 transition-colors whitespace-nowrap">
-              <Plus size={15} /> Add Enquiry
-            </button>
-          )}
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input 
@@ -107,6 +102,12 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onAdd, 
         </div>
       </div>
 
+      {/* Always-visible New Enquiry entry form, refactored out of the old popup so the
+          page loads with it already open above the table. It is its own card, sitting on
+          the page background between the page header and the table. */}
+      {entryForm}
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
       <div className="overflow-x-auto p-4">
         {loading ? (
           <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div></div>
@@ -149,6 +150,7 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onAdd, 
         )}
       </div>
       <PagerFooter pager={pager} />
+      </div>
 
       <Modal open={!!selectedEnquiry} onClose={() => setSelectedEnquiry(null)} title={`Enquiry Details: ${selectedEnquiry?.enquiry_no || 'Pending'}`} size="xl" footer={<Button onClick={() => setSelectedEnquiry(null)}>Close</Button>}>
         {selectedEnquiry && (

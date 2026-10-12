@@ -45,6 +45,8 @@ interface AuthContextValue {
   isCompanyAdmin: boolean;
   errorMessage: string | null;
   signInWithGoogle: () => Promise<void>;
+  /** TEMPORARY (local dev only): password sign-in. Remove once Google OAuth is configured locally. */
+  signInWithPassword: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
   setActiveCompany: (companyId: string | null) => Promise<void>;
@@ -132,6 +134,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // TEMPORARY (local dev only): Google OAuth has no credentials configured locally, so this
+  // lets you sign in against the local Supabase with a password instead. The onAuthStateChange
+  // listener above picks the session up and loads the ERP profile as usual.
+  // TODO: delete this callback and the matching form in LoginScreen.tsx once
+  // SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID/SECRET are set for local dev.
+  const signInWithPassword = useCallback(async (emailAddress: string, password: string) => {
+    setErrorMessage(null);
+    setStatus('loading');
+    const { error } = await supabase.auth.signInWithPassword({ email: emailAddress, password });
+    if (error) {
+      setErrorMessage(error.message);
+      setStatus('error');
+    }
+  }, []);
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     clear();
@@ -161,6 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isCompanyAdmin: status === 'authorized' && profile?.role === 'COMPANY_ADMIN',
     errorMessage,
     signInWithGoogle,
+    signInWithPassword,
     signOut,
     refresh,
     setActiveCompany,

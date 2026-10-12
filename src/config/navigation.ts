@@ -45,7 +45,8 @@ export const navSections: NavSection[] = [
     label: 'Sales',
     items: [
       { label: 'Sales Pipeline', icon: TrendingUp, page: 'sales/pipeline', iconClass: 'text-emerald-400' },
-      { label: 'All Companies', icon: Users, page: 'sales/leads', iconClass: 'text-cyan-300' },
+      // "All Companies" now lives in the Sales Pipeline toolbar (as a view tab) rather
+      // than as a separate sidebar entry. The /sales/leads route and LeadsPage are unchanged.
     ],
   },
   {

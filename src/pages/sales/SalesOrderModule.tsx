@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import { fetchOrderQty, summarizeSalesOrder } from '@/lib/orderQuantities';
-import { Search, ArrowLeft, Plus } from 'lucide-react';
+import { Search, ArrowLeft } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { SalesOrderSection } from './SalesOrderSection';
@@ -11,7 +11,7 @@ const orderValue = (r: any) => r.total_value ?? r.value;
 
 const ORDER_STATUSES = ['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'];
 
-export function SalesOrderModule({ onBack, onDelete, refreshSignal, onAdd, onView, onEdit }: { onBack: () => void; onDelete?: (record: any) => void; refreshSignal?: number; onAdd?: () => void; onView?: (record: any) => void; onEdit?: (record: any) => void }) {
+export function SalesOrderModule({ onBack, onDelete, refreshSignal, onView, onEdit, entryForm }: { onBack: () => void; onDelete?: (record: any) => void; refreshSignal?: number; onView?: (record: any) => void; onEdit?: (record: any) => void; entryForm?: ReactNode }) {
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -120,8 +120,8 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onAdd, onVie
   const pager = usePager(filteredRecords, filteredRecords.length);
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
-      <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+    <div className="flex flex-col gap-4">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex justify-between items-center">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-1.5 hover:bg-slate-200 rounded-md transition-colors text-slate-600">
             <ArrowLeft className="w-5 h-5" />
@@ -132,11 +132,6 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onAdd, onVie
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {onAdd && (
-            <button onClick={onAdd} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-brand-700 border border-brand-200 rounded-lg hover:bg-brand-50 transition-colors whitespace-nowrap">
-              <Plus size={15} /> Add Sales Order
-            </button>
-          )}
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -150,6 +145,11 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onAdd, onVie
         </div>
       </div>
 
+      {/* Always-visible New Sales Order entry form, refactored out of the old popup so
+          the page loads with it already open above the table. */}
+      {entryForm}
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
       <div className="overflow-x-auto p-4">
         {loading ? (
           <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div></div>
@@ -218,6 +218,7 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onAdd, onVie
         )}
       </div>
       <PagerFooter pager={pager} />
+      </div>
 
       <Modal open={!!selectedRecord} onClose={closeRecord} title={'Sales Order Details: ' + (selectedRecord?.order_no || 'Pending')} size="md" footer={
         <div className="flex justify-end w-full gap-2">

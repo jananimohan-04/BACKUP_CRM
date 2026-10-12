@@ -41,6 +41,7 @@ export function Modal({
   draggable = true,
   isDirty = false,
   dirtyMessage = 'Discard unsaved changes?',
+  inline = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -56,6 +57,12 @@ export function Modal({
   /** External dirty flag (OR-ed with automatic form-interaction tracking). */
   isDirty?: boolean;
   dirtyMessage?: string;
+  /**
+   * Inline mode: the same title / body / footer chrome is rendered as a normal card in the
+   * page flow (no backdrop, no overlay, no page scroll lock) so the form can sit above its
+   * table. Everything else - field markup, footer buttons, handlers - is unchanged.
+   */
+  inline?: boolean;
 }) {
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [dim, setDim] = useState<{ w: number; h: number | null }>({ w: 640, h: null });
@@ -123,6 +130,29 @@ export function Modal({
   }, [open, dirty, confirming, onClose]);
 
   if (!open) return null;
+
+  // Inline: no backdrop, no overlay, no scroll lock, no drag/resize - just the same
+  // header / body / footer laid out as a card so the form flows with the page.
+  if (inline) {
+    return (
+      <section className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col" data-testid="inline-form">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider truncate">{title}</h2>
+              {subtitle && <p className="text-xs font-medium text-slate-500 mt-0.5 truncate">{subtitle}</p>}
+            </div>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-5 bg-slate-50/30 min-h-0">{children}</div>
+        {footer && (
+          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50 shrink-0">
+            {footer}
+          </div>
+        )}
+      </section>
+    );
+  }
 
   const requestClose = () => {
     if (dirty) setConfirming(true);

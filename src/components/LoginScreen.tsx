@@ -2,9 +2,18 @@ import { useState } from 'react';
 import { Shield, Zap, Award } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
+// TEMPORARY (local dev only): password sign-in is shown only when running the dev server
+// against localhost, because the local Supabase has no Google OAuth credentials.
+// Hosted builds keep the Google-only screen. TODO: remove once local Google OAuth works.
+const isLocalDev =
+  import.meta.env.DEV &&
+  ['localhost', '127.0.0.1'].includes(window.location.hostname);
+
 export function LoginScreen() {
-  const { signInWithGoogle, errorMessage } = useAuth();
+  const { signInWithGoogle, signInWithPassword, errorMessage } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [devEmail, setDevEmail] = useState('jananimohan44@gmail.com');
+  const [devPassword, setDevPassword] = useState('');
 
   // Redirects to Google; on return AuthProvider checks the account against the ERP user list.
   const handleGoogle = async () => {
@@ -96,6 +105,7 @@ export function LoginScreen() {
             <p className="text-sm text-slate-500 mt-1.5">Sign in to your ARGUSCNC ERP account</p>
           </div>
 
+          {!isLocalDev && (
           <button
             type="button"
             onClick={handleGoogle}
@@ -114,6 +124,47 @@ export function LoginScreen() {
             )}
             <span>Continue with Google</span>
           </button>
+          )}
+
+          {isLocalDev && (
+            <form
+              className="mt-6 rounded-lg border-2 border-dashed border-amber-300 bg-amber-50/60 p-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void signInWithPassword(devEmail.trim(), devPassword);
+              }}
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                Local dev only — temporary
+              </p>
+              <p className="mt-1 text-[11px] text-amber-700/80">
+                Google OAuth isn’t configured locally — sign in with the local dev
+                password instead.
+              </p>
+              <input
+                type="email"
+                value={devEmail}
+                onChange={(e) => setDevEmail(e.target.value)}
+                autoComplete="username"
+                className="mt-3 w-full rounded-md border border-amber-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-amber-500 focus:outline-none"
+              />
+              <input
+                type="password"
+                value={devPassword}
+                onChange={(e) => setDevPassword(e.target.value)}
+                autoComplete="current-password"
+                placeholder="Password"
+                className="mt-2 w-full rounded-md border border-amber-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-amber-500 focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={loading || !devPassword}
+                className="mt-3 w-full rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-amber-700 active:scale-[0.98] disabled:opacity-60"
+              >
+                Sign in with password
+              </button>
+            </form>
+          )}
 
           {errorMessage && (
             <p className="mt-4 text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{errorMessage}</p>

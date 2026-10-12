@@ -71,7 +71,7 @@ export function Sidebar({
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 h-24 border-b border-navy-800 flex-shrink-0 bg-navy-950 shadow-sm relative z-10">
         {!collapsed ? (
-          <img src="/arguscnc-logo.jpg" alt="ARGUSCNC Logo" className="w-full h-16 object-contain rounded-sm" />
+          <img src="/arguscnc-logo.jpg" alt="ARGUSCNC Logo" className="w-full h-16 object-contain rounded-2xl" />
         ) : (
           <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center flex-shrink-0 shadow-glow-orange overflow-hidden border border-brand-500/20">
             <img src="/arguscnc-mark.jpg" alt="ARGUSCNC Mark" className="w-full h-full object-contain p-1" />

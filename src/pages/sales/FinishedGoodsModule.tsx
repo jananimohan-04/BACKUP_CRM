@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Search, ArrowLeft, FileText, Plus } from 'lucide-react';
+import { Search, ArrowLeft, FileText } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 
-export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, onAdd, onView }: { onBack: () => void; onView?: (record: any) => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onAdd?: () => void }) {
+export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, onView, entryForm }: { onBack: () => void; onView?: (record: any) => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; entryForm?: ReactNode }) {
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -38,8 +38,8 @@ export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, o
   const pager = usePager(filteredRecords, filteredRecords.length);
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
-      <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+    <div className="flex flex-col gap-4">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex justify-between items-center">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-1.5 hover:bg-slate-200 rounded-md transition-colors text-slate-600">
             <ArrowLeft className="w-5 h-5" />
@@ -50,11 +50,6 @@ export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, o
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {onAdd && (
-            <button onClick={onAdd} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-brand-700 border border-brand-200 rounded-lg hover:bg-brand-50 transition-colors whitespace-nowrap">
-              <Plus size={15} /> Add Finished Good
-            </button>
-          )}
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -68,6 +63,11 @@ export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, o
         </div>
       </div>
 
+      {/* Always-visible Finished Goods entry form: the Finished Goods + Costing flow,
+          refactored out of its popup so the page loads with it above the table. */}
+      {entryForm}
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
       <div className="overflow-x-auto p-4">
         {loading ? (
           <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div></div>
@@ -104,6 +104,7 @@ export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, o
         )}
       </div>
       <PagerFooter pager={pager} />
+      </div>
 
       <Modal open={!!selectedRecord} onClose={() => setSelectedRecord(null)} title={'Finished Goods Details: ' + (selectedRecord?.wo_no || 'Pending')} size="xl" footer={
         <div className="flex justify-between w-full">

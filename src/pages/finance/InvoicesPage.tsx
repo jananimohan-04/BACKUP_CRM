@@ -34,7 +34,10 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [formOpen, setFormOpen] = useState(false);
+  // The New Invoice form is always rendered inline at the top of the page, so it starts
+  // open. The popup is only used when *editing* an existing invoice (editId set).
+  const [formOpen, setFormOpen] = useState(true);
+  const [savedNote, setSavedNote] = useState('');
   const [payOpen, setPayOpen] = useState(false);
   const [editId, setEditId] = useState('');
   const [form, setForm] = useState<any>({ invoice_type: 'Sales Invoice', invoice_date: todayISO(), customer_name: '', customer_id: '', due_date: '', po_no: '', dc_no: '', delivery_id: '', payment_terms: '' });
@@ -138,7 +141,18 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     try {
       const items = lines.map(line => ({ ...line, quantity: Number(line.quantity), rate: Number(line.rate), gst_rate: line.gst_rate === '' ? null : Number(line.gst_rate), discount_pct: Number(line.discount_pct || 0) }));
       const result = await financeApi.saveInvoice({ ...form, quantity: items.reduce((sum, item) => sum + item.quantity, 0), part_name: items.map(item => item.description).join(', ') }, items);
-      setFormOpen(false); await reload(1); await view({ id: result.id } as InvoiceRow);
+      await reload(1);
+      if (editId) {
+        // Editing an existing invoice still happens in the popup, which closes on save.
+        setFormOpen(false);
+        await view({ id: result.id } as InvoiceRow);
+        // ...and the always-visible blank entry form is restored underneath it.
+        startNew();
+      } else {
+        // Creating: keep the inline form on screen, confirm, then reset it for the next one.
+        setSavedNote(result.invoice_no || result.id);
+        startNew();
+      }
     } catch (e) { setError(e instanceof Error ? e.message : 'Unable to save invoice.'); }
     finally { setBusy(false); }
   };
@@ -242,9 +256,25 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
   };
   const pageCount = Math.max(1, Math.ceil(total / PAGE));
 
+  // The invoice fields live in exactly one place: rendered by the always-visible
+  // New Invoice card above the table, and by the popup used when editing a record.
+  const invoiceFormBody = (<>
+      <div className="grid md:grid-cols-3 gap-3">
+        <FormField label="Invoice Type"><select className={inputClass} value={form.invoice_type} onChange={e=>setForm({...form,invoice_type:e.target.value})}><option>Sales Invoice</option><option>Proforma Invoice</option></select></FormField>
+        <FormField label="Invoice No (optional)"><input className={inputClass} value={form.invoice_no||''} onChange={e=>setForm({...form,invoice_no:e.target.value})} placeholder="Auto-number if blank"/></FormField>
+        <FormField label="Delivery Challan"><select className={inputClass} value={form.delivery_id||''} onChange={e=>chooseDelivery(e.target.value)}><option value="">Not linked</option>{deliveries.map(d=><option key={d.id} value={d.id}>{d.delivery_no||d.id} · {d.customer_name||''}</option>)}</select></FormField>
+        <FormField label="Company" required><select className={inputClass} value={form.customer_id||''} onChange={e=>{const c=customers.find(x=>x.id===e.target.value);setForm({...form,customer_id:e.target.value,customer_name:c?.name||''})}}><option value="">Select company</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></FormField>
+        <FormField label="Invoice Date"><input type="date" className={inputClass} value={form.invoice_date} onChange={e=>setForm({...form,invoice_date:e.target.value})}/></FormField>
+        <FormField label="Due Date"><input type="date" className={inputClass} value={form.due_date||''} onChange={e=>setForm({...form,due_date:e.target.value})}/></FormField>
+        <FormField label="PO No"><input className={inputClass} value={form.po_no||''} onChange={e=>setForm({...form,po_no:e.target.value})}/></FormField>
+        <FormField label="Payment Terms"><input className={inputClass} value={form.payment_terms||''} onChange={e=>setForm({...form,payment_terms:e.target.value})}/></FormField>
+      </div>
+      <div className="mt-4 space-y-3 border-t pt-4"><div className="flex items-center justify-between"><h3 className="text-sm font-semibold">Invoice Items</h3><Button size="sm" variant="secondary" icon={<Plus size={13}/>} onClick={()=>setLines([...lines,{description:'',quantity:'',unit:'',rate:'',gst_rate:'',discount_pct:'0'}])}>Add Item</Button></div>{lines.map((line,index)=><div key={index} className="grid md:grid-cols-7 gap-2 items-end rounded border p-2"><FormField label="Item"><input className={inputClass} value={line.description} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,description:e.target.value}:x))}/></FormField><FormField label="Quantity"><input type="number" min="0" className={inputClass} value={line.quantity} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,quantity:e.target.value}:x))}/></FormField><FormField label="Unit"><input className={inputClass} value={line.unit} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,unit:e.target.value}:x))}/></FormField><FormField label="Rate"><input type="number" min="0" className={inputClass} value={line.rate} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,rate:e.target.value}:x))}/></FormField><FormField label="GST %"><input type="number" min="0" className={inputClass} value={line.gst_rate} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,gst_rate:e.target.value}:x))} placeholder="Company default"/></FormField><FormField label="Discount %"><input type="number" min="0" className={inputClass} value={line.discount_pct} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,discount_pct:e.target.value}:x))}/></FormField><button type="button" aria-label="Remove item" disabled={lines.length===1} onClick={()=>setLines(lines.filter((_,i)=>i!==index))} className="h-9 rounded border text-rose-600 disabled:opacity-40"><Trash2 size={14} className="mx-auto"/></button></div>)}</div>
+  </>);
+ 
   return <div className="p-4 lg:p-6 space-y-4 bg-slate-50 min-h-full">
     {onBack&&<div><Button variant="secondary" size="sm" icon={<ArrowLeft size={14}/>} onClick={onBack}>Back</Button></div>}
-    <PageHeader title="Invoices" description="Create, manage and track sales invoices, taxes, payment terms and outstanding amounts." actions={<><Button variant="secondary" size="sm" icon={<Download size={14}/>} onClick={() => void exportRows()} disabled={busy}>Export</Button><Button variant="secondary" size="sm" icon={<Printer size={14}/>} onClick={printInvoice}>Print</Button><Button size="sm" icon={<Plus size={14}/>} onClick={startNew}>New Invoice</Button></>}/>
+    <PageHeader title="Invoices" description="Create, manage and track sales invoices, taxes, payment terms and outstanding amounts." actions={<><Button variant="secondary" size="sm" icon={<Download size={14}/>} onClick={() => void exportRows()} disabled={busy}>Export</Button><Button variant="secondary" size="sm" icon={<Printer size={14}/>} onClick={printInvoice}>Print</Button></>}/>
     {error && <div className="rounded border border-rose-200 bg-rose-50 p-2 text-sm text-rose-700">{error}</div>}
     <div className="flex overflow-auto border-b">{[['','All Invoices'],['Sales Invoice','Sales Invoice'],['Proforma Invoice','Proforma Invoice'],['Credit Note','Credit Note'],['Cancelled','Cancelled']].map(([v,l])=><button key={v} onClick={()=>{setTab(v);setPage(1)}} className={'px-4 py-2 text-xs font-semibold border-b-2 whitespace-nowrap '+(tab===v?'border-brand-600 text-brand-700':'border-transparent text-slate-500')}>{l}</button>)}</div>
     <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
@@ -258,6 +288,31 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
       <FormField label="Search"><input className={inputClass} placeholder="Invoice, company, PO, DC, part..." value={draft.search} onChange={e=>setDraft({...draft,search:e.target.value})}/></FormField>
       <Button size="sm" onClick={()=>{setFilters(draft);void reload(1,draft,tab)}}>Apply</Button><Button size="sm" variant="secondary" onClick={()=>{const f={from:'',to:'',customer:'',status:'',search:''};setDraft(f);setFilters(f);void reload(1,f,tab)}}>Clear</Button>
     </div></Card>
+    {/* New Invoice entry form. Refactored out of the popup so it is visible as soon as
+        the page opens, directly above the invoice table. Fields, validation, the item
+        rows and save() are the same code as before - only the modal chrome is gone. */}
+    {formOpen && !editId && (
+      <section className="rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="invoice-entry-form">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-100 px-3 py-2">
+          <h3 className="text-sm font-bold text-slate-800">New Invoice</h3>
+          <p className="text-xs text-slate-500">Tax totals and ledger postings are calculated by the database.</p>
+        </div>
+        <div className="space-y-2.5 p-3">
+          {savedNote && (
+            <div role="status" data-testid="invoice-saved-note" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+              <span>&#10003; Invoice {savedNote} saved. The table below has been refreshed.</span>
+              <button type="button" onClick={() => setSavedNote('')} className="font-bold underline hover:text-emerald-900">Dismiss</button>
+            </div>
+          )}
+          {invoiceFormBody}
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-2.5">
+            <Button variant="secondary" onClick={() => { startNew(); setSavedNote(''); }}>Clear / Reset</Button>
+            <Button onClick={() => void save()} disabled={busy}>{busy ? 'Saving...' : 'Save Invoice'}</Button>
+          </div>
+        </div>
+      </section>
+    )}
+ 
     <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_330px] gap-4 items-start">
       <Card className="overflow-hidden"><div className="overflow-auto"><table className="w-full min-w-[1000px] text-left"><thead><tr className="bg-slate-50 border-b text-[10px] uppercase text-slate-500">{['#','Invoice No','Date','Company','PO No','Basic','CGST','SGST','IGST','Total','Received','Balance','Status',''].map(x=><th key={x} className="px-2 py-2">{x}</th>)}</tr></thead><tbody>
         {loading?<tr><td colSpan={14} className="p-10 text-center">Loading invoices...</td></tr>:rows.map((r,i)=><tr key={r.id} onClick={()=>void view(r)} className="border-b hover:bg-blue-50/50 cursor-pointer text-xs"><td className="px-2 py-2">{(page-1)*PAGE+i+1}</td><td className="px-2 py-2 font-semibold text-blue-700">{r.invoice_no}</td><td className="px-2 py-2">{formatDate(r.invoice_date)}</td><td className="px-2 py-2">{r.customer_name||'-'}</td><td className="px-2 py-2">{r.po_no||'-'}</td><td className="px-2 py-2 text-right">{cash(r.basic_value)}</td><td className="px-2 py-2 text-right">{cash(r.cgst)}</td><td className="px-2 py-2 text-right">{cash(r.sgst)}</td><td className="px-2 py-2 text-right">{cash(r.igst)}</td><td className="px-2 py-2 text-right font-semibold">{cash(r.total)}</td><td className="px-2 py-2 text-right">{cash(r.received)}</td><td className="px-2 py-2 text-right">{cash(r.balance)}</td><td className="px-2 py-2"><Badge variant={statusToVariant(r.status)}>{r.status}</Badge></td><td className="px-2 py-2"><Eye size={14}/></td></tr>)}
@@ -273,18 +328,9 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     </div>
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4"><Card className="p-4"><h3 className="font-bold text-sm mb-3">Invoice Activity</h3><div className="h-24 flex items-end gap-1 border-b">{stats.monthly.length?stats.monthly.map(x=><div key={x.day} title={formatDate(x.day)+' '+cash(x.invoiced)} className="flex-1 bg-blue-500 rounded-t" style={{height:Math.max(3,Number(x.invoiced)/Math.max(1,...stats.monthly.map(y=>Number(y.invoiced)))*90)}}/>):<span className="w-full text-center text-xs text-slate-400">No invoice activity.</span>}</div><p className="text-[10px] text-slate-500 mt-2">Actual invoice amounts from the selected date range</p></Card><Card className="p-4"><h3 className="font-bold text-sm mb-2">Outstanding by Ageing</h3><Total label="0-30 days" value={cash(stats.ageing.current)}/><Total label="31-60 days" value={cash(stats.ageing.d31_60)}/><Total label="61-90 days" value={cash(stats.ageing.d61_90)}/><Total label="Over 90 days" value={cash(stats.ageing.d90_plus)}/></Card><Card className="p-4"><h3 className="font-bold text-sm mb-2">Invoice Status</h3><div className="grid grid-cols-2 gap-2">{['Paid','Partially Paid','Overdue','Credit Note','Cancelled'].map(x=><div key={x} className="border rounded p-2 flex justify-between text-xs">{x}<b>{stats.by_status?.[x]||0}</b></div>)}</div><h4 className="font-semibold text-xs mt-3">Top Companies</h4>{stats.top_customers?.slice(0,4).map(x=><Total key={x.customer} label={x.customer} value={cash(x.value)}/>)}</Card></div>
 
-    <Modal open={formOpen} onClose={()=>!busy&&setFormOpen(false)} title={editId?'Edit Invoice':'New Invoice'} subtitle="Tax totals and ledger postings are calculated by the database." size="2xl" footer={<><Button variant="secondary" onClick={()=>setFormOpen(false)}>Cancel</Button><Button onClick={()=>void save()} disabled={busy}>{busy?'Saving...':'Save Invoice'}</Button></>}>
-      <div className="grid md:grid-cols-3 gap-3">
-        <FormField label="Invoice Type"><select className={inputClass} value={form.invoice_type} onChange={e=>setForm({...form,invoice_type:e.target.value})}><option>Sales Invoice</option><option>Proforma Invoice</option></select></FormField>
-        <FormField label="Invoice No (optional)"><input className={inputClass} value={form.invoice_no||''} onChange={e=>setForm({...form,invoice_no:e.target.value})} placeholder="Auto-number if blank"/></FormField>
-        <FormField label="Delivery Challan"><select className={inputClass} value={form.delivery_id||''} onChange={e=>chooseDelivery(e.target.value)}><option value="">Not linked</option>{deliveries.map(d=><option key={d.id} value={d.id}>{d.delivery_no||d.id} · {d.customer_name||''}</option>)}</select></FormField>
-        <FormField label="Company" required><select className={inputClass} value={form.customer_id||''} onChange={e=>{const c=customers.find(x=>x.id===e.target.value);setForm({...form,customer_id:e.target.value,customer_name:c?.name||''})}}><option value="">Select company</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></FormField>
-        <FormField label="Invoice Date"><input type="date" className={inputClass} value={form.invoice_date} onChange={e=>setForm({...form,invoice_date:e.target.value})}/></FormField>
-        <FormField label="Due Date"><input type="date" className={inputClass} value={form.due_date||''} onChange={e=>setForm({...form,due_date:e.target.value})}/></FormField>
-        <FormField label="PO No"><input className={inputClass} value={form.po_no||''} onChange={e=>setForm({...form,po_no:e.target.value})}/></FormField>
-        <FormField label="Payment Terms"><input className={inputClass} value={form.payment_terms||''} onChange={e=>setForm({...form,payment_terms:e.target.value})}/></FormField>
-      </div>
-      <div className="mt-4 space-y-3 border-t pt-4"><div className="flex items-center justify-between"><h3 className="text-sm font-semibold">Invoice Items</h3><Button size="sm" variant="secondary" icon={<Plus size={13}/>} onClick={()=>setLines([...lines,{description:'',quantity:'',unit:'',rate:'',gst_rate:'',discount_pct:'0'}])}>Add Item</Button></div>{lines.map((line,index)=><div key={index} className="grid md:grid-cols-7 gap-2 items-end rounded border p-2"><FormField label="Item"><input className={inputClass} value={line.description} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,description:e.target.value}:x))}/></FormField><FormField label="Quantity"><input type="number" min="0" className={inputClass} value={line.quantity} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,quantity:e.target.value}:x))}/></FormField><FormField label="Unit"><input className={inputClass} value={line.unit} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,unit:e.target.value}:x))}/></FormField><FormField label="Rate"><input type="number" min="0" className={inputClass} value={line.rate} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,rate:e.target.value}:x))}/></FormField><FormField label="GST %"><input type="number" min="0" className={inputClass} value={line.gst_rate} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,gst_rate:e.target.value}:x))} placeholder="Company default"/></FormField><FormField label="Discount %"><input type="number" min="0" className={inputClass} value={line.discount_pct} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,discount_pct:e.target.value}:x))}/></FormField><button type="button" aria-label="Remove item" disabled={lines.length===1} onClick={()=>setLines(lines.filter((_,i)=>i!==index))} className="h-9 rounded border text-rose-600 disabled:opacity-40"><Trash2 size={14} className="mx-auto"/></button></div>)}</div>
+    <Modal open={formOpen && !!editId} onClose={()=>!busy&&setFormOpen(false)} title="Edit Invoice" subtitle="Tax totals and ledger postings are calculated by the database." size="2xl" footer={<><Button variant="secondary" onClick={()=>setFormOpen(false)}>Cancel</Button><Button onClick={()=>void save()} disabled={busy}>{busy?'Saving...':'Save Invoice'}</Button></>}>
+      {invoiceFormBody}
+      {invoiceFormBody}
     </Modal>
     <Modal open={payOpen} onClose={()=>!busy&&setPayOpen(false)} title="Record Company Receipt" subtitle={selected?.invoice_no} footer={<><Button variant="secondary" onClick={()=>setPayOpen(false)}>Cancel</Button><Button onClick={()=>void saveReceipt()} disabled={busy}>Record Receipt</Button></>}>
       <div className="grid md:grid-cols-2 gap-3"><FormField label="Bank / Cash Account"><select className={inputClass} value={payment.account_id} onChange={e=>setPayment({...payment,account_id:e.target.value})}>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></FormField><FormField label="Amount"><input type="number" min="0.01" max={selected?.balance} className={inputClass} value={payment.amount} onChange={e=>setPayment({...payment,amount:e.target.value})}/></FormField><FormField label="Date"><input type="date" className={inputClass} value={payment.txn_date} onChange={e=>setPayment({...payment,txn_date:e.target.value})}/></FormField><FormField label="Mode"><input className={inputClass} value={payment.mode} onChange={e=>setPayment({...payment,mode:e.target.value})}/></FormField><FormField label="Reference"><input className={inputClass} value={payment.reference_no} onChange={e=>setPayment({...payment,reference_no:e.target.value})}/></FormField></div>

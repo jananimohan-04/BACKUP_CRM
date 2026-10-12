@@ -232,10 +232,12 @@ export function DonutChart({
             <title>{`${a.label}: ${a.value} (${a.pct}%)`}</title>
           </path>
         ))}
-        <text x={cx} y={cy - 4} textAnchor="middle" className="fill-slate-800 font-bold" fontSize={22}>
+        {/* Centre labels scale with the chart so larger donuts don't look type-starved.
+            Anchored on the 180px baseline where 22 / 10 was the original sizing. */}
+        <text x={cx} y={cy - Math.round(size * 4 / 180)} textAnchor="middle" className="fill-slate-800 font-bold" fontSize={Math.round(size * 22 / 180)}>
           {rawTotal}
         </text>
-        <text x={cx} y={cy + 14} textAnchor="middle" className="fill-slate-400" fontSize={10}>
+        <text x={cx} y={cy + Math.round(size * 14 / 180)} textAnchor="middle" className="fill-slate-400" fontSize={Math.round(size * 10 / 180)}>
           Total
         </text>
       </svg>

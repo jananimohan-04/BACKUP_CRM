@@ -69,7 +69,12 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   // add / edit: the form; view: read-only detail of one order.
-  const [dlg, setDlg] = useState<null | { mode: 'add' | 'edit' | 'view'; company: string; orderNo: string; lines: Line[]; origIds: string[] }>(null);
+  // The entry form is inline on the Rejected page, so it starts open with a blank add
+  // dialog. The popup is used only for viewing / editing an existing group (mode !== 'add'),
+  // which is why the initial value is exactly what openAdd() builds.
+  const [dlg, setDlg] = useState<null | { mode: 'add' | 'edit' | 'view'; company: string; orderNo: string; lines: Line[]; origIds: string[] }>({ mode: 'add', company: '', orderNo: '', lines: [emptyLine()], origIds: [] });
+  // Inline confirmation shown after a successful save (the form stays on screen).
+  const [savedNote, setSavedNote] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -163,7 +168,8 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
           if (!res?.saved) return alert('Unable to record a rejection. Nothing more was saved.');
         }
       }
-      setDlg(null);
+      setSavedNote(soNo);
+      openAdd();
       await load(); onChanged?.();
     } catch (e: any) {
       alert(`Unable to save the rejections: ${e?.message ?? e}`);
@@ -181,73 +187,11 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
 
   const pager = usePager(shown, shown.length);
 
-  return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]" data-testid="rejected-list">
-      <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-        <div className="flex items-center gap-3">
-          <button onClick={onBack} className="p-1.5 hover:bg-slate-200 rounded-md transition-colors text-slate-600"><ArrowLeft className="w-5 h-5" /></button>
-          <div>
-            <h2 className="text-lg font-bold text-slate-800">Rejected</h2>
-            <p className="text-xs text-slate-500">Rejections by order · {shown.length} order{shown.length === 1 ? '' : 's'} · {grand} pcs rejected</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={openAdd} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-brand-700 border border-brand-200 rounded-lg hover:bg-brand-50 transition-colors whitespace-nowrap">
-            <Plus size={15} /> Add Rejected
-          </button>
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input type="text" placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 pr-4 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-brand-500" />
-          </div>
-        </div>
-      </div>
-      <PagerFooter pager={pager} />
-
-      <div className="overflow-x-auto p-4">
-        {missing && <p className="mb-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Rejections are stored with production batches. Apply the production-batches migration (20260929010000_production_batches.sql) to use this list.</p>}
-        {loading ? (
-          <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" /></div>
-        ) : (
-          <table className="erp-table w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
-                <th className="p-3 font-semibold">Company (Order)</th>
-                <th className="p-3 font-semibold text-right">Ordered</th><th className="p-3 font-semibold text-right">Finished</th>
-                <th className="p-3 font-semibold text-right">Rejected</th><th className="p-3 font-semibold text-right">Remaining</th>
-                <th className="p-3 font-semibold text-right">Entries</th><th className="p-3 font-semibold">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pager.pageItems.map(g => (
-                <tr key={g.orderNo} className="border-b border-slate-100 hover:bg-slate-50 transition-colors" data-testid="rejected-row">
-                  <td className="p-3">
-                    <div className="font-semibold text-brand-700 text-sm">{g.company || '—'}</div>
-                    <div className="font-mono text-xs text-slate-500">({g.ref}{g.ref !== g.orderNo ? ` · ${g.orderNo}` : ''})</div>
-                  </td>
-                  <td className="p-3 text-sm text-right tabular-nums">{g.q ? g.q.ordered : '—'}</td>
-                  <td className="p-3 text-sm text-right tabular-nums text-emerald-700">{g.q ? g.q.good : '—'}</td>
-                  <td className="p-3 text-sm font-bold text-right tabular-nums text-red-600">{g.total}</td>
-                  <td className="p-3 text-sm text-right tabular-nums text-amber-700">{g.q ? g.q.remaining : '—'}</td>
-                  <td className="p-3 text-sm text-right tabular-nums text-slate-500">{g.rows.length}</td>
-                  <td className="p-3">
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="secondary" size="sm" onClick={() => openGroup(g, 'view')}>View</Button>
-                      <Button variant="secondary" size="sm" onClick={() => openGroup(g, 'edit')}>Edit</Button>
-                      <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => void removeGroup(g)}>Delete</Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {shown.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-slate-500">No rejections recorded.</td></tr>}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <Modal open={!!dlg} onClose={() => setDlg(null)} title={view ? 'View Rejected' : dlg?.mode === 'edit' ? 'Edit Rejected' : 'Add Rejected'} size="lg" width={820}
-        footer={view
-          ? <Button variant="secondary" onClick={() => setDlg(null)}>Close</Button>
-          : <><Button variant="secondary" onClick={() => setDlg(null)}>Cancel</Button><Button onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : dlg?.mode === 'edit' ? 'Save Changes' : 'Save'}</Button></>}>
+  // The rejection form itself: company / order picker, per-order summary and the
+  // rejection line rows. Shared by the always-visible Add Rejected card above the table
+  // and by the popup used to view or edit an existing group, so the fields and the
+  // validation behind save() exist in exactly one place.
+  const rejDialogBody = (<>
         {dlg && (
           <div className="space-y-4" data-testid="rej-dialog">
             {view || dlg.mode === 'edit' ? (
@@ -332,6 +276,98 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
             )}
           </div>
         )}
+  </>);
+ 
+  return (
+    <div className="flex flex-col gap-4" data-testid="rejected-list">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <button onClick={onBack} className="p-1.5 hover:bg-slate-200 rounded-md transition-colors text-slate-600"><ArrowLeft className="w-5 h-5" /></button>
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">Rejected</h2>
+            <p className="text-xs text-slate-500">Rejections by order · {shown.length} order{shown.length === 1 ? '' : 's'} · {grand} pcs rejected</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input type="text" placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 pr-4 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-brand-500" />
+          </div>
+        </div>
+      </div>
+      {/* Always-visible Add Rejected entry form. The same form the "Add Rejected" popup
+          showed, refactored to sit above the table - view / edit still use the popup. */}
+      {dlg?.mode === 'add' && (
+        <section className="bg-white rounded-xl shadow-sm border border-slate-200" data-testid="rej-entry-form">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-100 px-4 py-3">
+            <h3 className="text-sm font-bold text-slate-800">Add Rejected</h3>
+            <p className="text-xs text-slate-500">Select the company and order, record the rejected quantities, then save. The form stays open so you can add the next one straight away.</p>
+          </div>
+          <div className="space-y-4 p-4">
+            {savedNote && (
+              <div role="status" data-testid="rej-saved-note" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                <span>&#10003; Rejections for {savedNote} saved. The list below has been refreshed.</span>
+                <button type="button" onClick={() => setSavedNote('')} className="font-bold underline hover:text-emerald-900">Dismiss</button>
+              </div>
+            )}
+            {rejDialogBody}
+            <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 pt-4">
+              <Button variant="secondary" onClick={openAdd}>Clear / Reset</Button>
+              <Button onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
+            </div>
+          </div>
+        </section>
+      )}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
+      <PagerFooter pager={pager} />
+
+      <div className="overflow-x-auto p-4">
+        {missing && <p className="mb-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Rejections are stored with production batches. Apply the production-batches migration (20260929010000_production_batches.sql) to use this list.</p>}
+        {loading ? (
+          <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" /></div>
+        ) : (
+          <table className="erp-table w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
+                <th className="p-3 font-semibold">Company (Order)</th>
+                <th className="p-3 font-semibold text-right">Ordered</th><th className="p-3 font-semibold text-right">Finished</th>
+                <th className="p-3 font-semibold text-right">Rejected</th><th className="p-3 font-semibold text-right">Remaining</th>
+                <th className="p-3 font-semibold text-right">Entries</th><th className="p-3 font-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pager.pageItems.map(g => (
+                <tr key={g.orderNo} className="border-b border-slate-100 hover:bg-slate-50 transition-colors" data-testid="rejected-row">
+                  <td className="p-3">
+                    <div className="font-semibold text-brand-700 text-sm">{g.company || '—'}</div>
+                    <div className="font-mono text-xs text-slate-500">({g.ref}{g.ref !== g.orderNo ? ` · ${g.orderNo}` : ''})</div>
+                  </td>
+                  <td className="p-3 text-sm text-right tabular-nums">{g.q ? g.q.ordered : '—'}</td>
+                  <td className="p-3 text-sm text-right tabular-nums text-emerald-700">{g.q ? g.q.good : '—'}</td>
+                  <td className="p-3 text-sm font-bold text-right tabular-nums text-red-600">{g.total}</td>
+                  <td className="p-3 text-sm text-right tabular-nums text-amber-700">{g.q ? g.q.remaining : '—'}</td>
+                  <td className="p-3 text-sm text-right tabular-nums text-slate-500">{g.rows.length}</td>
+                  <td className="p-3">
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="secondary" size="sm" onClick={() => openGroup(g, 'view')}>View</Button>
+                      <Button variant="secondary" size="sm" onClick={() => openGroup(g, 'edit')}>Edit</Button>
+                      <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => void removeGroup(g)}>Delete</Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {shown.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-slate-500">No rejections recorded.</td></tr>}
+            </tbody>
+          </table>
+        )}
+      </div>
+      </div>
+
+      <Modal open={!!dlg && dlg.mode !== 'add'} onClose={openAdd} title={view ? 'View Rejected' : dlg?.mode === 'edit' ? 'Edit Rejected' : 'Add Rejected'} size="lg" width={820}
+        footer={view
+          ? <Button variant="secondary" onClick={openAdd}>Close</Button>
+          : <><Button variant="secondary" onClick={openAdd}>Cancel</Button><Button onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : dlg?.mode === 'edit' ? 'Save Changes' : 'Save'}</Button></>}>
+        {rejDialogBody}
       </Modal>
     </div>
   );

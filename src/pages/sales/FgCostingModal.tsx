@@ -78,7 +78,7 @@ async function healWorkOrderPartNos(salesOrderRef: string): Promise<void> {
   } catch { /* backfill best-effort */ }
 }
 
-export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptions = [], pickCompanies = [], onPick }: {
+export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptions = [], pickCompanies = [], onPick, inline = false }: {
   card: any;
   onClose: () => void;
   onMoved: () => void;
@@ -88,6 +88,8 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   onPick?: (company: string, product: string) => void;
   /** add: move an inward to Finished Goods. edit: revise the costing of an existing FG card. view: read-only. */
   mode?: 'add' | 'edit' | 'view';
+  /** Render the whole thing as an inline page card instead of a popup (add mode only). */
+  inline?: boolean;
 }) {  const { company, profile } = useAuth() as any;
   const companyName: string = company?.company_name ?? 'ARGUS CNC';
   const userName: string = profile?.email ?? '';
@@ -839,7 +841,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
     const key = (v: string) => v.trim().toLowerCase();
     const products = Array.from(new Set(pickOptions.filter((o) => !pickCompany.trim() || key(o.company) === key(pickCompany)).map((o) => o.product).filter(Boolean)));
     return (
-      <Modal open onClose={onClose} title="Finished Goods + Costing" subtitle="Add Finished Goods" size="3xl" width={960}
+      <Modal open inline={inline} onClose={onClose} title="Finished Goods + Costing" subtitle="Add Finished Goods" size="3xl" width={960}
         footer={<><span className="flex-1" /><Button variant="secondary" icon={<X size={14} />} onClick={onClose}>Cancel</Button>
           <Button disabled={!pickCompany.trim() || !pickProduct.trim()} onClick={() => onPick?.(pickCompany.trim(), pickProduct.trim())}>Continue</Button></>}>
         <div className="bg-white rounded-xl border border-slate-200 p-4">
@@ -861,6 +863,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   return (
     <Modal
       open
+      inline={inline}
       onClose={onClose}
       title={mode === 'view' ? 'View Finished Goods + Costing' : mode === 'edit' ? 'Edit Finished Goods + Costing' : 'Finished Goods + Costing'}
       subtitle={mode === 'add' ? `Inward ${card?.refNo ?? inward.project_name ?? ''} → Finished Goods with pricing approval` : `Finished Goods ${card?.refNo ?? inward.project_name ?? ''}`}
