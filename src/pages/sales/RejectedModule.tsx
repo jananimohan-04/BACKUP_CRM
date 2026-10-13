@@ -292,7 +292,7 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
   return (
     <div className="flex flex-col gap-2.5" data-testid="rejected-list">
       {dlg?.mode !== 'add' && (
-        <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-white/40 px-3 py-2 flex flex-wrap justify-between items-center gap-2">
+        <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-rose-400/30 px-3 py-2 flex flex-wrap justify-between items-center gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-600 shrink-0"><ArrowLeft className="w-4 h-4" /></button>
             <h2 className="text-sm font-bold text-slate-800 shrink-0">Rejected</h2>
@@ -314,18 +314,18 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
             {rejDialogBody}
             <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-3">
               <Button variant="secondary" size="sm" onClick={openAdd}>Clear / Reset</Button>
-              <Button size="sm" onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
+              <Button size="sm" onClick={() => void save()} disabled={saving} className="!bg-rose-600 hover:!bg-rose-500 text-white shadow-md shadow-rose-500/25 !border-rose-600">{saving ? 'Saving…' : 'Save'}</Button>
             </div>
           </div>
         </section>
       )}
-      <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-white/40 overflow-hidden flex flex-col">
+      <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-rose-400/30 overflow-hidden flex flex-col">
       <div className="overflow-x-auto">
         {missing && <p className="mb-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Rejections are stored with production batches. Apply the production-batches migration (20260929010000_production_batches.sql) to use this list.</p>}
         {loading ? (
           <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" /></div>
         ) : (
-          <table className="erp-table w-full text-left border-collapse">
+          <table className="erp-table erp-table-rose w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="p-3 font-semibold">Company (Order)</th>

@@ -139,7 +139,7 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onView, onEd
       {renderedEntry ? (
         renderedEntry
       ) : (
-        <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-white/40 px-3 py-2 flex flex-wrap justify-between items-center gap-2">
+        <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-emerald-400/30 px-3 py-2 flex flex-wrap justify-between items-center gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-600 shrink-0">
               <ArrowLeft className="w-4 h-4" />
@@ -150,12 +150,12 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onView, onEd
         </div>
       )}
 
-      <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-white/40 overflow-hidden flex flex-col">
+      <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-emerald-400/30 overflow-hidden flex flex-col">
       <div className="overflow-x-auto">
         {loading ? (
           <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div></div>
         ) : (
-          <table className="erp-table w-full text-left border-collapse">
+          <table className="erp-table erp-table-emerald w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="p-3 font-semibold">Order No</th>

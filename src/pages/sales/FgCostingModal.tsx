@@ -988,7 +988,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
             </div>
             <p className="text-[11px] text-slate-400">Pick a product from an order, or type a new one.</p>
             <Button variant="secondary" size="sm" icon={<X size={14} />} onClick={onClose}>Cancel</Button>
-            <Button size="sm" disabled={!pickCompany.trim() || !pickProduct.trim()} onClick={() => onPick?.(pickCompany.trim(), pickProduct.trim())}>Continue</Button>
+            <Button size="sm" disabled={!pickCompany.trim() || !pickProduct.trim()} onClick={() => onPick?.(pickCompany.trim(), pickProduct.trim())} className="!bg-teal-600 hover:!bg-teal-500 text-white shadow-md shadow-teal-500/25 !border-teal-600">Continue</Button>
             {searchSlot}
           </div>
         </div>
@@ -1027,6 +1027,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
             // blocking reasons, and they are also listed inline below.
             <Button icon={<CheckCheck size={14} />} disabled={approving}
               title={canApprove ? 'Approve pricing and move the card' : `Blocked: ${blockReasons[0] ?? 'resolving'}`}
+              className="!bg-teal-600 hover:!bg-teal-500 text-white shadow-md shadow-teal-500/25 !border-teal-600"
               onClick={approveAndMove}>
               {approving ? 'Moving...' : 'Approve & Move to Finished Goods'}
             </Button>

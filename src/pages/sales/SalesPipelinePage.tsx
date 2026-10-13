@@ -18,7 +18,7 @@ import { HsnDatalist } from '../../components/HsnDatalist';
 import { HSN_LIST_ID } from '@/lib/hsnMaster';
 import { tint } from '@/lib/entryTints';
 import { compactInput, compactCell, inlineLbl } from '@/lib/compactFields';
-import { getSalesStageTheme } from '@/lib/pageThemes';
+import { getSalesStageTheme, MODULE_THEMES } from '@/lib/pageThemes';
 import { CreateQuotationPage, type QuotationEmbed } from '../quotation/CreateQuotationPage';
 import { SalesOrderModule } from './SalesOrderModule';
 import { InwardModule } from './InwardModule';
@@ -1442,7 +1442,7 @@ export function SalesPipelinePage() {
     Invoice: () => setActiveView(cur => cur === 'invoice_list' ? 'pipeline' : 'invoice_list'),
   };
   const kpiStats = [
-    { key: 'enquiry', title: 'Total Enquiries', iconPath: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', stage: 'Enquiry' },
+    { key: 'enquiry', title: 'Enquiries', iconPath: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', stage: 'Enquiry' },
     { key: 'quotation', title: 'Quotations', iconPath: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', stage: 'Quotation' },
     { key: 'sales-order', title: 'Sales Orders', iconPath: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', stage: 'Sales Order' },
     { key: 'inward', title: 'Inward', iconPath: 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4', stage: 'Inward' },
@@ -1464,16 +1464,21 @@ export function SalesPipelinePage() {
       if (stage === 'Invoice') return activeView === 'invoice_list';
       return false;
     };
-    setKpis(kpiStats.filter(s => canView(STAGE_MODULE[s.stage] ?? s.stage)).map(s => ({
-      key: s.key,
-      label: s.title,
-      count: s.stage === 'Rejected' ? rejectedTotal : cards.filter(c => c.stage === s.stage).length,
-      tile: stageColors[s.stage]?.tile ?? stageColors.Enquiry.tile,
-      icon: stageColors[s.stage]?.icon ?? stageColors.Enquiry.icon,
-      iconPath: s.iconPath,
-      active: isStageActive(s.stage),
-      onClick: stageClick[s.stage],
-    })));
+    setKpis(kpiStats.filter(s => canView(STAGE_MODULE[s.stage] ?? s.stage)).map(s => {
+      const theme = MODULE_THEMES[s.stage] ?? MODULE_THEMES.Enquiry;
+      return {
+        key: s.key,
+        label: s.title,
+        count: s.stage === 'Rejected' ? rejectedTotal : cards.filter(c => c.stage === s.stage).length,
+        tile: theme.kpiTile,
+        icon: theme.kpiIcon,
+        iconPath: s.iconPath,
+        active: isStageActive(s.stage),
+        activeClass: theme.kpiActive,
+        dotClass: theme.kpiDot,
+        onClick: stageClick[s.stage],
+      };
+    }));
     return () => setKpis([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cards, rejectedTotal, setKpis, activeView, permissions]);
@@ -4639,7 +4644,7 @@ export function SalesPipelinePage() {
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <Button variant="secondary" size="sm" onClick={() => { setEnquiryForm(resetEnquiryForm()); setDuplicateSource(null); setEnquirySaveNotice(null); }}>Clear / Reset</Button>
-            <Button size="sm" onClick={saveEnquiry} disabled={savingEnquiry}>{savingEnquiry ? 'Saving...' : 'Save Enquiry'}</Button>
+            <Button size="sm" onClick={saveEnquiry} disabled={savingEnquiry} className={MODULE_THEMES.Enquiry.btnPrimary}>{savingEnquiry ? 'Saving...' : 'Save Enquiry'}</Button>
             {opts?.searchSlot && (
               <>
                 <span className="h-6 w-px shrink-0 bg-slate-300 mx-0.5" aria-hidden="true" />
@@ -4726,7 +4731,7 @@ export function SalesPipelinePage() {
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <Button variant="secondary" size="sm" onClick={() => { setSoForm(resetSoForm()); setSoSaveNotice(null); }}>Clear / Reset</Button>
-            <Button size="sm" onClick={saveStandaloneSalesOrder} disabled={savingSo}>{savingSo ? 'Saving...' : 'Save Order'}</Button>
+            <Button size="sm" onClick={saveStandaloneSalesOrder} disabled={savingSo} className={MODULE_THEMES['Sales Order'].btnPrimary}>{savingSo ? 'Saving...' : 'Save Order'}</Button>
             {opts?.searchSlot && (
               <>
                 <span className="h-6 w-px shrink-0 bg-slate-300 mx-0.5" aria-hidden="true" />
@@ -4970,7 +4975,7 @@ export function SalesPipelinePage() {
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-2.5">
           <Button variant="secondary" size="sm" onClick={clearDcForm}>Clear / Reset</Button>
-          <Button size="sm" onClick={saveDeliveryChallan} disabled={dcSaving}>{dcSaving ? 'Saving...' : 'Save'}</Button>
+          <Button size="sm" onClick={saveDeliveryChallan} disabled={dcSaving} className={MODULE_THEMES.DC.btnPrimary}>{dcSaving ? 'Saving...' : 'Save'}</Button>
         </div>
       </div>
     </section>
@@ -5114,7 +5119,7 @@ export function SalesPipelinePage() {
           )}
           <Button variant="secondary" size="sm" onClick={clearInwardForm}>Clear / Reset</Button>
           <Button variant="secondary" size="sm" disabled={savingInward} onClick={() => void saveInward(true)}>{savingInward ? 'Saving...' : 'Save & Add Another Inward'}</Button>
-          <Button size="sm" disabled={savingInward} onClick={() => void saveInward(false)}>{savingInward ? 'Saving...' : 'Submit'}</Button>
+          <Button size="sm" disabled={savingInward} onClick={() => void saveInward(false)} className={MODULE_THEMES.Inward.btnPrimary}>{savingInward ? 'Saving...' : 'Submit'}</Button>
         </div>
       </div>
     </section>
@@ -5549,13 +5554,13 @@ export function SalesPipelinePage() {
       <div className="overflow-x-auto scrollbar-thin pb-4 mt-2">
         <div className="flex gap-4 h-[550px] items-stretch min-w-max px-1">
           {[
-            { id: 'Enquiry', title: 'ENQUIRY', desc: 'New opportunities', color: 'blue', bg: 'bg-blue-200/70', border: 'border-blue-400', text: 'text-blue-900', card: 'bg-blue-300 border-blue-500 hover:bg-blue-300/80', code: 'bg-blue-400 text-blue-950', amount: 'text-blue-950' },
-            { id: 'Quotation', title: 'QUOTATION', desc: 'Sent to customer', color: 'purple', bg: 'bg-purple-200/70', border: 'border-purple-400', text: 'text-purple-900', card: 'bg-violet-300 border-violet-500 hover:bg-violet-300/80', code: 'bg-violet-400 text-violet-950', amount: 'text-violet-950' },
-            { id: 'Sales Order', title: 'SALES ORDER', desc: 'Confirmed orders', color: 'emerald', bg: 'bg-emerald-200/70', border: 'border-emerald-400', text: 'text-emerald-900', card: 'bg-emerald-300 border-emerald-500 hover:bg-emerald-300/80', code: 'bg-emerald-400 text-emerald-950', amount: 'text-emerald-950' },
-            { id: 'Inward', title: 'INWARD', desc: 'Raw material / Purchase', color: 'orange', bg: 'bg-orange-200/70', border: 'border-orange-400', text: 'text-orange-900', card: 'bg-amber-300 border-amber-500 hover:bg-amber-300/80', code: 'bg-amber-400 text-amber-950', amount: 'text-amber-950' },
-            { id: 'Finished Goods', title: 'FINISHED GOODS', desc: 'Ready for delivery', color: 'teal', bg: 'bg-teal-200/70', border: 'border-teal-400', text: 'text-teal-900', card: 'bg-cyan-300 border-cyan-500 hover:bg-cyan-300/80', code: 'bg-cyan-400 text-cyan-950', amount: 'text-cyan-950' },
-            { id: 'DC', title: 'DELIVERY CHALLAN', desc: 'Dispatch to company', color: 'rose', bg: 'bg-rose-200/70', border: 'border-rose-400', text: 'text-rose-900', card: 'bg-rose-300 border-rose-500 hover:bg-rose-300/80', code: 'bg-rose-400 text-rose-950', amount: 'text-rose-950' },
-            { id: 'Invoice', title: 'INVOICE', desc: 'Billed & Completed', color: 'blue', bg: 'bg-blue-200/70', border: 'border-blue-400', text: 'text-blue-900', card: 'bg-indigo-300 border-indigo-500 hover:bg-indigo-300/80', code: 'bg-indigo-400 text-indigo-950', amount: 'text-indigo-950' }
+            MODULE_THEMES.Enquiry.kanban,
+            MODULE_THEMES.Quotation.kanban,
+            MODULE_THEMES['Sales Order'].kanban,
+            MODULE_THEMES.Inward.kanban,
+            MODULE_THEMES['Finished Goods'].kanban,
+            MODULE_THEMES.DC.kanban,
+            MODULE_THEMES.Invoice.kanban,
           ].filter(stage => canView(STAGE_MODULE[stage.id] ?? 'sales-pipeline')).map(stage => {
             const term = (columnSearch[stage.id] || '').trim().toLowerCase();
             const stageCards = cards
@@ -5574,27 +5579,27 @@ export function SalesPipelinePage() {
                 <div className="flex justify-between items-start mb-3 px-1">
                   <div>
                     <h3 className={`font-bold text-sm tracking-wide ${stage.text}`}>{stage.title}</h3>
-                    <p className="text-[10px] text-slate-700 font-semibold">{stage.desc}</p>
+                    <p className="text-[10px] text-slate-300 font-semibold">{stage.desc}</p>
                   </div>
-                  <span className={`bg-white ${stage.text} text-xs font-bold px-2 py-0.5 rounded-full shadow-sm border ${stage.border}`}>{stageCards.length}</span>
+                  <span className={`${stage.badge} text-xs font-bold px-2 py-0.5 rounded-full shadow-sm`}>{stageCards.length}</span>
                 </div>
 
                 {/* Per-column search */}
                 <div className="relative mb-3">
-                  <svg className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                  <svg className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                   <input
                     type="text"
                     value={columnSearch[stage.id] || ''}
                     onChange={(e) => setColumnSearch(prev => ({ ...prev, [stage.id]: e.target.value }))}
                     onClick={(e) => e.stopPropagation()}
                     placeholder={`Search ${stage.title.toLowerCase()}...`}
-                    className="w-full pl-8 pr-7 py-1.5 text-xs bg-white/80 border border-slate-300 rounded-lg text-slate-800 placeholder-slate-500 focus:outline-none focus:border-brand-500 focus:bg-white"
+                    className={`w-full pl-8 pr-7 py-1.5 text-xs ${stage.search} rounded-lg placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-white/40`}
                   />
                   {columnSearch[stage.id] && (
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setColumnSearch(prev => ({ ...prev, [stage.id]: '' })); }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
                       title="Clear search"
                     >
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -5603,7 +5608,7 @@ export function SalesPipelinePage() {
                 </div>
 
                 {stage.id !== 'Quotation' && canDo(STAGE_MODULE[stage.id] ?? 'sales-pipeline', 'create') && (
-                <button className={`w-full bg-white/60 hover:bg-white border ${stage.border} border-dashed ${stage.text} text-xs font-semibold py-2 rounded-lg mb-3 shadow-sm transition-all flex items-center justify-center gap-1`}
+                <button className={`w-full ${stage.button} border border-dashed text-xs font-semibold py-2 rounded-lg mb-3 shadow-sm transition-all flex items-center justify-center gap-1`}
                   onClick={() => addForStage(stage.id)}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
@@ -5619,7 +5624,7 @@ export function SalesPipelinePage() {
                       onDragStart={(e) => handleDragStart(e, card)}
                         onDragEnd={() => setDraggedCard(null)} 
                       onClick={() => handleCardClick(card)}
-                      className={`${stage.card} rounded-xl p-3.5 border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer group ${selectedCards.has(card.id) ? 'ring-2 ring-brand-500' : ''}`}
+                      className={`${stage.card} rounded-xl p-3.5 border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer group ${selectedCards.has(card.id) ? 'ring-2 ring-amber-400' : ''}`}
                     >
                       <div className="flex justify-between items-start mb-2">
                         <div className="flex items-center gap-1.5">
@@ -5638,18 +5643,18 @@ export function SalesPipelinePage() {
                           />
                           <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded font-mono ${stage.code}`}>{card.refNo}</span>
                         </div>
-                        <span className="text-[10px] text-slate-700 font-semibold">{card.date || 'No Date'}</span>
+                        <span className="text-[10px] text-slate-300 font-semibold">{card.date || 'No Date'}</span>
                       </div>
                       
-                      <h4 className="font-bold text-[13px] text-slate-900 mb-0.5 line-clamp-1">{card.customer}</h4>
-                      <p className="text-xs text-slate-800 mb-3 line-clamp-1">{card.part}</p>
+                      <h4 className="font-bold text-[13px] text-white mb-0.5 line-clamp-1">{card.customer}</h4>
+                      <p className="text-xs text-slate-200 mb-3 line-clamp-1">{card.part}</p>
                       
                       <div className="flex justify-between items-end">
                         <div>
                           {card.value > 0 ? (
                              <p className={`text-sm font-bold ${stage.amount}`}>₹{Number(card.value).toLocaleString('en-IN')}</p>
                           ) : (
-                             <p className="text-xs font-semibold text-slate-800">{card.qty} pcs</p>
+                             <p className="text-xs font-semibold text-slate-200">{card.qty} pcs</p>
                           )}
                           {card.type === 'order' && (() => {
                             const raw = card.raw || {};

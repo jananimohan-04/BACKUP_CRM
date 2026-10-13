@@ -53,16 +53,16 @@ export const ENTRY_TINT: Record<string, EntryTint> = {
     note: 'text-teal-100/85',
   },
   Rejected: {
-    panel: 'border-fuchsia-400 bg-fuchsia-200 [--entry-border:theme(colors.fuchsia.400)]',
-    head: 'bg-gradient-to-br from-fuchsia-800 to-fuchsia-950 border-b-fuchsia-950',
-    title: 'text-white',
-    note: 'text-fuchsia-100/85',
-  },
-  DC: {
     panel: 'border-rose-400 bg-rose-200 [--entry-border:theme(colors.rose.400)]',
     head: 'bg-gradient-to-br from-rose-800 to-rose-950 border-b-rose-950',
     title: 'text-white',
     note: 'text-rose-100/85',
+  },
+  DC: {
+    panel: 'border-fuchsia-400 bg-fuchsia-200 [--entry-border:theme(colors.fuchsia.400)]',
+    head: 'bg-gradient-to-br from-fuchsia-800 to-purple-950 border-b-purple-950',
+    title: 'text-white',
+    note: 'text-fuchsia-100/85',
   },
   Invoice: {
     panel: 'border-indigo-400 bg-indigo-200 [--entry-border:theme(colors.indigo.400)]',

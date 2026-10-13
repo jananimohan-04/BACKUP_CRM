@@ -7,6 +7,7 @@ import { Badge, Button, StatCard } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { supabase } from '@/lib/supabase';
 import { useAuth, type ErpRole } from '@/contexts/AuthContext';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import {
   ADMIN_RESERVED_MODULES, MODULE_CATALOG, PERM_CATEGORIES,
   emptyMatrix, fullMatrix, matrixToPayload, rowsToMatrix,
@@ -444,22 +445,126 @@ export function AuditLogsPage() { return <AdminStub title="Audit Logs" descripti
 
 // ======================================================================================
 // Company & Access Management: All Companies → Company → Users → User Permissions
-// ======================================================================================
-
 const ACTION_LABELS: Record<PermAction, string> = {
   view: 'View', create: 'Create', edit: 'Edit', delete: 'Delete', approve: 'Approve', export: 'Export',
 };
 
-function TriCheckbox({ checked, indeterminate, onChange, label, disabled, title }: {
+const CATEGORY_THEMES: Record<string, {
+  cardBg: string;
+  cardBorder: string;
+  headerBg: string;
+  headerBorder: string;
+  headerText: string;
+  badgeBg: string;
+  badgeText: string;
+  divider: string;
+  rowHover: string;
+  accent: string;
+  toggleOn: string;
+}> = {
+  Overview: {
+    cardBg: 'bg-indigo-50/40',
+    cardBorder: 'border-indigo-200/80',
+    headerBg: 'bg-indigo-100/70',
+    headerBorder: 'border-indigo-200',
+    headerText: 'text-indigo-900',
+    badgeBg: 'bg-indigo-200/60',
+    badgeText: 'text-indigo-800',
+    divider: 'divide-indigo-100/70',
+    rowHover: 'hover:bg-indigo-100/30',
+    accent: 'accent-indigo-600',
+    toggleOn: 'bg-indigo-600',
+  },
+  Sales: {
+    cardBg: 'bg-emerald-50/40',
+    cardBorder: 'border-emerald-200/80',
+    headerBg: 'bg-emerald-100/70',
+    headerBorder: 'border-emerald-200',
+    headerText: 'text-emerald-900',
+    badgeBg: 'bg-emerald-200/60',
+    badgeText: 'text-emerald-800',
+    divider: 'divide-emerald-100/70',
+    rowHover: 'hover:bg-emerald-100/30',
+    accent: 'accent-emerald-600',
+    toggleOn: 'bg-emerald-600',
+  },
+  Production: {
+    cardBg: 'bg-amber-50/40',
+    cardBorder: 'border-amber-200/80',
+    headerBg: 'bg-amber-100/70',
+    headerBorder: 'border-amber-200',
+    headerText: 'text-amber-900',
+    badgeBg: 'bg-amber-200/60',
+    badgeText: 'text-amber-800',
+    divider: 'divide-amber-100/70',
+    rowHover: 'hover:bg-amber-100/30',
+    accent: 'accent-amber-600',
+    toggleOn: 'bg-amber-600',
+  },
+  Logistics: {
+    cardBg: 'bg-sky-50/40',
+    cardBorder: 'border-sky-200/80',
+    headerBg: 'bg-sky-100/70',
+    headerBorder: 'border-sky-200',
+    headerText: 'text-sky-900',
+    badgeBg: 'bg-sky-200/60',
+    badgeText: 'text-sky-800',
+    divider: 'divide-sky-100/70',
+    rowHover: 'hover:bg-sky-100/30',
+    accent: 'accent-sky-600',
+    toggleOn: 'bg-sky-600',
+  },
+  Finance: {
+    cardBg: 'bg-violet-50/40',
+    cardBorder: 'border-violet-200/80',
+    headerBg: 'bg-violet-100/70',
+    headerBorder: 'border-violet-200',
+    headerText: 'text-violet-900',
+    badgeBg: 'bg-violet-200/60',
+    badgeText: 'text-violet-800',
+    divider: 'divide-violet-100/70',
+    rowHover: 'hover:bg-violet-100/30',
+    accent: 'accent-violet-600',
+    toggleOn: 'bg-violet-600',
+  },
+  'Inventory & Purchasing': {
+    cardBg: 'bg-teal-50/40',
+    cardBorder: 'border-teal-200/80',
+    headerBg: 'bg-teal-100/70',
+    headerBorder: 'border-teal-200',
+    headerText: 'text-teal-900',
+    badgeBg: 'bg-teal-200/60',
+    badgeText: 'text-teal-800',
+    divider: 'divide-teal-100/70',
+    rowHover: 'hover:bg-teal-100/30',
+    accent: 'accent-teal-600',
+    toggleOn: 'bg-teal-600',
+  },
+  Administration: {
+    cardBg: 'bg-rose-50/40',
+    cardBorder: 'border-rose-200/80',
+    headerBg: 'bg-rose-100/70',
+    headerBorder: 'border-rose-200',
+    headerText: 'text-rose-900',
+    badgeBg: 'bg-rose-200/60',
+    badgeText: 'text-rose-800',
+    divider: 'divide-rose-100/70',
+    rowHover: 'hover:bg-rose-100/30',
+    accent: 'accent-rose-600',
+    toggleOn: 'bg-rose-600',
+  },
+};
+
+function TriCheckbox({ checked, indeterminate, onChange, label, disabled, title, accentClass }: {
   checked: boolean; indeterminate: boolean; onChange: (on: boolean) => void;
-  label: string; disabled?: boolean; title?: string;
+  label: string; disabled?: boolean; title?: string; accentClass?: string;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => { if (ref.current) ref.current.indeterminate = indeterminate && !checked; }, [indeterminate, checked]);
   return (
-    <label title={title} className={`flex items-center gap-1.5 text-[11px] font-semibold whitespace-nowrap ${disabled ? 'text-slate-300 cursor-not-allowed' : 'text-slate-500 cursor-pointer hover:text-slate-700'}`}>
+    <label title={title} className={`flex items-center gap-1.5 text-[11px] font-semibold whitespace-nowrap ${disabled ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 cursor-pointer hover:text-slate-900'}`}>
       <input ref={ref} type="checkbox" disabled={disabled} checked={checked} onChange={(e) => onChange(e.target.checked)}
-        className="w-3.5 h-3.5 rounded accent-brand-600 cursor-pointer disabled:cursor-not-allowed" />
+        className={`w-3.5 h-3.5 rounded cursor-pointer disabled:cursor-not-allowed ${accentClass ?? 'accent-brand-600'}`} />
       {label}
     </label>
   );
@@ -595,89 +700,122 @@ function PermissionEditor({ userId, userEmail, userRole, onSaved }: {
       {error && <p className="text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 text-sm">{error}</p>}
       {notice && <p className="text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-sm">{notice}</p>}
       {isSuperTarget && <p className="text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">Super Admins always have full access across all companies — there is nothing to configure here.</p>}
-      {PERM_CATEGORIES.map((cat) => {
-        const mods = MODULE_CATALOG.filter((m) => m.category === cat);
-        const isCollapsed = collapsed.has(cat);
-        const selectable = isSuperTarget ? [] : mods.filter((m) => !lockedForCaller(m.key));
-        const viewOn = selectable.filter((m) => matrix[m.key]?.view).length;
-        const allOn = selectable.length > 0 && viewOn === selectable.length;
-        const someOn = viewOn > 0 && viewOn < selectable.length;
-        const bulkActions: PermAction[] = (['create', 'edit', 'delete', 'export'] as PermAction[]).filter((a) =>
-          selectable.some((m) => (m.actions as string[]).includes(a)));
-        return (
-          <div key={cat} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="flex items-center gap-2 pl-2 pr-2.5 h-9 bg-slate-50/70 border-b border-slate-100">
-              <button type="button" onClick={() => setCollapsed((prev) => { const n = new Set(prev); if (n.has(cat)) n.delete(cat); else n.add(cat); return n; })}
-                className="flex items-center gap-1.5 min-w-0 flex-1 hover:opacity-70" title={isCollapsed ? `Expand ${cat}` : `Collapse ${cat}`}>
-                {isCollapsed ? <ChevronRight size={14} className="text-slate-400 shrink-0" /> : <ChevronDown size={14} className="text-slate-400 shrink-0" />}
-                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider truncate">{cat}</span>
-                <span className="text-[11px] text-slate-400 shrink-0">{viewOn}/{mods.length} on</span>
-              </button>
-              <TriCheckbox checked={allOn} indeterminate={someOn} disabled={selectable.length === 0}
-                label="Select All" title={selectable.length === 0 ? 'No grantable modules in this category' : `Turn View ${allOn ? 'off' : 'on'} for every ${cat} module (actions untouched when turning on)`}
-                onChange={(on) => setCategoryView(cat, on)} />
-              <div className="relative shrink-0">
-                <button type="button" onClick={() => setMenuFor(menuFor === cat ? null : cat)} disabled={selectable.length === 0}
-                  className="flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-slate-500 hover:text-slate-700 border border-slate-200 rounded-md bg-white disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Bulk actions for this category">
-                  Actions
-                  <ChevronDown size={12} className={`transition-transform ${menuFor === cat ? 'rotate-180' : ''}`} />
+      {(() => {
+        const renderCategoryCard = (cat: string) => {
+          const mods = MODULE_CATALOG.filter((m) => m.category === cat);
+          const isCollapsed = collapsed.has(cat);
+          const selectable = isSuperTarget ? [] : mods.filter((m) => !lockedForCaller(m.key));
+          const viewOn = selectable.filter((m) => matrix[m.key]?.view).length;
+          const allOn = selectable.length > 0 && viewOn === selectable.length;
+          const someOn = viewOn > 0 && viewOn < selectable.length;
+          const bulkActions: PermAction[] = (['create', 'edit', 'delete', 'export'] as PermAction[]).filter((a) =>
+            selectable.some((m) => (m.actions as string[]).includes(a)));
+          const theme = CATEGORY_THEMES[cat] ?? {
+            cardBg: 'bg-white',
+            cardBorder: 'border-slate-200',
+            headerBg: 'bg-slate-50/70',
+            headerBorder: 'border-slate-100',
+            headerText: 'text-slate-700',
+            badgeBg: 'bg-slate-100',
+            badgeText: 'text-slate-500',
+            divider: 'divide-slate-100',
+            rowHover: 'hover:bg-slate-50/50',
+            accent: 'accent-brand-600',
+            toggleOn: 'bg-brand-600',
+          };
+
+          return (
+            <div key={cat} className={`${theme.cardBg} rounded-xl border ${theme.cardBorder} shadow-sm overflow-hidden transition-shadow`}>
+              <div className={`flex items-center gap-2 pl-2 pr-2.5 h-9 ${theme.headerBg} border-b ${theme.headerBorder}`}>
+                <button type="button" onClick={() => setCollapsed((prev) => { const n = new Set(prev); if (n.has(cat)) n.delete(cat); else n.add(cat); return n; })}
+                  className="flex items-center gap-1.5 min-w-0 shrink-0 hover:opacity-80" title={isCollapsed ? `Expand ${cat}` : `Collapse ${cat}`}>
+                  {isCollapsed ? <ChevronRight size={14} className="text-slate-400 shrink-0" /> : <ChevronDown size={14} className="text-slate-400 shrink-0" />}
+                  <span className={`text-xs font-bold ${theme.headerText} uppercase tracking-wider truncate`}>{cat}</span>
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${theme.badgeBg} ${theme.badgeText} shrink-0`}>{viewOn}/{mods.length}</span>
                 </button>
-                {menuFor === cat && (
-                  <>
-                    <button type="button" aria-label="Close menu" onClick={() => setMenuFor(null)} className="fixed inset-0 z-10 cursor-default" />
-                    <div className="absolute right-0 z-20 mt-1 w-52 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
-                      {bulkActions.map((a) => (
-                        <button key={a} type="button" onClick={() => setCategoryAction(cat, a)}
-                          className="w-full text-left px-3 py-1.5 text-xs text-slate-600 hover:bg-brand-50 hover:text-brand-700">
-                          Enable {ACTION_LABELS[a]} for this category
-                        </button>
-                      ))}
-                      <div className="border-t border-slate-100 mt-1 pt-1">
-                        <button type="button" onClick={() => setCategoryAction(cat, 'clear')}
-                          className="w-full text-left px-3 py-1.5 text-xs text-slate-600 hover:bg-brand-50 hover:text-brand-700">
-                          Clear optional actions (keep View)
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-            {!isCollapsed && (
-              <div className="divide-y divide-slate-100">
-                {mods.map((m) => {
-                  const locked = lockedForCaller(m.key);
-                  const f = matrix[m.key];
-                  return (
-                    <div key={m.key} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-1.5">
-                      <label className="flex items-center gap-2 min-w-[11rem] cursor-pointer">
-                        <button type="button" role="switch" aria-checked={f.view} disabled={locked || isSuperTarget}
-                          onClick={() => setModule(m.key, { view: !f.view })}
-                          className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${f.view ? 'bg-brand-600' : 'bg-slate-300'} ${(locked || isSuperTarget) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-                          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${f.view ? 'left-[18px]' : 'left-0.5'}`} />
-                        </button>
-                        <span className="text-sm font-semibold text-slate-700">{m.label}</span>
-                        {locked && <Lock size={12} className="text-slate-400" />}
-                      </label>
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        {m.actions.filter((a) => a !== 'view').map((a) => (
-                          <label key={a} className={`flex items-center gap-1.5 text-xs ${(locked || isSuperTarget || !f.view) ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 cursor-pointer'}`}>
-                            <input type="checkbox" disabled={locked || isSuperTarget || !f.view} checked={!!f[a]}
-                              onChange={(e) => setModule(m.key, { [a]: e.target.checked } as Partial<Record<PermAction, boolean>>)}
-                              className="w-3.5 h-3.5 rounded accent-brand-600" />
-                            {ACTION_LABELS[a]}
-                          </label>
+                <TriCheckbox checked={allOn} indeterminate={someOn} disabled={selectable.length === 0}
+                  label="Select All" accentClass={theme.accent}
+                  title={selectable.length === 0 ? 'No grantable modules in this category' : `Turn View ${allOn ? 'off' : 'on'} for every ${cat} module (actions untouched when turning on)`}
+                  onChange={(on) => setCategoryView(cat, on)} />
+                <div className="relative shrink-0 ml-auto">
+                  <button type="button" onClick={() => setMenuFor(menuFor === cat ? null : cat)} disabled={selectable.length === 0}
+                    className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-slate-600 hover:text-slate-800 border border-slate-200/90 rounded-md bg-white shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Bulk actions for this category">
+                    Actions
+                    <ChevronDown size={12} className={`transition-transform ${menuFor === cat ? 'rotate-180' : ''}`} />
+                  </button>
+                  {menuFor === cat && (
+                    <>
+                      <button type="button" aria-label="Close menu" onClick={() => setMenuFor(null)} className="fixed inset-0 z-10 cursor-default" />
+                      <div className="absolute right-0 z-20 mt-1 w-52 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
+                        {bulkActions.map((a) => (
+                          <button key={a} type="button" onClick={() => setCategoryAction(cat, a)}
+                            className="w-full text-left px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 hover:text-slate-900">
+                            Enable {ACTION_LABELS[a]} for this category
+                          </button>
                         ))}
+                        <div className="border-t border-slate-100 mt-1 pt-1">
+                          <button type="button" onClick={() => setCategoryAction(cat, 'clear')}
+                            className="w-full text-left px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 hover:text-slate-900">
+                            Clear optional actions (keep View)
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    </>
+                  )}
+                </div>
               </div>
-            )}
+              {!isCollapsed && (
+                <div className={`divide-y ${theme.divider}`}>
+                  {mods.map((m) => {
+                    const locked = lockedForCaller(m.key);
+                    const f = matrix[m.key];
+                    return (
+                      <div key={m.key} className={`flex flex-wrap items-center justify-between gap-x-2 gap-y-1 px-3 py-1.5 ${theme.rowHover} transition-colors`}>
+                        <label className="flex items-center gap-2 min-w-[9.5rem] cursor-pointer">
+                          <button type="button" role="switch" aria-checked={f.view} disabled={locked || isSuperTarget}
+                            onClick={() => setModule(m.key, { view: !f.view })}
+                            className={`relative w-8 h-4.5 rounded-full transition-colors shrink-0 ${f.view ? theme.toggleOn : 'bg-slate-300'} ${(locked || isSuperTarget) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                            style={{ height: '18px', width: '32px' }}>
+                            <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all ${f.view ? 'left-[15px]' : 'left-0.5'}`} />
+                          </button>
+                          <span className="text-xs font-semibold text-slate-800 truncate">{m.label}</span>
+                          {locked && <Lock size={12} className="text-slate-400 shrink-0" />}
+                        </label>
+                        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                          {m.actions.filter((a) => a !== 'view').map((a) => (
+                            <label key={a} className={`flex items-center gap-1 text-[11px] ${(locked || isSuperTarget || !f.view) ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 cursor-pointer hover:text-slate-900'}`}>
+                              <input type="checkbox" disabled={locked || isSuperTarget || !f.view} checked={!!f[a]}
+                                onChange={(e) => setModule(m.key, { [a]: e.target.checked } as Partial<Record<PermAction, boolean>>)}
+                                className={`w-3.5 h-3.5 rounded ${theme.accent}`} />
+                              {ACTION_LABELS[a]}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        // Distribute categories across two vertical columns so cards stack tightly with no blank gaps below shorter boxes
+        const leftCategories = ['Overview', 'Production', 'Inventory & Purchasing'];
+        const rightCategories = ['Sales', 'Logistics', 'Finance', 'Administration'];
+
+        return (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
+            <div className="flex flex-col gap-3">
+              {leftCategories.map(renderCategoryCard)}
+            </div>
+            <div className="flex flex-col gap-3">
+              {rightCategories.map(renderCategoryCard)}
+            </div>
           </div>
         );
-      })}
+      })()}
     </div>
   );
 }
@@ -783,13 +921,23 @@ export function AccessPage() {
   const canManage = (u: AccessUser) =>
     u.id !== profile?.id && (isSuperAdmin || (u.role !== 'SUPER_ADMIN' && u.company_id === profile?.company_id));
 
+  // Title lives in the top bar (same line as date/profile); nothing rendered here.
+  const { setHeader } = useHeaderKpis();
+  useEffect(() => {
+    setHeader({
+      title: 'Company & Access Management',
+      subtitle: isSuperAdmin ? 'All Companies → Company → Users → Permissions' : `${company?.company_name ?? 'Your company'} → Users → Permissions`,
+    });
+    return () => setHeader(null);
+  }, [setHeader, isSuperAdmin, company?.company_name]);
+
   return (
     <div className="p-3 bg-grid min-h-full">
-      <PageHeader
-        title="Company & Access Management"
-        description={isSuperAdmin ? 'All Companies → Company → Users → Permissions' : `${company?.company_name ?? 'Your company'} → Users → Permissions`}
-        actions={focusedCompany ? <Button variant="secondary" size="sm" onClick={() => { const n = new URLSearchParams(searchParams); n.delete('company'); n.delete('user'); setSearchParams(n, { replace: true }); }}>← All companies</Button> : undefined}
-      />
+      {focusedCompany && (
+        <div className="mb-2">
+          <Button variant="secondary" size="sm" onClick={() => { const n = new URLSearchParams(searchParams); n.delete('company'); n.delete('user'); setSearchParams(n, { replace: true }); }}>← All companies</Button>
+        </div>
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] gap-2.5 items-start">
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="p-2.5 border-b border-slate-100 flex flex-col gap-2">

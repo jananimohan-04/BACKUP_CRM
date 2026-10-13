@@ -18,11 +18,19 @@ export interface HeaderKpi {
   iconPath: string;
   onClick: () => void;
   active?: boolean;
+  /** Tailwind classes for the module-specific active highlight glow & border. */
+  activeClass?: string;
+  /** Tailwind classes for the active ping dot. */
+  dotClass?: string;
 }
 
 interface HeaderKpiContextValue {
   kpis: HeaderKpi[];
   setKpis: (kpis: HeaderKpi[]) => void;
+  /** Opt-in page title rendered inline in the top bar (same line as date/profile).
+   *  Pages that set it hide their own PageHeader to avoid duplication. */
+  header: { title: string; subtitle?: string } | null;
+  setHeader: (h: { title: string; subtitle?: string } | null) => void;
 }
 
 const HeaderKpiContext = createContext<HeaderKpiContextValue | null>(null);
@@ -40,8 +48,17 @@ export function HeaderKpiProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const [header, setHeaderState] = useState<{ title: string; subtitle?: string } | null>(null);
+
+  const setHeader = useCallback((next: { title: string; subtitle?: string } | null) => {
+    setHeaderState(prev => {
+      if (prev?.title === next?.title && prev?.subtitle === next?.subtitle) return prev;
+      return next;
+    });
+  }, []);
+
   return (
-    <HeaderKpiContext.Provider value={{ kpis, setKpis }}>
+    <HeaderKpiContext.Provider value={{ kpis, setKpis, header, setHeader }}>
       {children}
     </HeaderKpiContext.Provider>
   );

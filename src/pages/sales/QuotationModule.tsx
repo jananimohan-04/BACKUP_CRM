@@ -124,7 +124,7 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
   const pager = usePager(filteredQuotes, filteredQuotes.length);
 
   return (
-    <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-white/40 overflow-hidden flex flex-col">
+    <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-violet-400/30 overflow-hidden flex flex-col">
       {/* One line: back + title on the left, the quotation tool strip and the
           Add / search / view-toggle controls grouped flush right. flex-wrap so the
           row breaks cleanly instead of overflowing on narrow viewports. */}
@@ -156,7 +156,7 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
         {loading ? (
           <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div></div>
         ) : (
-          <table className="erp-table w-full text-left border-collapse">
+          <table className="erp-table erp-table-violet w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="p-3 font-semibold">Quote No</th>
