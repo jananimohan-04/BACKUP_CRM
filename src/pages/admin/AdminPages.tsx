@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Eye, Edit, Trash2, Users as UsersIcon, Building2, ShieldCheck, Settings as SettingsIcon, FileText, ChevronDown, ChevronRight, Search, Lock, KeyRound } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -450,6 +450,21 @@ const ACTION_LABELS: Record<PermAction, string> = {
   view: 'View', create: 'Create', edit: 'Edit', delete: 'Delete', approve: 'Approve', export: 'Export',
 };
 
+function TriCheckbox({ checked, indeterminate, onChange, label, disabled, title }: {
+  checked: boolean; indeterminate: boolean; onChange: (on: boolean) => void;
+  label: string; disabled?: boolean; title?: string;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (ref.current) ref.current.indeterminate = indeterminate && !checked; }, [indeterminate, checked]);
+  return (
+    <label title={title} className={`flex items-center gap-1.5 text-[11px] font-semibold whitespace-nowrap ${disabled ? 'text-slate-300 cursor-not-allowed' : 'text-slate-500 cursor-pointer hover:text-slate-700'}`}>
+      <input ref={ref} type="checkbox" disabled={disabled} checked={checked} onChange={(e) => onChange(e.target.checked)}
+        className="w-3.5 h-3.5 rounded accent-brand-600 cursor-pointer disabled:cursor-not-allowed" />
+      {label}
+    </label>
+  );
+}
+
 function PermissionEditor({ userId, userEmail, userRole, onSaved }: {
   userId: string; userEmail: string; userRole: ErpRole; onSaved?: () => void;
 }) {
@@ -461,6 +476,40 @@ function PermissionEditor({ userId, userEmail, userRole, onSaved }: {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+
+  // Category bulk controls. Select All toggles View only (never grants
+  // actions); the Actions menu enables one action at a time (implying View,
+  // like the single-module controls) or clears optional actions. Locked and
+  // Super-Admin-target modules are always skipped; backend rules still apply.
+  const setCategoryView = (cat: string, on: boolean) => {
+    setMatrix((prev) => {
+      const next = { ...prev };
+      MODULE_CATALOG.filter((m) => m.category === cat).forEach((m) => {
+        if (lockedForCaller(m.key) || isSuperTarget) return;
+        next[m.key] = on
+          ? { ...next[m.key], view: true }
+          : { view: false, create: false, edit: false, delete: false, approve: false, export: false };
+      });
+      return next;
+    });
+  };
+
+  const setCategoryAction = (cat: string, action: PermAction | 'clear') => {
+    setMatrix((prev) => {
+      const next = { ...prev };
+      MODULE_CATALOG.filter((m) => m.category === cat).forEach((m) => {
+        if (lockedForCaller(m.key) || isSuperTarget) return;
+        if (action === 'clear') {
+          next[m.key] = { ...next[m.key], create: false, edit: false, delete: false, approve: false, export: false };
+        } else if ((m.actions as string[]).includes(action)) {
+          next[m.key] = { ...next[m.key], view: true, [action]: true };
+        }
+      });
+      return next;
+    });
+    setMenuFor(null);
+  };
 
   const isSelf = profile?.id === userId;
   const isSuperTarget = userRole === 'SUPER_ADMIN';
@@ -530,11 +579,11 @@ function PermissionEditor({ userId, userEmail, userRole, onSaved }: {
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2.5">
       <div className="flex flex-wrap items-center gap-2">
         <div className="min-w-0">
           <h3 className="text-sm font-bold text-slate-800 truncate">User Access — {userEmail}</h3>
-          <p className="text-xs text-slate-500">{grantedCount} of {MODULE_CATALOG.length} modules enabled{dirty ? ' · unsaved changes' : ''}</p>
+          <p className="text-[11px] text-slate-500">{grantedCount} of {MODULE_CATALOG.length} modules enabled{dirty ? ' · unsaved changes' : ''}</p>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <Button variant="secondary" size="sm" onClick={selectAll}>Select All Allowed</Button>
@@ -549,21 +598,59 @@ function PermissionEditor({ userId, userEmail, userRole, onSaved }: {
       {PERM_CATEGORIES.map((cat) => {
         const mods = MODULE_CATALOG.filter((m) => m.category === cat);
         const isCollapsed = collapsed.has(cat);
+        const selectable = isSuperTarget ? [] : mods.filter((m) => !lockedForCaller(m.key));
+        const viewOn = selectable.filter((m) => matrix[m.key]?.view).length;
+        const allOn = selectable.length > 0 && viewOn === selectable.length;
+        const someOn = viewOn > 0 && viewOn < selectable.length;
+        const bulkActions: PermAction[] = (['create', 'edit', 'delete', 'export'] as PermAction[]).filter((a) =>
+          selectable.some((m) => (m.actions as string[]).includes(a)));
         return (
           <div key={cat} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <button type="button" onClick={() => setCollapsed((prev) => { const n = new Set(prev); if (n.has(cat)) n.delete(cat); else n.add(cat); return n; })}
-              className="w-full flex items-center gap-2 px-4 py-2.5 bg-slate-50/70 border-b border-slate-100 hover:bg-slate-50">
-              {isCollapsed ? <ChevronRight size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />}
-              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">{cat}</span>
-              <span className="text-[11px] text-slate-400">{mods.filter((m) => matrix[m.key]?.view).length}/{mods.length} on</span>
-            </button>
+            <div className="flex items-center gap-2 pl-2 pr-2.5 h-9 bg-slate-50/70 border-b border-slate-100">
+              <button type="button" onClick={() => setCollapsed((prev) => { const n = new Set(prev); if (n.has(cat)) n.delete(cat); else n.add(cat); return n; })}
+                className="flex items-center gap-1.5 min-w-0 flex-1 hover:opacity-70" title={isCollapsed ? `Expand ${cat}` : `Collapse ${cat}`}>
+                {isCollapsed ? <ChevronRight size={14} className="text-slate-400 shrink-0" /> : <ChevronDown size={14} className="text-slate-400 shrink-0" />}
+                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider truncate">{cat}</span>
+                <span className="text-[11px] text-slate-400 shrink-0">{viewOn}/{mods.length} on</span>
+              </button>
+              <TriCheckbox checked={allOn} indeterminate={someOn} disabled={selectable.length === 0}
+                label="Select All" title={selectable.length === 0 ? 'No grantable modules in this category' : `Turn View ${allOn ? 'off' : 'on'} for every ${cat} module (actions untouched when turning on)`}
+                onChange={(on) => setCategoryView(cat, on)} />
+              <div className="relative shrink-0">
+                <button type="button" onClick={() => setMenuFor(menuFor === cat ? null : cat)} disabled={selectable.length === 0}
+                  className="flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-slate-500 hover:text-slate-700 border border-slate-200 rounded-md bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Bulk actions for this category">
+                  Actions
+                  <ChevronDown size={12} className={`transition-transform ${menuFor === cat ? 'rotate-180' : ''}`} />
+                </button>
+                {menuFor === cat && (
+                  <>
+                    <button type="button" aria-label="Close menu" onClick={() => setMenuFor(null)} className="fixed inset-0 z-10 cursor-default" />
+                    <div className="absolute right-0 z-20 mt-1 w-52 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
+                      {bulkActions.map((a) => (
+                        <button key={a} type="button" onClick={() => setCategoryAction(cat, a)}
+                          className="w-full text-left px-3 py-1.5 text-xs text-slate-600 hover:bg-brand-50 hover:text-brand-700">
+                          Enable {ACTION_LABELS[a]} for this category
+                        </button>
+                      ))}
+                      <div className="border-t border-slate-100 mt-1 pt-1">
+                        <button type="button" onClick={() => setCategoryAction(cat, 'clear')}
+                          className="w-full text-left px-3 py-1.5 text-xs text-slate-600 hover:bg-brand-50 hover:text-brand-700">
+                          Clear optional actions (keep View)
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
             {!isCollapsed && (
               <div className="divide-y divide-slate-100">
                 {mods.map((m) => {
                   const locked = lockedForCaller(m.key);
                   const f = matrix[m.key];
                   return (
-                    <div key={m.key} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-2">
+                    <div key={m.key} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-1.5">
                       <label className="flex items-center gap-2 min-w-[11rem] cursor-pointer">
                         <button type="button" role="switch" aria-checked={f.view} disabled={locked || isSuperTarget}
                           onClick={() => setModule(m.key, { view: !f.view })}
@@ -697,15 +784,15 @@ export function AccessPage() {
     u.id !== profile?.id && (isSuperAdmin || (u.role !== 'SUPER_ADMIN' && u.company_id === profile?.company_id));
 
   return (
-    <div className="p-4 lg:p-6 bg-grid min-h-full">
+    <div className="p-3 bg-grid min-h-full">
       <PageHeader
         title="Company & Access Management"
         description={isSuperAdmin ? 'All Companies → Company → Users → Permissions' : `${company?.company_name ?? 'Your company'} → Users → Permissions`}
         actions={focusedCompany ? <Button variant="secondary" size="sm" onClick={() => { const n = new URLSearchParams(searchParams); n.delete('company'); n.delete('user'); setSearchParams(n, { replace: true }); }}>← All companies</Button> : undefined}
       />
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] gap-3 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] gap-2.5 items-start">
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-3 border-b border-slate-100 flex flex-col gap-2">
+          <div className="p-2.5 border-b border-slate-100 flex flex-col gap-2">
             <div className="relative">
               <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search companies or users…"
@@ -735,7 +822,7 @@ export function AccessPage() {
               return (
                 <div key={c.id} className="border-b border-slate-100 last:border-0">
                   <button type="button" onClick={() => toggleCompany(c.id)}
-                    className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-slate-50 text-left">
+                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-50 text-left">
                     {open ? <ChevronDown size={14} className="text-slate-400 shrink-0" /> : <ChevronRight size={14} className="text-slate-400 shrink-0" />}
                     <Building2 size={14} className="text-brand-500 shrink-0" />
                     <span className="text-sm font-bold text-slate-800 truncate">{c.company_name}</span>
@@ -749,7 +836,7 @@ export function AccessPage() {
                         const active = u.id === selectedUserId;
                         return (
                           <button key={u.id} type="button" onClick={() => selectUser(active ? null : u.id)}
-                            className={`w-full flex items-center gap-2 pl-9 pr-3 py-1.5 text-left hover:bg-brand-50/50 ${active ? 'bg-brand-50' : ''}`}>
+                            className={`w-full flex items-center gap-2 pl-9 pr-3 py-1 text-left hover:bg-brand-50/50 ${active ? 'bg-brand-50' : ''}`}>
                             <span className="min-w-0 flex-1">
                               <span className="block text-[13px] font-semibold text-slate-700 truncate">{u.full_name || u.email}</span>
                               <span className="block text-[11px] text-slate-400 truncate">
@@ -768,7 +855,7 @@ export function AccessPage() {
             })}
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 min-h-[24rem]">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
           {selectedUser ? (
             canManage(selectedUser) ? (
               <PermissionEditor key={selectedUser.id} userId={selectedUser.id} userEmail={selectedUser.email} userRole={selectedUser.role} onSaved={() => loadUsers()} />
