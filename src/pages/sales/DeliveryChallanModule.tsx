@@ -5,7 +5,7 @@ import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 
-export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal, onView, entryForm }: { onBack: () => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onView?: (record: any) => void; entryForm?: ReactNode }) {
+export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal, onView, entryForm }: { onBack: () => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onView?: (record: any) => void; entryForm?: ReactNode | ((props: { onBack: () => void; searchSlot: ReactNode }) => ReactNode) }) {
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -35,38 +35,39 @@ export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal,
 
   const pager = usePager(filteredRecords, filteredRecords.length);
 
+  const searchInput = (
+    <div className="relative shrink-0">
+      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+      <input
+        type="text"
+        placeholder="Search DC..."
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        className="pl-8 pr-2.5 py-1 text-xs border border-slate-300 rounded-md focus:outline-none focus:border-brand-500 bg-white shadow-sm w-36 sm:w-44"
+      />
+    </div>
+  );
+
+  const renderedEntry = typeof entryForm === 'function' ? entryForm({ onBack, searchSlot: searchInput }) : entryForm;
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 px-3 py-1.5 flex flex-wrap justify-between items-center gap-2 gap-y-1">
-        <div className="flex items-center gap-2 min-w-0">
-          <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-600 shrink-0">
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-          <div className="flex items-baseline gap-2 min-w-0">
+    <div className="flex flex-col gap-2.5">
+      {renderedEntry ? (
+        renderedEntry
+      ) : (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 px-3 py-2 flex flex-wrap justify-between items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-600 shrink-0">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
             <h2 className="text-sm font-bold text-slate-800 shrink-0">Delivery Challans</h2>
-            <p className="text-xs text-slate-500 truncate">Manage dispatches and deliveries</p>
           </div>
+          {searchInput}
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="pl-9 pr-4 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-brand-500"
-            />
-          </div>
-        </div>
-      </div>
+      )}
 
-      {/* Always-visible New Delivery Challan entry form, refactored out of the popup so
-          the page loads with it already open above the table. */}
-      {entryForm}
-
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
-      <div className="overflow-x-auto p-4">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+      <div className="overflow-x-auto">
         {loading ? (
           <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div></div>
         ) : (

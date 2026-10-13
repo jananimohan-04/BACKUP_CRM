@@ -17,6 +17,7 @@ export interface HeaderKpi {
   /** Inline SVG path `d` for the lucide-style icon. */
   iconPath: string;
   onClick: () => void;
+  active?: boolean;
 }
 
 interface HeaderKpiContextValue {
@@ -34,7 +35,7 @@ export function HeaderKpiProvider({ children }: { children: React.ReactNode }) {
   const setKpis = useCallback((next: HeaderKpi[]) => {
     setKpisState(prev => {
       if (prev.length === next.length && prev.every((k, i) =>
-        k.key === next[i].key && k.label === next[i].label && k.count === next[i].count)) return prev;
+        k.key === next[i].key && k.label === next[i].label && k.count === next[i].count && k.active === next[i].active)) return prev;
       return next;
     });
   }, []);

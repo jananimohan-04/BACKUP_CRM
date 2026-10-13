@@ -37,7 +37,7 @@ export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
   const pager = usePager(filteredRecords, filteredRecords.length);
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
       <div className="px-3 py-1.5 border-b border-slate-200 flex flex-wrap justify-between items-center gap-2 gap-y-1 bg-slate-50">
         <div className="flex items-center gap-2 min-w-0">
           <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-600 shrink-0">
@@ -62,7 +62,7 @@ export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
         </div>
       </div>
 
-      <div className="overflow-x-auto p-4">
+      <div className="overflow-x-auto">
         {loading ? (
           <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div></div>
         ) : (

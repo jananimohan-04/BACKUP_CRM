@@ -235,7 +235,7 @@ export function PettyCashPage() {
                   );
                 })}
                 {!loading && view.length === 0 && (
-                  <tr><td colSpan={9} className="px-3 py-12 text-center"><Inbox size={28} className="mx-auto text-slate-300 mb-2" />
+                  <tr><td colSpan={9} className="px-3 py-8 text-center"><Inbox size={28} className="mx-auto text-slate-300 mb-2" />
                     <p className="text-sm font-semibold text-slate-600">{filtersOn ? 'No entries match these filters' : 'No petty cash entries yet'}</p></td></tr>
                 )}
                 {loading && view.length === 0 && <tr><td colSpan={9} className="px-3 py-10 text-center text-sm text-slate-400">Loading…</td></tr>}

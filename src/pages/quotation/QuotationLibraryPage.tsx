@@ -47,7 +47,7 @@ export function QuotationLibraryPage() {
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 lg:p-6 space-y-5">
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900"><FolderOpen className="text-orange-500" size={26} /> Saved Quotation Library</h1>
           <p className="text-sm text-slate-500 mt-1">View, manage, and reuse all your saved quotations in one place.</p>
@@ -83,19 +83,19 @@ export function QuotationLibraryPage() {
         <div className="border border-slate-200 rounded-xl overflow-x-auto">
           <table className="w-full text-sm min-w-[820px]">
             <thead className="bg-slate-50 text-[11px] uppercase text-slate-500"><tr>
-              {['#', 'Date', 'Client / Company', 'Products / Line Items', 'Grand Total (₹)', 'Actions'].map((h, i) => <th key={h} className={`font-semibold px-4 py-3 ${i === 4 ? 'text-right' : 'text-left'}`}>{h}</th>)}
+              {['#', 'Date', 'Client / Company', 'Products / Line Items', 'Grand Total (₹)', 'Actions'].map((h, i) => <th key={h} className={`font-semibold px-4 py-2 ${i === 4 ? 'text-right' : 'text-left'}`}>{h}</th>)}
             </tr></thead>
             <tbody>
               {shown.map(q => {
                 const items = itemNames(q);
                 return (
                   <tr key={q.id} data-testid="quote-row" className="border-t border-slate-100 align-top">
-                    <td className="px-4 py-3 font-bold text-orange-600">#{q.seq}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">{dmy(q.date)}</td>
-                    <td className="px-4 py-3 font-medium text-slate-800">{q.clients.map(c => c.name).join(', ') || '—'}</td>
-                    <td className="px-4 py-3 text-slate-600">{items.slice(0, 2).join(', ')}{items.length > 2 && <span className="text-slate-400"> +{items.length - 2} more</span>}</td>
-                    <td className="px-4 py-3 text-right font-mono font-semibold">{money(q.total)}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2 font-bold text-orange-600">#{q.seq}</td>
+                    <td className="px-4 py-2 whitespace-nowrap">{dmy(q.date)}</td>
+                    <td className="px-4 py-2 font-medium text-slate-800">{q.clients.map(c => c.name).join(', ') || '—'}</td>
+                    <td className="px-4 py-2 text-slate-600">{items.slice(0, 2).join(', ')}{items.length > 2 && <span className="text-slate-400"> +{items.length - 2} more</span>}</td>
+                    <td className="px-4 py-2 text-right font-mono font-semibold">{money(q.total)}</td>
+                    <td className="px-4 py-2">
                       <div className="flex items-center gap-0.5">
                         <button aria-label={`View #${q.seq}`} title="View" onClick={() => setView(q)} className={`${iconBtn} hover:text-blue-600`}><Eye size={15} /></button>
                         <button aria-label={`Reuse #${q.seq}`} title="Open in Create Quotation" onClick={() => reuse(q)} className={`${iconBtn} hover:text-orange-600`}><Pencil size={15} /></button>

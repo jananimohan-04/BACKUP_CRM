@@ -45,6 +45,7 @@ export function DataTable<T extends Record<string, any>>({
   filterOptions,
   emptyMessage = 'No records found',
   toolbarDate,
+  toolbarLeft,
   inlineAdd = false,
 }: {
   data: T[];
@@ -58,6 +59,9 @@ export function DataTable<T extends Record<string, any>>({
   emptyMessage?: string;
   /** Extra control rendered in the toolbar row right after search (e.g. a date picker). */
   toolbarDate?: ReactNode;
+  /** Extra content rendered at the START of the toolbar row, before search
+   *  (e.g. view tabs when this table is embedded under another toolbar). */
+  toolbarLeft?: ReactNode;
   /** When true, the Add button moves into the toolbar row (after the status
    *  filter, before Export) instead of the top header row. */
   inlineAdd?: boolean;
@@ -131,7 +135,7 @@ export function DataTable<T extends Record<string, any>>({
   return (
     <div className="bg-white rounded-md border border-slate-200 shadow-sm overflow-hidden flex flex-col">
       {(title || (onAdd && !inlineAdd)) && (
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 bg-slate-50/50">
           <h3 className="text-sm font-bold text-slate-800 tracking-wider uppercase">{title}</h3>
           {onAdd && !inlineAdd && (
             <Button size="sm" onClick={onAdd} icon={<span className="text-base leading-none font-bold">+</span>}>
@@ -140,7 +144,8 @@ export function DataTable<T extends Record<string, any>>({
           )}
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-4 px-6 py-4 border-b border-slate-100 bg-white">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 border-b border-slate-100 bg-white">
+        {toolbarLeft}
         <div className="relative flex-1 min-w-[240px]">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
@@ -190,7 +195,7 @@ export function DataTable<T extends Record<string, any>>({
                 <th
                   key={col.key}
                   style={{ width: col.width }}
-                  className={`px-6 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest ${
+                  className={`px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest ${
                     col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'
                   }`}
                 >
@@ -216,9 +221,9 @@ export function DataTable<T extends Record<string, any>>({
           <tbody className="divide-y divide-slate-100">
             {paginated.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="px-6 py-20 text-center bg-slate-50/50">
-                  <div className="flex flex-col items-center gap-3 text-slate-400">
-                    <Search size={40} className="text-slate-300 opacity-50" />
+                <td colSpan={columns.length} className="px-4 py-10 text-center bg-slate-50/50">
+                  <div className="flex flex-col items-center gap-2 text-slate-400">
+                    <Search size={32} className="text-slate-300 opacity-50" />
                     <p className="text-sm font-medium">{emptyMessage}</p>
                   </div>
                 </td>
@@ -235,7 +240,7 @@ export function DataTable<T extends Record<string, any>>({
                   {columns.map((col) => (
                     <td
                       key={col.key}
-                      className={`px-6 py-2.5 text-slate-700 ${
+                      className={`px-4 py-2 text-slate-700 ${
                         col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'
                       }`}
                     >

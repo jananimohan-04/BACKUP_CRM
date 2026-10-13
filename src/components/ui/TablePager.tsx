@@ -45,7 +45,7 @@ export function PagerFooter<T>({ pager, sticky = false, label = 'records' }: { p
   if (pager.total === 0) return null;
   const { start, pageSize, total, page, pages } = pager;
   return (
-    <div className={`flex items-center justify-between gap-4 border-t border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 ${sticky ? 'sticky bottom-0 z-10' : ''}`}>
+    <div className={`flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 ${sticky ? 'sticky bottom-0 z-10' : ''}`}>
       <span className="flex flex-wrap items-center gap-x-4 gap-y-1 font-semibold">
         <label className="flex items-center gap-2 font-medium text-slate-500">Show
           <select aria-label="Rows per page" value={pageSize} onChange={e => pager.setPageSize(Number(e.target.value))}

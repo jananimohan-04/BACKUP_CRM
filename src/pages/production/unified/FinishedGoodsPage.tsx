@@ -300,7 +300,7 @@ export function FinishedGoodsPage() {
   return (
     <div className="p-4 lg:p-6 bg-slate-50 min-h-full">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-6">
+      <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3 mb-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Finished Goods</h1>
           <p className="text-sm text-slate-500 mt-1">Track completed products, pending quantity and stock at a glance.</p>
@@ -315,7 +315,7 @@ export function FinishedGoodsPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
         {/* Total Parts */}
         <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex items-center gap-4">
           <div className="w-12 h-12 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
@@ -490,8 +490,8 @@ export function FinishedGoodsPage() {
       {/* Detail View Modal */}
       <Modal open={!!showViewModal} onClose={() => setShowViewModal(null)} title={`Finished Goods: ${showViewModal?.wo_no}`} size="2xl">
         {showViewModal && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-medium text-slate-500 mb-1">Part Details</label>
                 <div className="text-sm text-slate-600">{showViewModal.part_name}</div>

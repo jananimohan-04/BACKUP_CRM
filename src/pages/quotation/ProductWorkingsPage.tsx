@@ -62,7 +62,7 @@ export function ProductWorkingsPage({ title, initial, onBack, onSave }: {
     });
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-4 lg:p-6 space-y-6" data-testid="product-workings">
+    <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-4" data-testid="product-workings">
       <div className="flex flex-wrap items-start justify-between gap-3 pb-4 border-b border-slate-100">
         <div className="flex items-start gap-3 min-w-0">
           <button type="button" onClick={back} className="flex items-center gap-2 h-9 px-3 rounded-full border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-700 hover:bg-slate-100"><ArrowLeft size={15} /> Back to Quotation</button>

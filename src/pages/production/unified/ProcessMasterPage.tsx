@@ -429,14 +429,14 @@ export function ProcessMasterPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total Processes" value={String(stats.total)} icon={<Cog size={20} />} accent="navy" />
         <StatCard label="Active Processes" value={String(stats.active)} icon={<CheckCircle size={20} />} accent="success" />
         <StatCard label="Inactive Processes" value={String(stats.inactive)} icon={<XCircle size={20} />} accent="neutral" />
         <StatCard label="Average Cost / Hour" value={formatINR(Math.round(stats.avg * 100) / 100)} icon={<IndianRupee size={20} />} accent="brand" />
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-5 py-4 mb-4 flex flex-wrap items-end gap-4">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-2.5 mb-2.5 flex flex-wrap items-end gap-3">
         <div className="min-w-[200px]">
           <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">
             Process Category
@@ -478,7 +478,7 @@ export function ProcessMasterPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-16">
+        <div className="flex items-center justify-center py-10">
           <div className="flex flex-col items-center gap-3">
             <div className="w-8 h-8 border-slate-200 border-t-brand-500 rounded-full animate-spin" style={{ borderWidth: '3px' }} />
             <p className="text-sm text-slate-400">Loading processes...</p>

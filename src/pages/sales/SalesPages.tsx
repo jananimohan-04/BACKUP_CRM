@@ -151,7 +151,7 @@ export function CustomersPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Companies" description="Manage client relationships and outstanding balances" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<DateSelector /></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total Clients" value={customersData.length.toString()} icon={<Users size={20} />} accent="brand" />
         <StatCard label="Active Clients" value={activeCount.toString()} icon={<Users size={20} />} trend="2" trendUp accent="success" />
         <StatCard label="Total Revenue" value={`₹${(totalValue / 10000000).toFixed(2)}Cr`} icon={<FileText size={20} />} trend="12%" trendUp accent="accent" />
@@ -454,7 +454,7 @@ export function QuotationsPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Quotations" description="Manage price quotations for company enquiries" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<DateSelector /></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total Quotations" value={quotationsData.length.toString()} icon={<FileText size={20} />} accent="brand" />
         <StatCard label="Pending" value={pendingCount.toString()} icon={<FileText size={20} />} accent="warning" />
         <StatCard label="Converted" value={acceptedCount.toString()} icon={<FileText size={20} />} trend="12%" trendUp accent="success" />
@@ -769,7 +769,7 @@ export function SalesOrdersPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Sales Orders" description="Track confirmed company orders" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<DateSelector /></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total Orders" value={ordersData.length.toString()} icon={<FileText size={20} />} accent="brand" />
         <StatCard label="In Production" value={inProduction.toString()} icon={<FileText size={20} />} accent="accent" />
         <StatCard label="Delivered" value={deliveredCount.toString()} icon={<FileText size={20} />} trend="100%" trendUp accent="success" />

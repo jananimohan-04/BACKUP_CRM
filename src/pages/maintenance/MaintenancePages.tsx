@@ -54,7 +54,7 @@ export function MachinesPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Machine Master" description="Central registry of all CNC machines" actions={<div className="flex items-center gap-2">{loading && <Badge variant="neutral">Syncing...</Badge>}<FilterButton /><ExportButton /></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total Machines" value={machines.length.toString()} icon={<Settings size={20} />} accent="brand" />
         <StatCard label="Running" value={machines.filter(m => m.status === 'Running').length.toString()} icon={<Activity size={20} />} accent="success" />
         <StatCard label="Under Maintenance" value={machines.filter(m => m.status === 'Maintenance').length.toString()} icon={<Wrench size={20} />} accent="warning" />

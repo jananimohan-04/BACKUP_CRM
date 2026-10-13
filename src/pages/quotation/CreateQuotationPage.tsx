@@ -179,7 +179,7 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
 
   return (
     <div className={embed ? '' : 'p-4 lg:p-6 bg-grid min-h-full'}>
-      <div className={embed ? 'space-y-5' : 'bg-white border border-slate-200 rounded-2xl p-4 lg:p-6 space-y-5'}>
+      <div className={embed ? 'space-y-3' : 'bg-white border border-slate-200 rounded-2xl p-4 space-y-3'}>
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900"><FileText className="text-orange-500" size={26} /> Create New Quotation</h1>
           <p className="text-sm text-slate-500 mt-1">Create accurate, professional quotations with products, pricing, taxes, and terms.</p>

@@ -343,7 +343,7 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
                   </tr>
                 ))}
                 {!anyLoading && shown.length === 0 && (
-                  <tr><td colSpan={8} className="px-3 py-14 text-center"><Inbox size={30} className="mx-auto text-slate-300 mb-2" />
+                  <tr><td colSpan={8} className="px-3 py-8 text-center"><Inbox size={30} className="mx-auto text-slate-300 mb-2" />
                     <p className="text-sm font-semibold text-slate-600">{filtersActive ? 'No ledger rows match these filters' : 'No ledger entries yet'}</p>
                     <p className="text-xs text-slate-400 mt-0.5">{filtersActive ? 'Change or clear the filters.' : 'Bank entries, invoices and inwards will appear here.'}</p></td></tr>
                 )}

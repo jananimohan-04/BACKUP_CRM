@@ -701,7 +701,7 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total Work Orders" value={String(stats.total)} icon={<ClipboardList size={20} />} accent="navy" />
         <StatCard label="Planned" value={String(stats.planned)} icon={<CalendarClock size={20} />} accent="neutral" />
         <StatCard label="In Progress" value={String(stats.inProgress)} icon={<Cog size={20} />} accent="brand" />

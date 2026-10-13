@@ -5,11 +5,12 @@ import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
-import { Plus, Trash2, Eye, UploadCloud , Edit2, Download, FileText, RefreshCcw, Copy, Calculator, Users as UsersIcon, Package as PackageIcon, ScrollText, FolderOpen, Building2 } from 'lucide-react';
+import { Plus, Trash2, Eye, UploadCloud, Edit2, Download, FileText, RefreshCcw, Copy, Calculator, Users as UsersIcon, Package as PackageIcon, ScrollText, FolderOpen, Building2, ArrowLeft } from 'lucide-react';
 import { uploadOrderFile } from '@/lib/orderFiles';
 import { MetalCalculatorPage, ClientLibraryPage, ProductLibraryPage, TermsLibraryPage, QuotationLibraryPage, CompanyProfilePage } from '../quotation/QuotationToolPages';
 import { setMockImage, getMockImage } from '@/lib/mockStorage';
 import { useAuth } from '@/contexts/AuthContext';
+import { STAGE_MODULE } from '@/config/permissions';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { EnquiryModule } from './EnquiryModule';
 import { QuotationModule } from './QuotationModule';
@@ -178,6 +179,9 @@ function formatSaleOrderDateTime(order: any): string | null {
   }
   return null;
 }
+
+/** Normalised comparison key for names/codes (case- and space-insensitive). */
+function normStr(v: any): string { return String(v ?? '').trim().toLowerCase(); }
 
 function enquiryProductOptions(enquiries: any[], leadNo?: string, orders?: any[]) {
   // Sales-stage numbers carry a date-time stamp (1009-26Sep26-1208AM) while the
@@ -1299,7 +1303,7 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
 }
 
 export function SalesPipelinePage() {
-  const { profile, company } = useAuth();
+  const { profile, company, canView, canDo, permissions } = useAuth();
   const userName = profile?.full_name || '';
   const [activeView, setActiveView] = useState<'pipeline' | 'enquiry_list' | 'quotation_list' | 'sales_order_list' | 'inward_list' | 'rejected_list' | 'fg_list' | 'dc_list' | 'invoice_list'>('pipeline');
   const columns: Stage[] = ['Enquiry', 'Quotation', 'Sales Order', 'Inward', 'Finished Goods', 'DC', 'Invoice'];
@@ -1427,14 +1431,14 @@ export function SalesPipelinePage() {
     Invoice: { tile: 'bg-gradient-to-br from-indigo-800 to-indigo-950 border-indigo-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
   };
   const stageClick: Record<string, () => void> = {
-    Enquiry: () => setActiveView('enquiry_list'),
-    Quotation: () => setActiveView('quotation_list'),
-    'Sales Order': () => setActiveView('sales_order_list'),
-    Inward: () => setActiveView('inward_list'),
-    Rejected: () => setActiveView('rejected_list'),
-    'Finished Goods': () => setActiveView('fg_list'),
-    DC: () => setActiveView('dc_list'),
-    Invoice: () => setActiveView('invoice_list'),
+    Enquiry: () => setActiveView(cur => cur === 'enquiry_list' ? 'pipeline' : 'enquiry_list'),
+    Quotation: () => setActiveView(cur => cur === 'quotation_list' ? 'pipeline' : 'quotation_list'),
+    'Sales Order': () => setActiveView(cur => cur === 'sales_order_list' ? 'pipeline' : 'sales_order_list'),
+    Inward: () => setActiveView(cur => cur === 'inward_list' ? 'pipeline' : 'inward_list'),
+    Rejected: () => setActiveView(cur => cur === 'rejected_list' ? 'pipeline' : 'rejected_list'),
+    'Finished Goods': () => setActiveView(cur => cur === 'fg_list' ? 'pipeline' : 'fg_list'),
+    DC: () => setActiveView(cur => cur === 'dc_list' ? 'pipeline' : 'dc_list'),
+    Invoice: () => setActiveView(cur => cur === 'invoice_list' ? 'pipeline' : 'invoice_list'),
   };
   const kpiStats = [
     { key: 'enquiry', title: 'Total Enquiries', iconPath: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', stage: 'Enquiry' },
@@ -1448,18 +1452,30 @@ export function SalesPipelinePage() {
   ];
   useEffect(() => {
     // Rejected counts pieces rejected (it is not a stage of the board); the others count cards.
-    setKpis(kpiStats.map(s => ({
+    const isStageActive = (stage: string) => {
+      if (stage === 'Enquiry') return activeView === 'enquiry_list';
+      if (stage === 'Quotation') return activeView === 'quotation_list';
+      if (stage === 'Sales Order') return activeView === 'sales_order_list';
+      if (stage === 'Inward') return activeView === 'inward_list';
+      if (stage === 'Rejected') return activeView === 'rejected_list';
+      if (stage === 'Finished Goods') return activeView === 'fg_list';
+      if (stage === 'DC') return activeView === 'dc_list';
+      if (stage === 'Invoice') return activeView === 'invoice_list';
+      return false;
+    };
+    setKpis(kpiStats.filter(s => canView(STAGE_MODULE[s.stage] ?? s.stage)).map(s => ({
       key: s.key,
       label: s.title,
       count: s.stage === 'Rejected' ? rejectedTotal : cards.filter(c => c.stage === s.stage).length,
       tile: stageColors[s.stage]?.tile ?? stageColors.Enquiry.tile,
       icon: stageColors[s.stage]?.icon ?? stageColors.Enquiry.icon,
       iconPath: s.iconPath,
+      active: isStageActive(s.stage),
       onClick: stageClick[s.stage],
     })));
     return () => setKpis([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cards, rejectedTotal, setKpis]);
+  }, [cards, rejectedTotal, setKpis, activeView, permissions]);
 
   // The enquiry form is always visible at the top of the Enquiries list, so it has no
   // open/closed flag any more. savingEnquiry blocks duplicate submits while a save is in
@@ -1491,6 +1507,9 @@ export function SalesPipelinePage() {
   const [listRefresh, setListRefresh] = useState(0);
   // How many inwards were saved in this popup session with "Save & Add Another Inward".
   const [inwardSavedCount, setInwardSavedCount] = useState(0);
+  // Double-submit guard: saveInward inserts one row per line, so a retried
+  // click must never run twice (no idempotency key exists on cnc_inwards).
+  const [savingInward, setSavingInward] = useState(false);
   useEffect(() => { if (!inwardModalTarget) setInwardSavedCount(0); }, [inwardModalTarget]);
   useEffect(() => {
     void (async () => {
@@ -1547,6 +1566,121 @@ export function SalesPipelinePage() {
     })();
     return () => { cancelled = true; };
   }, [dcModalTarget]);
+
+  // ── Inward purchase catalogue (product + supplier masters) ──────────────
+  // cnc_parts is the ERP product master and cnc_raw_materials holds bought-out
+  // materials (the Purchase module already buys from both combined). Neither
+  // was wired into Inward before: its product list only contained enquiry /
+  // sales-order line items keyed by enquiry, never by product ID.
+  // Pricing gap (no schema change): there is no supplier price-list table and
+  // no GST% on parts, so the price chain is preferred-supplier configured
+  // price → last paid price for that supplier+product (cnc_inwards history)
+  // → master unit_price → mandatory manual entry (never an assumed zero).
+  const [partsCatalogue, setPartsCatalogue] = useState<any[]>([]);
+  const [makeBuyByCode, setMakeBuyByCode] = useState<Map<string, string>>(new Map());
+  const [supplierDirectory, setSupplierDirectory] = useState<any[]>([]);
+  const [lastPaidPrice, setLastPaidPrice] = useState<Map<string, number>>(new Map());
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [pm, rm, sup] = await Promise.all([
+          supabase.from('cnc_parts').select('id,part_no,part_name,category,unit,unit_price,hsn,preferred_supplier_id,status'),
+          supabase.from('cnc_raw_materials').select('id,material_code,name,uom,unit_price,preferred_supplier_id,status'),
+          supabase.from('cnc_suppliers').select('id,name,status').eq('status', 'Active').order('name'),
+        ]);
+        // cnc_bom is optional (absent from some databases): without it every
+        // active master row stays eligible for purchase.
+        let bom: any[] = [];
+        try {
+          const b = await supabase.from('cnc_bom').select('part_no,make');
+          if (!b.error) bom = b.data ?? [];
+        } catch { /* no Make/Buy classification available */ }
+        if (cancelled) return;
+        const cat: any[] = [];
+        ((pm.error ? [] : pm.data) ?? []).forEach((p: any) => cat.push({ key: `part:${p.id}`, kind: 'part', id: p.id, code: p.part_no || '', name: p.part_name || '', category: p.category || '', unit: p.unit || '', unitPrice: Number(p.unit_price ?? 0) || 0, supplierId: p.preferred_supplier_id || '', hsn: p.hsn || '', status: p.status || 'Active' }));
+        ((rm.error ? [] : rm.data) ?? []).forEach((r: any) => cat.push({ key: `raw:${r.id}`, kind: 'raw', id: r.id, code: r.material_code || '', name: r.name || '', category: 'RAW MATERIAL', unit: r.uom || '', unitPrice: Number(r.unit_price ?? 0) || 0, supplierId: r.preferred_supplier_id || '', hsn: '', status: r.status || 'Active' }));
+        const mb = new Map<string, string>();
+        bom.forEach((b: any) => {
+          const code = String(b.part_no || '').trim(); const mk = String(b.make || '').trim().toLowerCase();
+          if (!code || !mk) return;
+          const prev = mb.get(code);
+          mb.set(code, prev && prev !== mk ? 'both' : mk);
+        });
+        setPartsCatalogue(cat);
+        setMakeBuyByCode(mb);
+        if (!sup.error) setSupplierDirectory(sup.data ?? []);
+      } catch { if (!cancelled) { setPartsCatalogue([]); setSupplierDirectory([]); } }
+      try {
+        const h = await supabase.from('cnc_inwards').select('party_name,product_name,part_name,price').order('created_at', { ascending: false }).limit(1000);
+        if (cancelled || h.error) return;
+        const m = new Map<string, number>();
+        (h.data ?? []).forEach((r: any) => {
+          const s = normStr(r.party_name); const p = Number(r.price) || 0;
+          if (!s || !p) return;
+          [r.product_name, r.part_name].forEach((n: any) => { const k = `${s}||${normStr(n)}`; if (normStr(n) && !m.has(k)) m.set(k, p); });
+        });
+        if (!cancelled) setLastPaidPrice(m);
+      } catch { /* price history is a nice-to-have */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Purchase-eligible catalogue: active master rows, excluding only records
+  // unanimously classified as manufactured-never-bought (Make on every BOM
+  // line that mentions them). Anything bought somewhere — or unclassified —
+  // stays purchasable, so dual make/buy products are never hidden by name.
+  const eligibleCatalogue = useMemo(() => partsCatalogue.filter((p: any) => {
+    if (!p.name || String(p.status || 'Active').toLowerCase() !== 'active') return false;
+    const marks = [p.code, p.name].map((c: any) => makeBuyByCode.get(String(c || '').trim())).filter(Boolean);
+    if (marks.length && marks.every(m => m === 'make')) return false;
+    return true;
+  }), [partsCatalogue, makeBuyByCode]);
+
+  const round2 = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
+  // GST-exclusive ERP convention (same as quotations: CGST+SGST on top):
+  // Total = Q × P − discount% + GST% on the taxable amount, rounded to 2dp.
+  const inwardLineTotal = (q: any, p: any, d: any, g: any) => {
+    const Q = Number(q) || 0, P = Number(p) || 0, D = Number(d) || 0, G = Number(g) || 0;
+    return round2(Q * P * (1 - D / 100) * (1 + G / 100));
+  };
+  const PURCHASE_CATEGORIES = ['GOODS PURCHASE', 'SERVICE PURCHASE', 'EXPENSES'];
+
+  /** Resolve a typed company name to a supplier master row or a known company. */
+  const resolveSupplier = (name: any): { kind: 'supplier' | 'company' | 'unknown'; id: string; name: string } => {
+    const n = normStr(name);
+    if (!n) return { kind: 'unknown', id: '', name: '' };
+    const s = (supplierDirectory || []).find((x: any) => normStr(x.name) === n);
+    if (s) return { kind: 'supplier', id: s.id, name: s.name };
+    const c = (allKnownCompanies || []).find((x: any) => normStr(x.company) === n);
+    if (c) return { kind: 'company', id: '', name: c.company };
+    return { kind: 'unknown', id: '', name: String(name || '').trim() };
+  };
+
+  /** Supplier-aware purchase price: configured supplier price → last paid → master → manual. */
+  const resolvePurchasePrice = (entry: any, supplierName: any): { price: number | ''; source: string } => {
+    const sup = resolveSupplier(supplierName);
+    const masterPrice = Number(entry?.unitPrice) || 0;
+    if (sup.kind === 'supplier' && entry?.supplierId && entry.supplierId === sup.id && masterPrice > 0)
+      return { price: masterPrice, source: 'supplier' };
+    const sKey = normStr(sup.name || supplierName);
+    const hist = lastPaidPrice.get(`${sKey}||${normStr(entry?.name)}`) ?? lastPaidPrice.get(`${sKey}||${normStr(entry?.code)}`);
+    if (hist && hist > 0) return { price: hist, source: 'history' };
+    if (masterPrice > 0) return { price: masterPrice, source: 'catalogue' };
+    return { price: '', source: 'manual' };
+  };
+
+  /** Duplicate identity of a line: master key wins, otherwise the product name. */
+  const inwardLineIdentity = (item: any): string => {
+    if (item?.productKey && String(item.productKey).startsWith('part:')) return `id:${item.productKey}`;
+    if (item?.productKey && String(item.productKey).startsWith('raw:')) return `id:${item.productKey}`;
+    return `nm:${normStr(item?.productName)}`;
+  };
+
+  /** Legacy (enquiry/order-linked) options for one inward group, as before. */
+  const inwardLegacyOptions = (group: any) => inwardModalTarget?.id === 'dummy'
+    ? (inwardForm.productOptions || []).filter((o: any) => { const p = (group.partyName || inwardForm.partyName || '').trim().toLowerCase(); const u = (inwardForm.projectName || '').trim(); const base = (s: any) => String(s||'').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, ''); return (!p || String(o.customer || '').trim().toLowerCase() === p) && (!u || base(o.leadNo) === base(u)); })
+    : (inwardForm.productOptions || []);
   // Approved-price lookup for the DC form (same source as the DC→Invoice
   // gate: latest Approved costing sheet for the quotation).
   useEffect(() => {
@@ -2367,8 +2501,15 @@ export function SalesPipelinePage() {
         gst: existing?.gst || c.gst || c.gstin || c.gst_number || ''
       });
     });
+    // Active suppliers are valid inward companies too (purchase source). They
+    // merge here so every company/supplier picker in the pipeline offers them.
+    (supplierDirectory || []).forEach((s: any) => {
+      const name = String(s.name || '').trim();
+      if (!name || map.has(name.toLowerCase())) return;
+      map.set(name.toLowerCase(), { company: name, contact_person: '', phone: '', email: '', city: '', gst: '' });
+    });
     return Array.from(map.values()).sort((a, b) => a.company.localeCompare(b.company));
-  }, [customerList, knownCompanies]);
+  }, [customerList, knownCompanies, supplierDirectory]);
 
   // Already-entered product names across enquiries — for the Product Name dropdown
   // (user can still type a brand-new product name).
@@ -2473,7 +2614,7 @@ export function SalesPipelinePage() {
       // Strip the order-time stamp suffix (e.g. 1010-28Sep26-0994PM -> 1010) so
       // repeat inwards for the same company + unique number land on one card.
       const groups = new Map<string, any[]>();
-      inwards.filter(i => String(i.category || '').trim().toUpperCase() !== 'EXPENSES').forEach(i => {
+      inwards.filter(i => !String(i.category || '').trim().toUpperCase().startsWith('EXPENSE')).forEach(i => {
         const key = baseUniqueNo(orderMap.get(i.sales_order_ref) || i.project_name || i.inward_no || i.id);
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key)!.push(i);
@@ -2953,6 +3094,27 @@ export function SalesPipelinePage() {
     'Inward': 'New Inward Entry',
     'DC': 'New Delivery Challan',
   } as Record<string, string>)[stage] || 'New Entry';
+
+  // Access control: a list/board view the user may not see bounces back to
+  // the pipeline (which itself is route-guarded). Only runs once permissions load.
+  const ACTIVE_VIEW_MODULE: Record<string, string> = {
+    enquiry_list: 'enquiries', quotation_list: 'quotations', sales_order_list: 'sales-orders',
+    inward_list: 'inward', rejected_list: 'rejected', fg_list: 'finished-goods',
+    dc_list: 'delivery', invoice_list: 'invoices',
+  };
+  useEffect(() => {
+    const m = ACTIVE_VIEW_MODULE[activeView];
+    if (m && permissions && !canView(m)) setActiveView('pipeline');
+    if (activeView === 'pipeline' && pipelineViewMode === 'companies' && permissions && !canView('companies')) {
+      setPipelineViewMode('kanban');
+    }
+  }, [activeView, pipelineViewMode, permissions, canView]);
+
+  // Cards visible in List/Calendar views (same rule as Kanban columns below).
+  const visibleCards = useMemo(
+    () => cards.filter((c) => canView(STAGE_MODULE[c.stage] ?? 'sales-pipeline')),
+    [cards, canView],
+  );
 
   const addForStage = (stageId: string) => {
                     if (stageId === 'Enquiry') { setEnquiryForm(resetEnquiryForm()); setDuplicateSource(null); setEnquirySaveNotice(null); setAddPopup('Enquiry'); }
@@ -3460,6 +3622,11 @@ export function SalesPipelinePage() {
       alert("Error: Could not identify the dragged card. Please try again.");
       return;
     }
+    // Stage moves change records: require edit access on the target module.
+    if (!canDo(STAGE_MODULE[toStage] ?? 'sales-pipeline', 'edit')) {
+      alert('Not authorized: your account cannot move records into this stage.');
+      return;
+    }
     await moveCardToStage(card, toStage);
   };
 
@@ -3663,18 +3830,51 @@ export function SalesPipelinePage() {
 
   // another: keep the popup open on a fresh, blank inward after saving (the saved one is not shown again).
   const saveInward = async (another = false) => {
-    if (!inwardModalTarget) return;
+    if (!inwardModalTarget || savingInward) return;
     const cStr = getContactStrings(inwardForm);
     const groups = (inwardForm.parts || [])
       .map((g: any) => ({ ...g, items: (g.items || []).filter((it: any) => String(it.partName || '').trim()) }))
       .filter((g: any) => g.items.length);
 
     if (!groups.length) { alert('Add at least one part to inward for this product.'); return; }
-    if (groups.flatMap((g: any) => g.items.map((it: any) => ({ g, it }))).some(({ g, it }: any) => !(it.productName || (g as any).productName || inwardForm.productName))) { alert('Select a product for each line.'); return; }
     if (groups.some((g: any) => !(g.category || inwardForm.category))) { alert('Select a category for each inward.'); return; }
     if (groups.some((g: any) => !(g.inwardDate || inwardForm.inwardDate))) { alert('Select an inward date for each inward.'); return; }
+    // The company is the actual purchase source: required always, and for
+    // purchase categories it must be a known supplier/company — never an
+    // arbitrary typed name.
+    for (const g of groups) {
+      const cat = String(g.category || inwardForm.category || '').trim().toUpperCase();
+      const party = String(g.partyName || inwardForm.partyName || '').trim();
+      if (!party) { alert('Select a company/supplier for each inward.'); return; }
+      if (PURCHASE_CATEGORIES.includes(cat) && resolveSupplier(party).kind === 'unknown') {
+        alert(`"${party}" is not a known supplier or company. Pick one from the list instead of typing a new name.`);
+        return;
+      }
+    }
     const flatItems = groups.flatMap((g: any) => g.items.map((it: any) => ({ g, it })));
-    if (flatItems.some(({ it }: any) => Number(it.quantity) <= 0)) { alert('Enter a quantity greater than zero for each part.'); return; }
+    for (const { g, it } of flatItems) {
+      const cat = String(g.category || inwardForm.category || '').trim().toUpperCase();
+      const label = it.productName || it.partName || 'this line';
+      if (cat !== 'EXPENSES' && !it.productKey) { alert(`Select "${it.productName || 'the product'}" from the product catalogue or enquiry list — arbitrary names are not allowed.`); return; }
+      if (!it.productName && !it.partName) { alert('Select a product for each line.'); return; }
+      if ((Number(it.quantity) || 0) <= 0) { alert('Enter a quantity greater than zero for each part.'); return; }
+      // A purchase price is never assumed: zero/blank blocks the save.
+      if ((Number(it.price) || 0) <= 0) { alert(`Enter the purchase price for "${label}". A price is never assumed to be zero.`); return; }
+      const d = Number(it.discount) || 0, gg = Number(it.gst) || 0;
+      if (d < 0 || d > 100) { alert(`Discount for "${label}" must be between 0 and 100%.`); return; }
+      if (gg < 0 || gg > 100) { alert(`GST for "${label}" must be between 0 and 100%.`); return; }
+    }
+    // Safety net: no duplicate product lines within one inward entry (same
+    // master record or same product name). Repeats across entries stay allowed.
+    {
+      const seen = new Set<string>();
+      for (const { it } of flatItems) {
+        const id = inwardLineIdentity(it);
+        if (id === 'nm:') continue;
+        if (seen.has(id)) { alert(`"${it.productName}" is added twice in this inward entry. Keep one line and adjust its quantity.`); return; }
+        seen.add(id);
+      }
+    }
     const flatFiles = groups.flatMap((g: any) => g.files || []);
     if (flatFiles.some((file: File) => file.size > 50 * 1024 * 1024)) {
       alert('Each attachment must be 50 MB or smaller.');
@@ -3685,6 +3885,7 @@ export function SalesPipelinePage() {
       return;
     }
 
+    setSavingInward(true);
     try {
       const rows = [];
       for (const { g, it } of flatItems) {
@@ -3696,7 +3897,7 @@ export function SalesPipelinePage() {
         const p = Number(it.price) || 0;
         const d = Number(it.discount) || 0;
         const gg = Number(it.gst) || 0;
-        const total = q * p * (1 - d / 100) * (1 + gg / 100);
+        const total = inwardLineTotal(q, p, d, gg);
         rows.push({
           id: inwardId,
           inward_no: `INW-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -3704,7 +3905,7 @@ export function SalesPipelinePage() {
           project_name: it.projectName || g.projectName || inwardForm.projectName, contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
           sales_order_ref: inwardForm.salesOrderRef, reference_no: g.referenceNo ?? inwardForm.referenceNo,
           inward_date: g.inwardDate || inwardForm.inwardDate || null, party_name: g.partyName || it.partyName || inwardForm.partyName, remarks: it.remarks ?? g.remarks ?? inwardForm.remarks,
-          part_name: it.partName, part_number: it.partNumber || '', quantity: q, price: p,
+          part_name: it.partName, part_number: it.partNumber || it.partCode || '', quantity: q, price: p,
           discount_percent: d, gst_percent: gg, total_amount: total, status: 'Pending', attachments,
         });
       }
@@ -3758,6 +3959,7 @@ export function SalesPipelinePage() {
       console.error('Create inward failed:', error);
       const msg = error?.message || error?.details || error?.hint || (typeof error === 'string' ? error : JSON.stringify(error));
       alert(`Unable to create inward entries: ${msg}`);
+      setSavingInward(false);
       return;
     }
     // Customer inward is the customer's material (job work), so it is not added to company stock.
@@ -3765,6 +3967,7 @@ export function SalesPipelinePage() {
         const { error: soErr } = await supabase.from('cnc_sales_orders').update({ status: 'Inwarded' }).eq('id', inwardModalTarget.raw.id);
         if (soErr) console.error("Failed to update sales order status:", soErr);
     }
+    setSavingInward(false);
     fetchPipeline();
     setInwardRefreshSignal((n) => n + 1);
     if (another) {
@@ -4255,32 +4458,161 @@ export function SalesPipelinePage() {
   };
 
   // ── New Enquiry entry form ──────────────────────────────────────────────
+  // Inward product search resolution (shared by every category branch below).
+  // Master catalogue wins over legacy enquiry names; unknown text stays visible
+  // but unlinked so save-time validation — never an auto-created product — stops it.
+  const onInwardProductInput = (index: number, ii: number, value: string, opts?: { allowFreeText?: boolean }) => {
+    const parts = [...(inwardForm.parts || [])];
+    const group = { ...(parts[index] || {}) };
+    const items = [...(group.items || [])];
+    const prev = { ...(items[ii] || {}) };
+    const v = String(value ?? '');
+    const dupeOf = (identity: string) => {
+      const all: { gi: number; jj: number; label: string }[] = [];
+      (inwardForm.parts || []).forEach((g: any, gi: number) => (g.items || []).forEach((it: any, jj: number) => {
+        if (gi === index && jj === ii) return;
+        if (inwardLineIdentity(it) === identity && normStr(it.productName)) all.push({ gi, jj, label: it.productName });
+      }));
+      return all[0];
+    };
+    const masterHit = partsCatalogue.find((m: any) => normStr(m.name) === normStr(v) || (m.code && normStr(m.code) === normStr(v)));
+    if (masterHit && !eligibleCatalogue.some((m: any) => m.key === masterHit.key)) {
+      alert(`"${masterHit.name}" is classified as a manufactured (Make-only) item and is not available for purchase.`);
+      return;
+    }
+    if (masterHit) {
+      const dupe = dupeOf(`id:${masterHit.key}`);
+      if (dupe) { alert(`"${masterHit.name}" is already on line ${dupe.jj + 1}. Change the quantity there instead of adding it twice.`); return; }
+      const supplier = group.partyName ?? inwardForm.partyName ?? '';
+      const r = resolvePurchasePrice(masterHit, supplier);
+      items[ii] = { ...prev, productKey: masterHit.key, productName: masterHit.name, partId: masterHit.id, partCode: masterHit.code, partName: String(prev.partName || '').trim() ? prev.partName : masterHit.name, enquiryId: '', projectName: '', price: r.price, _resolvedPrice: r.price, gst: prev.gst ?? '18', discount: prev.discount ?? '0' };
+    } else {
+      const leg = inwardLegacyOptions(group).find((o: any) => normStr(o.name) === normStr(v));
+      if (leg) {
+        const dupe = dupeOf(`nm:${normStr(leg.name)}`);
+        if (dupe) { alert(`"${leg.name}" is already on line ${dupe.jj + 1}. Change the quantity there instead of adding it twice.`); return; }
+        const patch: any = { productName: leg.name, productKey: leg.key, partId: '', partCode: '', enquiryId: leg.enquiryId || '', projectName: leg.leadNo || '' };
+        if (leg.customer && !String(group.partyName || '').trim()) group.partyName = leg.customer;
+        items[ii] = { ...prev, ...patch };
+      } else if (opts?.allowFreeText) {
+        const dupe = dupeOf(`nm:${normStr(v)}`);
+        if (v.trim() && dupe) { alert(`"${v.trim()}" is already on line ${dupe.jj + 1}. Change the quantity there instead of adding it twice.`); return; }
+        items[ii] = { ...prev, productName: v, productKey: v.trim() ? 'expense' : '', partId: '', partCode: '', enquiryId: '', projectName: v };
+      } else {
+        // Catalogue purchase: typed text that matches nothing stays visible so
+        // the user can keep typing, but it carries no product link.
+        items[ii] = { ...prev, productName: v, productKey: '', partId: '', partCode: '', enquiryId: '', projectName: '' };
+      }
+    }
+    group.items = items; parts[index] = group;
+    setInwardForm({ ...inwardForm, parts });
+  };
+
+  // Supplier change: refresh every selected line's price from the new
+  // supplier's terms, but never touch quantities, remarks, or a price the
+  // user deliberately overrode (tracked via _resolvedPrice).
+  const onInwardCompanyChange = (index: number, value: string) => {
+    const parts = [...(inwardForm.parts || [])];
+    const group = { ...(parts[index] || {}) };
+    group.partyName = value;
+    group.items = (group.items || []).map((it: any) => {
+      const master = it.productKey ? eligibleCatalogue.find((m: any) => m.key === it.productKey) : null;
+      if (!master) return it;
+      const r = resolvePurchasePrice(master, value);
+      const untouched = it.price === '' || it.price == null || String(it.price) === String(it._resolvedPrice);
+      return untouched ? { ...it, price: r.price, _resolvedPrice: r.price } : it;
+    });
+    parts[index] = group;
+    setInwardForm({ ...inwardForm, parts });
+  };
+
   // This used to be the body of the "New Enquiry" popup. It is now rendered by
   // EnquiryModule directly above the enquiries table, so the page loads with the
   // form already open. Every field, the company search/autocomplete, Add New
   // Company, the multi-row products, the file uploads and saveEnquiry are
   // untouched — only the modal chrome (backdrop, positioning, close button and
   // footer) has been replaced by a card with Save Enquiry / Clear Reset buttons.
-  const renderEnquiryEntryForm = () => (
+  const renderEnquiryEntryForm = (opts?: { onBack?: () => void; searchSlot?: ReactNode }) => {
+    // One product line's fields. The first product renders inline in the main
+    // row; every added product renders on its own full-width line below, so
+    // the form never needs sideways scrolling.
+    const renderItemFields = (item: any, idx: number) => (
+      <Fragment>
+        <input className={`${compactInput} w-[9rem]`} placeholder="Product Name" list="enquiry-product-list" value={item.productName ?? item.partName ?? ''} onChange={e => {
+          const newItems = [...(enquiryForm.items || [])];
+          newItems[idx] = { ...newItems[idx], productName: e.target.value, partName: e.target.value };
+          setEnquiryForm({...enquiryForm, items: newItems});
+        }} />
+        <input type="number" className={`${compactInput} w-[3.75rem]`} placeholder="Qty" value={item.quantity} onChange={e => {
+          const newItems = [...(enquiryForm.items || [])];
+          newItems[idx] = { ...newItems[idx], quantity: e.target.value };
+          setEnquiryForm({...enquiryForm, items: newItems});
+        }} />
+        <label className="inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
+          <UploadCloud size={13}/>{(item.files || []).length ? `${item.files.length} file(s)` : 'Upload file'}
+          <input type="file" multiple accept="*/*" className="hidden" onChange={e => {
+            const selectedFiles = Array.from(e.currentTarget.files || []);
+            const newItems = [...(enquiryForm.items || [])];
+            newItems[idx] = { ...newItems[idx], files: [...(newItems[idx].files || []), ...selectedFiles] };
+            setEnquiryForm({...enquiryForm, items: newItems});
+            e.currentTarget.value = '';
+          }} />
+        </label>
+        {(item.files || []).length > 0 && item.files.map((file: File, fileIdx: number) => (
+          <span key={`${file.name}-${fileIdx}`} className="inline-flex shrink-0 items-center gap-1 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-600">
+            <span className="max-w-[9rem] truncate">{file.name}</span>
+            <button type="button" title={`Remove ${file.name}`} className="font-bold text-rose-600 hover:text-rose-800" onClick={() => { const newItems = [...enquiryForm.items]; newItems[idx] = {...newItems[idx], files: newItems[idx].files.filter((_: File, j: number) => j !== fileIdx)}; setEnquiryForm({...enquiryForm, items: newItems}); }}>×</button>
+          </span>
+        ))}
+        <input className={`${compactInput} w-[6.5rem]`} placeholder="Remarks..." value={item.remarks || ''} onChange={e => {
+          const newItems = [...(enquiryForm.items || [])];
+          newItems[idx] = { ...newItems[idx], remarks: e.target.value };
+          setEnquiryForm({...enquiryForm, items: newItems});
+        }} />
+        {idx > 0 && (
+          <button type="button" className="shrink-0 rounded p-1.5 text-red-500 hover:bg-red-50" title="Remove product" onClick={() => {
+            const newItems = enquiryForm.items.filter((_: any, i: number) => i !== idx);
+            setEnquiryForm({...enquiryForm, items: newItems});
+          }}>
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+          </button>
+        )}
+      </Fragment>
+    );
+    return (
     <section className={`rounded-xl border shadow-sm ${tint('Enquiry').panel}`} data-testid="enquiry-entry-form">
-      <div className="space-y-2.5 p-3">
+      <div className="space-y-2 p-2.5">
         {duplicateSource && (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-xs font-semibold text-brand-800">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-1.5 text-xs font-semibold text-brand-800">
             <span>Duplicated from: {duplicateSource} · saving creates a brand-new enquiry with its own company ID.</span>
             <button type="button" onClick={() => setDuplicateSource(null)} className="font-bold text-brand-600 underline hover:text-brand-900">Dismiss</button>
           </div>
         )}
 
         {enquirySaveNotice && (
-          <div role="status" data-testid="enquiry-saved-note" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+          <div role="status" data-testid="enquiry-saved-note" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
             <span>✓ Enquiry {enquirySaveNotice} saved. The list below has been refreshed.</span>
             <button type="button" onClick={() => setEnquirySaveNotice(null)} className="font-bold underline hover:text-emerald-900">Dismiss</button>
           </div>
         )}
 
-        {/* One compact row: company, then the product line, then the actions. flex-wrap keeps
-            every field reachable on narrow screens, where they simply flow onto extra lines. */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* One compact row: header (back + title), company, product line, actions, search. */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {opts?.onBack && (
+            <div className="flex items-center gap-1.5 shrink-0 mr-1">
+              <button 
+                type="button" 
+                onClick={opts.onBack} 
+                title="Back to Pipeline"
+                className="p-1 hover:bg-slate-200/80 rounded-md transition-colors text-slate-600 shrink-0 cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+              <h2 className="text-sm font-bold text-slate-800 shrink-0">Enquiries</h2>
+              <span className="h-5 w-px shrink-0 bg-slate-300 ml-1" aria-hidden="true" />
+            </div>
+          )}
+
           <CustomerAutocomplete
             label="Company"
             required
@@ -4289,74 +4621,45 @@ export function SalesPipelinePage() {
             onChange={val => handleCompanyChange(val)}
             onSelectCustomer={c => handleCompanyChange(c.company)}
             companies={allKnownCompanies}
-            inputClass={`${compactInput} w-[15rem]`}
+            inputClass={`${compactInput} w-[9rem]`}
             placeholder="Type or select company..."
           />
-          <button type="button" onClick={openNewLeadModal} className="h-8 whitespace-nowrap rounded-md border border-brand-200 bg-brand-50/50 px-2.5 text-[11px] font-bold text-brand-600 transition-colors hover:border-brand-400 hover:text-brand-800">+ Add New Company</button>
+          <button type="button" onClick={openNewLeadModal} className="h-7 whitespace-nowrap rounded-md border border-brand-200 bg-brand-50/50 px-2 text-[11px] font-bold text-brand-600 transition-colors hover:border-brand-400 hover:text-brand-800">+ Add New Company</button>
+          <button type="button" className="h-7 whitespace-nowrap rounded-md border border-brand-200 bg-brand-50/50 px-2 text-[11px] font-bold text-brand-600 transition-colors hover:border-brand-400 hover:text-brand-800" onClick={() => {
+            setEnquiryForm({...enquiryForm, items: [...(enquiryForm.items || []), { productName: '', partName: '', quantity: '', remarks: '', filePaths: [] as string[], files: [] as File[] }]});
+          }}>+ Add Product</button>
 
           <span className="h-6 w-px shrink-0 bg-slate-300" aria-hidden="true" />
 
-          <span className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wider text-slate-600">Products Required <span className="text-red-500">*</span></span>
-
-          {(enquiryForm.items || [{ productName: '', partName: '', quantity: '', remarks: '', filePaths: [] as string[], files: [] as File[] }]).map((item: any, idx: number) => (
-            <Fragment key={idx}>
-              <input className={`${compactInput} w-[13rem]`} placeholder="Product Name" list="enquiry-product-list" value={item.productName ?? item.partName ?? ''} onChange={e => {
-                const newItems = [...(enquiryForm.items || [])];
-                newItems[idx] = { ...newItems[idx], productName: e.target.value, partName: e.target.value };
-                setEnquiryForm({...enquiryForm, items: newItems});
-              }} />
-              <input type="number" className={`${compactInput} w-[4.5rem]`} placeholder="Qty" value={item.quantity} onChange={e => {
-                const newItems = [...(enquiryForm.items || [])];
-                newItems[idx] = { ...newItems[idx], quantity: e.target.value };
-                setEnquiryForm({...enquiryForm, items: newItems});
-              }} />
-              <label className="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
-                <UploadCloud size={13}/>{(item.files || []).length ? `${item.files.length} file(s)` : 'Upload file'}
-                <input type="file" multiple accept="*/*" className="hidden" onChange={e => {
-                  const selectedFiles = Array.from(e.currentTarget.files || []);
-                  const newItems = [...(enquiryForm.items || [])];
-                  newItems[idx] = { ...newItems[idx], files: [...(newItems[idx].files || []), ...selectedFiles] };
-                  setEnquiryForm({...enquiryForm, items: newItems});
-                  e.currentTarget.value = '';
-                }} />
-              </label>
-              {(item.files || []).length > 0 && item.files.map((file: File, fileIdx: number) => (
-                <span key={`${file.name}-${fileIdx}`} className="inline-flex shrink-0 items-center gap-1 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-600">
-                  <span className="max-w-[9rem] truncate">{file.name}</span>
-                  <button type="button" title={`Remove ${file.name}`} className="font-bold text-rose-600 hover:text-rose-800" onClick={() => { const newItems = [...enquiryForm.items]; newItems[idx] = {...newItems[idx], files: newItems[idx].files.filter((_: File, j: number) => j !== fileIdx)}; setEnquiryForm({...enquiryForm, items: newItems}); }}>×</button>
-                </span>
-              ))}
-              <input className={`${compactInput} w-[10rem]`} placeholder="Remarks..." value={item.remarks || ''} onChange={e => {
-                const newItems = [...(enquiryForm.items || [])];
-                newItems[idx] = { ...newItems[idx], remarks: e.target.value };
-                setEnquiryForm({...enquiryForm, items: newItems});
-              }} />
-              {idx > 0 && (
-                <button type="button" className="shrink-0 rounded p-1.5 text-red-500 hover:bg-red-50" onClick={() => {
-                  const newItems = enquiryForm.items.filter((_: any, i: number) => i !== idx);
-                  setEnquiryForm({...enquiryForm, items: newItems});
-                }}>
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-                </button>
-              )}
-            </Fragment>
+          {(enquiryForm.items || [{ productName: '', partName: '', quantity: '', remarks: '', filePaths: [] as string[], files: [] as File[] }]).slice(0, 1).map((item: any, idx: number) => (
+            <Fragment key={idx}>{renderItemFields(item, idx)}</Fragment>
           ))}
           <datalist id="enquiry-product-list">{existingProductNames.map(n => <option key={n} value={n} />)}</datalist>
-          <button type="button" className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] font-semibold text-brand-600 hover:text-brand-800" onClick={() => {
-            setEnquiryForm({...enquiryForm, items: [...(enquiryForm.items || []), { productName: '', partName: '', quantity: '', remarks: '', filePaths: [] as string[], files: [] as File[] }]});
-          }}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            Add Product
-          </button>
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <Button variant="secondary" size="sm" onClick={() => { setEnquiryForm(resetEnquiryForm()); setDuplicateSource(null); setEnquirySaveNotice(null); }}>Clear / Reset</Button>
             <Button size="sm" onClick={saveEnquiry} disabled={savingEnquiry}>{savingEnquiry ? 'Saving...' : 'Save Enquiry'}</Button>
+            {opts?.searchSlot && (
+              <>
+                <span className="h-6 w-px shrink-0 bg-slate-300 mx-0.5" aria-hidden="true" />
+                {opts.searchSlot}
+              </>
+            )}
           </div>
+          {/* Added products: each on its own full-width line below, no sideways scroll. */}
+          {(enquiryForm.items || []).slice(1).map((item: any, i: number) => {
+            const idx = i + 1;
+            return (
+              <div key={idx} className="flex flex-wrap items-center gap-2 basis-full border-t border-slate-200/60 pt-2">
+                {renderItemFields(item, idx)}
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>
-  );
+    );
+  };
 
   // ── New Sales Order entry form ──────────────────────────────────────────
   // This used to be the body of the "Create Sales Order" popup. It is now rendered by
@@ -4364,7 +4667,7 @@ export function SalesPipelinePage() {
   // open. Every field, the company search/autocomplete, the dynamic product rows, the
   // drawing uploads and saveStandaloneSalesOrder are unchanged — only the modal chrome
   // (backdrop, positioning, close button and footer) is gone.
-  const renderSalesOrderEntryForm = () => (
+  const renderSalesOrderEntryForm = (opts?: { onBack?: () => void; searchSlot?: ReactNode }) => (
     <section className={`rounded-xl border shadow-sm ${tint('Sales Order').panel}`} data-testid="so-entry-form">
       <div className="space-y-2.5 p-3">
         {soSaveNotice && (
@@ -4374,22 +4677,44 @@ export function SalesPipelinePage() {
           </div>
         )}
 
-        {/* One compact row for the order fields. The product lines keep their own tabular
-            sub-grid below, because seven columns cannot sit on a single readable line. */}
-        <div className="flex flex-wrap items-center gap-2">
-          <CustomerAutocomplete
-            label="Company"
-            required
-            inlineLabel
-            value={soForm.customer || ''}
-            onChange={val => setSoForm((prev: any) => ({ ...prev, customer: val }))}
-            companies={allKnownCompanies}
-            inputClass={`${compactInput} w-[15rem]`}
-            placeholder="Type or select company..."
-          />
-          <FormField label="Order Date" required inline><input type="date" className={`${compactInput} w-[10.5rem]`} value={soForm.orderDate || ''} onChange={e=>setSoForm({...soForm, orderDate: e.target.value})} /></FormField>
-          <FormField label="Delivery Date" required inline><input type="date" className={`${compactInput} w-[10.5rem]`} value={soForm.deliveryDate || ''} onChange={e=>setSoForm({...soForm, deliveryDate: e.target.value})} /></FormField>
-          <FormField label="PO Number" inline><input className={`${compactInput} w-[10rem]`} placeholder="Customer PO no." value={soForm.customerPoNo || ''} onChange={e=>setSoForm({...soForm, customerPoNo: e.target.value})} /></FormField>
+        {/* One compact row for the order fields on a single line. */}
+        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto scrollbar-thin">
+          {opts?.onBack && (
+            <div className="flex items-center gap-1.5 shrink-0 mr-1">
+              <button 
+                type="button" 
+                onClick={opts.onBack} 
+                title="Back to Pipeline"
+                className="p-1 hover:bg-slate-200/80 rounded-md transition-colors text-slate-600 shrink-0 cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+              <h2 className="text-sm font-bold text-slate-800 shrink-0 whitespace-nowrap">Sales Orders</h2>
+              <span className="h-5 w-px shrink-0 bg-slate-300 ml-1" aria-hidden="true" />
+            </div>
+          )}
+
+          <div className="shrink-0">
+            <CustomerAutocomplete
+              label="Company"
+              required
+              inlineLabel
+              value={soForm.customer || ''}
+              onChange={val => setSoForm((prev: any) => ({ ...prev, customer: val }))}
+              companies={allKnownCompanies}
+              inputClass={`${compactInput} w-[11rem]`}
+              placeholder="Company..."
+            />
+          </div>
+          <div className="shrink-0">
+            <FormField label="Order Date" required inline><input type="date" className={`${compactInput} w-[8.25rem]`} value={soForm.orderDate || ''} onChange={e=>setSoForm({...soForm, orderDate: e.target.value})} /></FormField>
+          </div>
+          <div className="shrink-0">
+            <FormField label="Delivery Date" required inline><input type="date" className={`${compactInput} w-[8.25rem]`} value={soForm.deliveryDate || ''} onChange={e=>setSoForm({...soForm, deliveryDate: e.target.value})} /></FormField>
+          </div>
+          <div className="shrink-0">
+            <FormField label="PO No" inline><input className={`${compactInput} w-[7.5rem]`} placeholder="Customer PO" value={soForm.customerPoNo || ''} onChange={e=>setSoForm({...soForm, customerPoNo: e.target.value})} /></FormField>
+          </div>
 
           <span className="h-6 w-px shrink-0 bg-slate-300" aria-hidden="true" />
 
@@ -4401,10 +4726,16 @@ export function SalesPipelinePage() {
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <Button variant="secondary" size="sm" onClick={() => { setSoForm(resetSoForm()); setSoSaveNotice(null); }}>Clear / Reset</Button>
             <Button size="sm" onClick={saveStandaloneSalesOrder} disabled={savingSo}>{savingSo ? 'Saving...' : 'Save Order'}</Button>
+            {opts?.searchSlot && (
+              <>
+                <span className="h-6 w-px shrink-0 bg-slate-300 mx-0.5" aria-hidden="true" />
+                {opts.searchSlot}
+              </>
+            )}
           </div>
         </div>
         {(soForm.items || []).length > 0 && (
-          <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_7.5rem_6rem] gap-2 items-center px-1 pt-0.5">
+          <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_7.5rem_6rem_2rem] gap-2 items-center px-1 pt-0.5">
             <span></span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Product Name</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Qty</span>
@@ -4412,13 +4743,14 @@ export function SalesPipelinePage() {
             <span className="text-[10px] font-bold text-slate-500 uppercase">GST %</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Status</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Drawings</span>
+            <span></span>
           </div>
         )}
         {(soForm.items || []).map((item: any, idx: number) => {
           const upd = (patch: any) => setSoForm((prev: any) => ({ ...prev, items: (prev.items || []).map((r: any, i: number) => (i === idx ? { ...r, ...patch } : r)) }));
           return (
             <div key={item.id || idx} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5">
-              <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_7.5rem_6rem] gap-2 items-center">
+              <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_7.5rem_6rem_2rem] gap-2 items-center">
                 <span className="text-[11px] font-bold text-slate-400 text-center">{idx + 1}</span>
                 <input className={compactCell} placeholder="Product name" value={item.partName || ''} onChange={e=>upd({ partName: e.target.value })} />
                 <input type="number" min={0} className={compactCell} placeholder="Qty" value={item.quantity ?? ''} onChange={e=>upd({ quantity: e.target.value })} />
@@ -4427,10 +4759,11 @@ export function SalesPipelinePage() {
                 <select className={compactCell} value={item.itemStatus || 'Confirmed'} onChange={e=>upd({ itemStatus: e.target.value })}>
                   {['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'].map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
-                <label className="inline-flex h-8 w-full cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach drawings or any file (all formats)">
+                <label className="inline-flex h-7 w-full cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach drawings or any file (all formats)">
                   <UploadCloud size={13} />{(item.files || []).length ? `${item.files.length} file${item.files.length === 1 ? '' : 's'}` : 'Upload'}
                   <input type="file" multiple accept="*/*" className="hidden" aria-label={`Drawings for product ${idx + 1}`} onChange={e => { const picked = Array.from(e.currentTarget.files || []); e.currentTarget.value = ''; if (picked.length) upd({ files: [...(item.files || []), ...picked] }); }} />
                 </label>
+                <button type="button" title={`Remove product ${idx + 1}`} aria-label={`Remove product ${idx + 1}`} className="flex h-7 w-7 items-center justify-center rounded-md text-lg leading-none text-rose-500 hover:bg-rose-50 hover:text-rose-700" onClick={() => setSoForm((prev: any) => ({ ...prev, items: (prev.items || []).filter((_: any, i: number) => i !== idx) }))}>×</button>
               </div>
               {(item.files || []).length > 0 && (
                 <div className="mt-1.5 flex flex-wrap gap-1.5 pl-9" data-testid="so-files">
@@ -4464,7 +4797,7 @@ export function SalesPipelinePage() {
     }
     setDcSaveNotice(null);
   };
-  const renderDeliveryChallanEntryForm = () => (
+  const renderDeliveryChallanEntryForm = (opts?: { onBack?: () => void; searchSlot?: ReactNode }) => (
     <section className={`rounded-xl border shadow-sm ${tint('DC').panel}`} data-testid="dc-entry-form">
       <div className="space-y-2.5 p-3">
         {dcSaveNotice && (
@@ -4477,6 +4810,20 @@ export function SalesPipelinePage() {
           {/* Row 1 - party identity. Inline labels + one shared centre line, so the whole
               block reads as a toolbar instead of five stacked label/control pairs. */}
           <div className="flex flex-wrap items-center gap-2">
+            {opts?.onBack && (
+              <div className="flex items-center gap-1.5 shrink-0 mr-1">
+                <button 
+                  type="button" 
+                  onClick={opts.onBack} 
+                  title="Back to Pipeline"
+                  className="p-1 hover:bg-slate-200/80 rounded-md transition-colors text-slate-600 shrink-0 cursor-pointer"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+                <h2 className="text-sm font-bold text-slate-800 shrink-0">Delivery Challans</h2>
+                <span className="h-5 w-px shrink-0 bg-slate-300 ml-1" aria-hidden="true" />
+              </div>
+            )}
             <FormField label="DC No" required inline><input className={`${compactInput} w-[9rem]`} value={dcForm.dcNo || ''} onChange={e=>setDcForm({...dcForm, dcNo: e.target.value})} /></FormField>
             <FormField label="Date" required inline><input type="date" className={`${compactInput} w-[10.5rem]`} value={dcForm.date || ''} onChange={e=>setDcForm({...dcForm, date: e.target.value})} /></FormField>
             <CustomerAutocomplete
@@ -4502,6 +4849,12 @@ export function SalesPipelinePage() {
             />
             <FormField label="Party Address" inline><input className={`${compactInput} w-[14rem]`} value={dcForm.partyAddress || ''} onChange={e=>setDcForm({...dcForm, partyAddress: e.target.value})} /></FormField>
             <FormField label="Party GSTIN" inline><input className={`${compactInput} w-[11rem]`} value={dcForm.partyGstin || ''} onChange={e=>setDcForm({...dcForm, partyGstin: e.target.value})} /></FormField>
+            {opts?.searchSlot && (
+              <div className="ml-auto flex shrink-0 items-center gap-2">
+                <span className="h-6 w-px shrink-0 bg-slate-300 mx-0.5" aria-hidden="true" />
+                {opts.searchSlot}
+              </div>
+            )}
           </div>
           {/* Row 2 - dispatch references. */}
           <div className="flex flex-wrap items-center gap-2">
@@ -4629,7 +4982,7 @@ export function SalesPipelinePage() {
   // Inward" flow and the saved-count badge are all unchanged - only the modal wrapper is
   // gone. Done/Cancel became Clear / Reset, because there is no popup to close.
   const clearInwardForm = () => { setInwardSavedCount(0); openDummyInward(); };
-  const renderInwardEntryForm = () => (
+  const renderInwardEntryForm = (opts?: { onBack?: () => void; searchSlot?: ReactNode }) => (
     <section className={`rounded-xl border shadow-sm ${tint('Inward').panel}`} data-testid="inward-entry-form">
       <div className="space-y-2.5 p-3">
         <div className="flex flex-col gap-4">
@@ -4646,20 +4999,8 @@ export function SalesPipelinePage() {
             {(inwardForm.parts || []).map((group: any, index: number) => {
               const setGroup = (patch: any) => { const parts=[...inwardForm.parts]; parts[index]={...group, ...patch}; setInwardForm({...inwardForm, parts}); };
               const setItem = (ii: number, patch: any) => { const items=[...(group.items || [])]; items[ii]={...items[ii], ...patch}; setGroup({ items }); };
-              const lineTotal = (it: any) => (Number(it.quantity)||0)*(Number(it.price)||0)*(1-(Number(it.discount)||0)/100)*(1+(Number(it.gst)||0)/100);
-              const productOptions = inwardModalTarget?.id === 'dummy'
-                ? (inwardForm.productOptions || []).filter((o: any) => { const p = (group.partyName || inwardForm.partyName || '').trim().toLowerCase(); const u = (inwardForm.projectName || '').trim(); const base = (s: any) => String(s||'').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, ''); return (!p || String(o.customer || '').trim().toLowerCase() === p) && (!u || base(o.leadNo) === base(u)); })
-                : (inwardForm.productOptions || []);
-              const onSelectProduct = (ii: number, key: string) => {
-                const selected = (inwardForm.productOptions || []).find((option: any) => option.key === key);
-                const cust = selected?.customer || '';
-                const patch = { productKey: selected?.key || '', productName: selected?.name || '', enquiryId: selected?.enquiryId || '', projectName: selected?.leadNo || '' };
-                const items=[...(group.items || [])]; items[ii]={...items[ii], ...patch};
-                const gpatch: any = { ...patch };
-                if (cust && !String(group.partyName || '').trim()) gpatch.partyName = cust;
-                const parts=[...inwardForm.parts]; parts[index]={...group, ...gpatch, items};
-                setInwardForm({ ...inwardForm, parts, ...patch, partyName: cust || inwardForm.partyName });
-              };
+              const lineTotal = (it: any) => inwardLineTotal(it.quantity, it.price, it.discount, it.gst);
+              const productOptions = inwardLegacyOptions(group);
               const addPartBtn = (
                 <button type="button" className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs font-medium text-brand-600 hover:text-brand-800" onClick={() => setGroup({ items: [...(group.items || []), emptyInwardItem()] })}>
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -4669,7 +5010,22 @@ export function SalesPipelinePage() {
               return (
               <div key={index} className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="shrink-0 text-xs font-bold uppercase text-slate-600">Inward {index + 1}</span>
+                  {index === 0 && opts?.onBack ? (
+                    <div className="flex items-center gap-1.5 shrink-0 mr-1">
+                      <button 
+                        type="button" 
+                        onClick={opts.onBack} 
+                        title="Back to Pipeline"
+                        className="p-1 hover:bg-slate-200/80 rounded-md transition-colors text-slate-600 shrink-0 cursor-pointer"
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                      </button>
+                      <h2 className="text-sm font-bold text-slate-800 shrink-0">Inwards</h2>
+                      <span className="h-5 w-px shrink-0 bg-slate-300 ml-1" aria-hidden="true" />
+                    </div>
+                  ) : (
+                    <span className="shrink-0 text-xs font-bold uppercase text-slate-600">Inward {index + 1}</span>
+                  )}
                   <FormField label="Category" required inline>
                     <select className={`${compactInput} w-[11rem]`} value={group.category || 'GOODS PURCHASE'} onChange={e=>setGroup({ category: e.target.value })}>
                       <option>EXPENSES</option>
@@ -4682,18 +5038,19 @@ export function SalesPipelinePage() {
                   </FormField>
                   <div className="flex items-center gap-1.5">
                     <span className={inlineLbl}>Company</span>
-                    <input className={`${compactInput} w-[12rem]`} placeholder="Company" list="inward-customer-list" value={group.partyName ?? inwardForm.partyName ?? ''} onChange={e=>setGroup({ partyName: e.target.value })} />
+                    <input className={`${compactInput} w-[12rem]`} placeholder="Company" list="inward-customer-list" value={group.partyName ?? inwardForm.partyName ?? ''} onChange={e=>onInwardCompanyChange(index, e.target.value)} />
                   </div>
                   <FormField label="Inward Date" required inline><input type="date" className={`${compactInput} w-[10.5rem]`} value={group.inwardDate || ''} onChange={e=>setGroup({ inwardDate: e.target.value })} /></FormField>
                   <FormField label="Reference No." inline><input className={`${compactInput} w-[10rem]`} value={group.referenceNo || ''} onChange={e=>setGroup({ referenceNo: e.target.value })} placeholder="e.g. DC/Invoice No" /></FormField>
                   <div className="flex items-center gap-1.5">
                     <span className={inlineLbl}>Files</span>
-                    <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach bills, DCs or any file (all formats)">
+                    <label className="inline-flex h-7 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach bills, DCs or any file (all formats)">
                       <UploadCloud size={13}/>{(group.files || []).length ? `${group.files.length} file${group.files.length === 1 ? '' : 's'}` : 'Choose Files'}
                       <input type="file" multiple accept="*/*" className="hidden" onChange={e=>{ setGroup({ files: [...(group.files || []), ...Array.from(e.target.files || [])] }); e.currentTarget.value=''; }} />
                     </label>
                     {(group.files || []).length > 0 && <span className="max-w-[10rem] truncate text-[11px] text-slate-500">{group.files.map((f: File) => f.name).join(', ')}</span>}
                   </div>
+                  {addPartBtn}
                   {inwardForm.parts.length > 1 && <button type="button" onClick={() => setInwardForm({...inwardForm, parts: inwardForm.parts.filter((_: any, i: number) => i !== index)})} className="ml-auto shrink-0 text-xs font-medium text-rose-600 hover:text-rose-800">Remove</button>}
                 </div>
                 {(group.items || []).map((item: any, ii: number) => (
@@ -4703,15 +5060,23 @@ export function SalesPipelinePage() {
                       <span className={inlineLbl}>Product</span>
                       {(group.category || 'GOODS PURCHASE') === 'EXPENSES' ? (
                         <>
-                          <input className={`${compactInput} w-[13rem]`} list={`expense-products-${index}`} placeholder="Type the product / project" value={item.productName || ''}
-                            onChange={e => { const v = e.target.value; const m = (inwardForm.productOptions || []).find((o: any) => String(o.name).trim().toLowerCase() === v.trim().toLowerCase()); setItem(ii, { productName: v, productKey: v.trim() ? (m?.key || 'expense') : '', enquiryId: m?.enquiryId || '', projectName: m?.leadNo || v }); }} />
-                          <datalist id={`expense-products-${index}`}>{(inwardForm.productOptions || []).map((o: any) => <option key={o.key} value={o.name} />)}</datalist>
+                          <input className={`${compactInput} w-[13rem]`} list={`expense-products-${index}-${ii}`} placeholder="Type the product / project" value={item.productName || ''}
+                            onChange={e => onInwardProductInput(index, ii, e.target.value, { allowFreeText: true })} />
+                          <datalist id={`expense-products-${index}-${ii}`}>
+                            {eligibleCatalogue.map((m: any) => <option key={m.key} value={m.name}>{[m.code, m.unit ? `per ${m.unit}` : '', m.unitPrice ? `₹${m.unitPrice}` : ''].filter(Boolean).join(' · ')}</option>)}
+                            {(inwardForm.productOptions || []).map((o: any) => <option key={o.key} value={o.name} />)}
+                          </datalist>
                         </>
                       ) : (
-                        <select className={`${compactInput} w-[13rem]`} value={item.productKey || ''} onChange={e=>onSelectProduct(ii, e.target.value)}>
-                          <option value="">Select product</option>
-                          {productOptions.map((option: any) => <option key={option.key} value={option.key}>{option.name} — {option.customer || option.leadNo}{option.saleLabel ? ` · ${option.saleLabel}` : ''}</option>)}
-                        </select>)}
+                        <>
+                          <input className={`${compactInput} w-[13rem]`} list={`inward-products-${index}-${ii}`} placeholder="Search & select product" value={item.productName || ''}
+                            onChange={e => onInwardProductInput(index, ii, e.target.value)} />
+                          <datalist id={`inward-products-${index}-${ii}`}>
+                            {eligibleCatalogue.map((m: any) => <option key={m.key} value={m.name}>{[m.code, m.unit ? `per ${m.unit}` : '', m.unitPrice ? `₹${m.unitPrice}` : ''].filter(Boolean).join(' · ')}</option>)}
+                            {productOptions.map((option: any) => <option key={option.key} value={option.name}>{option.customer || option.leadNo}{option.saleLabel ? ` · ${option.saleLabel}` : ''}</option>)}
+                          </datalist>
+                        </>
+                      )}
                     </div>
                     <div className="flex items-center gap-1.5"><span className={inlineLbl}>Part Name *</span>
                       <input className={`${compactInput} w-[10rem]`} placeholder="Part Name" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} /></div>
@@ -4732,20 +5097,23 @@ export function SalesPipelinePage() {
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
                       </button>
                     )}
-                    {/* "Add part" rides on the last line so the form stays exactly two lines tall. */}
-                    {ii === (group.items || []).length - 1 && <span className="ml-auto">{addPartBtn}</span>}
                   </div>
                 ))}
-                {(group.items || []).length === 0 && <div className="mt-1.5 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-1.5">{addPartBtn}</div>}
-                {(inwardForm.productOptions || []).length === 0 && (group.category || 'GOODS PURCHASE') !== 'EXPENSES' && <span className="mt-1 block text-xs text-amber-700">No enquired products found. Add the product to an Enquiry first.</span>}
+                {(inwardForm.productOptions || []).length === 0 && eligibleCatalogue.length === 0 && (group.category || 'GOODS PURCHASE') !== 'EXPENSES' && <span className="mt-1 block text-xs text-amber-700">No products found. Add the product to the Components / Raw Materials master or to an Enquiry first.</span>}
               </div>);
             })}
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-2.5">
+        <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2.5">
+          {opts?.searchSlot && (
+            <div className="mr-auto flex shrink-0 items-center gap-2">
+              <span className="h-6 w-px shrink-0 bg-slate-300 mx-0.5" aria-hidden="true" />
+              {opts.searchSlot}
+            </div>
+          )}
           <Button variant="secondary" size="sm" onClick={clearInwardForm}>Clear / Reset</Button>
-          <Button variant="secondary" size="sm" onClick={() => void saveInward(true)}>Save &amp; Add Another Inward</Button>
-          <Button size="sm" onClick={() => void saveInward(false)}>Submit</Button>
+          <Button variant="secondary" size="sm" disabled={savingInward} onClick={() => void saveInward(true)}>{savingInward ? 'Saving...' : 'Save & Add Another Inward'}</Button>
+          <Button size="sm" disabled={savingInward} onClick={() => void saveInward(false)}>{savingInward ? 'Saving...' : 'Submit'}</Button>
         </div>
       </div>
     </section>
@@ -4763,31 +5131,158 @@ export function SalesPipelinePage() {
     if (activeView === 'fg_list') { setCostingMode('add'); setCostingModalTarget(makeFgPickTarget()); }
     else setCostingModalTarget(null);
   };
-  const renderFgCosting = (inline: boolean, target: KanbanCard | null) => (
+  // Eligible companies & products for Finished Goods entry:
+  // ONLY items from stages BEFORE Finished Goods (Inward, Sales Order).
+  // Any items that have already reached or passed Finished Goods (Finished Goods, DC, Invoice)
+  // are strictly excluded from the dropdown options.
+  const fgPickOptions = useMemo(() => {
+    const norm = (s: any) => String(s ?? '').trim().toLowerCase();
+    
+    // Set of companies & products that have already advanced to Finished Goods, DC, or Invoice
+    const postFgProductKeys = new Set<string>();
+    cards.filter(c => ['Finished Goods', 'DC', 'Invoice'].includes(c.stage)).forEach(c => {
+      const comp = norm(c.customer);
+      const part = norm(c.part);
+      if (comp && part) postFgProductKeys.add(`${comp}||${part}`);
+      if (comp && c.raw) {
+        if (c.raw.part_name) postFgProductKeys.add(`${comp}||${norm(c.raw.part_name)}`);
+        if (c.raw.product_name) postFgProductKeys.add(`${comp}||${norm(c.raw.product_name)}`);
+      }
+    });
+
+    const optionsMap = new Map<string, { company: string; product: string }>();
+
+    // 1. From Inward cards (directly before Finished Goods)
+    cards.filter(c => c.stage === 'Inward').forEach(c => {
+      const company = String(c.customer || '').trim();
+      if (!company) return;
+      
+      const inwardProds = ((c.raw as any)?._inwardProd || []) as { name: string; left: number }[];
+      if (inwardProds.length > 0) {
+        inwardProds.forEach(p => {
+          const prodName = String(p.name || '').trim();
+          if (prodName && (p.left > 0 || !p.left)) {
+            const key = `${norm(company)}||${norm(prodName)}`;
+            optionsMap.set(key, { company, product: prodName });
+          }
+        });
+      } else {
+        const prod = String(c.raw?.product_name || c.raw?.part_name || c.part || '').trim();
+        if (prod && !/^multiple/i.test(prod)) {
+          const key = `${norm(company)}||${norm(prod)}`;
+          optionsMap.set(key, { company, product: prod });
+        }
+      }
+    });
+
+    // 2. From Sales Order cards (before Finished Goods)
+    cards.filter(c => c.stage === 'Sales Order').forEach(c => {
+      const company = String(c.customer || '').trim();
+      if (!company) return;
+      
+      let items: any[] = [];
+      try {
+        const raw = c.raw?.items;
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (Array.isArray(parsed)) items = parsed;
+      } catch { /* no lines */ }
+
+      if (items.length > 0) {
+        items.forEach((it: any) => {
+          const prodName = String(it.partName || it.productName || it.part_name || it.description || '').trim();
+          if (prodName) {
+            const key = `${norm(company)}||${norm(prodName)}`;
+            if (!postFgProductKeys.has(key)) {
+              optionsMap.set(key, { company, product: prodName });
+            }
+          }
+        });
+      } else {
+        const prod = String(c.raw?.part_name || c.part || '').trim();
+        if (prod && !/^multiple/i.test(prod)) {
+          const key = `${norm(company)}||${norm(prod)}`;
+          if (!postFgProductKeys.has(key)) {
+            optionsMap.set(key, { company, product: prod });
+          }
+        }
+      }
+    });
+
+    // 3. From active salesOrdersList (not completed / delivered / invoiced)
+    (salesOrdersList || []).filter((o: any) =>
+      ['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'].includes(String(o.status || ''))
+    ).forEach((o: any) => {
+      const company = String(o.customer || o.customer_name || '').trim();
+      if (!company) return;
+      let items: any[] = [];
+      try {
+        const r = typeof o.items === 'string' ? JSON.parse(o.items) : o.items;
+        if (Array.isArray(r)) items = r;
+      } catch { /* no lines */ }
+      items.forEach((it: any) => {
+        const prodName = String(it.partName || it.productName || it.part_name || it.description || '').trim();
+        if (prodName) {
+          const key = `${norm(company)}||${norm(prodName)}`;
+          if (!postFgProductKeys.has(key)) {
+            optionsMap.set(key, { company, product: prodName });
+          }
+        }
+      });
+    });
+
+    return Array.from(optionsMap.values());
+  }, [cards, salesOrdersList]);
+
+  const fgPickCompanies = useMemo(() => {
+    return Array.from(new Set(fgPickOptions.map(o => o.company).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  }, [fgPickOptions]);
+
+  const renderFgCosting = (inline: boolean, target: KanbanCard | null, slots?: { titleSlot?: ReactNode; searchSlot?: ReactNode }) => (
     <ErrorBoundary title="Finished Goods costing failed to open" onClose={() => setCostingModalTarget(null)}>
       <FgCostingModal
         key={`${inline ? 'inline' : 'popup'}-${target?.id ?? ''}`}
         card={target}
-        pickOptions={(salesOrdersList || []).flatMap((o: any) => {
-          let items: any[] = [];
-          try { const r = typeof o.items === 'string' ? JSON.parse(o.items) : o.items; if (Array.isArray(r)) items = r; } catch { /* no lines */ }
-          return items.map((it: any) => ({ company: String(o.customer || o.customer_name || ''), product: String(it.partName || it.productName || it.part_name || it.description || '').trim() })).filter((x: any) => x.product);
-        })}
-        pickCompanies={allKnownCompanies.map((c: any) => String(c.company || ""))}
+        pickOptions={fgPickOptions}
+        pickCompanies={fgPickCompanies}
         onPick={(company, product) => {
           const k = (v: any) => String(v ?? '').trim().toLowerCase();
-          // The product of an existing order is costed against that order; anything else is a direct entry.
+          // First check matching inward card (since Inward is directly before Finished Goods)
+          const inwardCard = cards.find(c =>
+            c.stage === 'Inward' &&
+            k(c.customer) === k(company) &&
+            (k(c.part).includes(k(product)) || k((c.raw as any)?.part_name) === k(product) || k((c.raw as any)?.product_name) === k(product))
+          );
+          // Next check matching order
           const order: any = (salesOrdersList || []).find((o: any) => {
             if (k(o.customer || o.customer_name) !== k(company)) return false;
             try { const r = typeof o.items === 'string' ? JSON.parse(o.items) : o.items; return Array.isArray(r) && r.some((it: any) => k(it.partName || it.productName || it.part_name || it.description) === k(product)); } catch { return false; }
           });
-          const base = { id: `fg-${Date.now()}`, stage: 'Inward', type: 'inward', customer: company, part: product, qty: 0, value: 0, date: '' };
-          setCostingModalTarget((order
-            ? { ...base, refNo: order.lead_no || order.order_no, raw: { sales_order_ref: order.order_no || '', project_name: order.lead_no || order.order_no, _groupIds: [] } }
-            : { ...base, refNo: '', raw: { sales_order_ref: '', project_name: '', part_name: product, product_name: product, _groupIds: [] } }) as KanbanCard);
+          const base = { id: `fg-${Date.now()}`, stage: 'Inward', type: 'inward', customer: company, part: product, qty: inwardCard?.qty || 0, value: 0, date: '' };
+          if (inwardCard) {
+            setCostingModalTarget({
+              ...inwardCard,
+              customer: company,
+              part: product,
+              raw: { ...inwardCard.raw, part_name: product, product_name: product }
+            } as KanbanCard);
+          } else if (order) {
+            setCostingModalTarget({
+              ...base,
+              refNo: order.lead_no || order.order_no,
+              raw: { sales_order_ref: order.order_no || '', project_name: order.lead_no || order.order_no, _groupIds: [] }
+            } as KanbanCard);
+          } else {
+            setCostingModalTarget({
+              ...base,
+              refNo: '',
+              raw: { sales_order_ref: '', project_name: '', part_name: product, product_name: product, _groupIds: [] }
+            } as KanbanCard);
+          }
         }}
         mode={costingMode}
         inline={inline}
+        titleSlot={slots?.titleSlot}
+        searchSlot={slots?.searchSlot}
         onClose={resetFgEntry}
         onMoved={() => { resetFgEntry(); fetchPipeline(); }}
       />
@@ -4823,6 +5318,66 @@ export function SalesPipelinePage() {
     </nav>
   );
 
+  // View tabs + All Companies toggle, hoisted so the companies directory can
+  // reuse them INSIDE the table toolbar row (everything on one line) instead
+  // of stacking a separate bar above the table.
+  const viewTabs = (
+    <div className="flex p-1 shrink-0 bg-white rounded-lg shadow-sm border border-slate-200">
+      <button
+        type="button"
+        onClick={() => { setActiveView('pipeline'); setPipelineViewMode('kanban'); }}
+        className={`px-4 py-1.5 text-sm font-bold rounded-md shadow-sm transition-all ${
+          pipelineViewMode === 'kanban'
+            ? 'bg-brand-600 text-white shadow-md shadow-brand-500/30 ring-2 ring-brand-500/40'
+            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+        }`}
+      >
+        Kanban Board
+      </button>
+      <button
+        type="button"
+        onClick={() => { setActiveView('pipeline'); setPipelineViewMode('list'); }}
+        className={`px-4 py-1.5 text-sm font-bold rounded-md shadow-sm transition-all ${
+          pipelineViewMode === 'list'
+            ? 'bg-brand-600 text-white shadow-md shadow-brand-500/30 ring-2 ring-brand-500/40'
+            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+        }`}
+      >
+        List View
+      </button>
+      <button
+        type="button"
+        onClick={() => { setActiveView('pipeline'); setPipelineViewMode('calendar'); }}
+        className={`px-4 py-1.5 text-sm font-bold rounded-md shadow-sm transition-all ${
+          pipelineViewMode === 'calendar'
+            ? 'bg-brand-600 text-white shadow-md shadow-brand-500/30 ring-2 ring-brand-500/40'
+            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+        }`}
+      >
+        Calendar
+      </button>
+    </div>
+  );
+
+  const allCompaniesButton = canView('companies') ? (
+    <button
+      type="button"
+      onClick={() => {
+        setActiveView('pipeline');
+        setPipelineViewMode(pipelineViewMode === 'companies' ? 'kanban' : 'companies');
+      }}
+      title="Open All Companies Directory"
+      className={`flex items-center gap-2 px-3.5 py-1.5 text-sm font-semibold rounded-lg border shadow-sm transition-all cursor-pointer shrink-0 whitespace-nowrap ${
+        pipelineViewMode === 'companies'
+          ? 'bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-500/25 ring-2 ring-brand-500/30'
+          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-slate-900'
+      }`}
+    >
+      <Building2 size={15} className={pipelineViewMode === 'companies' ? 'text-white' : 'text-brand-500'} />
+      <span>All Companies</span>
+    </button>
+  ) : null;
+
   return (
     <div className="p-4 bg-[#F8FAFC] min-h-full flex flex-col font-sans">
 
@@ -4833,69 +5388,62 @@ export function SalesPipelinePage() {
           modules (Enquiries, Orders, Inward, DC ...) each render their own PageHeader
           with a back arrow, search and view toggles, so showing the board tabs above
           them stacked two headers and a gap for no reason. */}
-      <div className={`flex flex-wrap items-center gap-3 ${onPipelineView || (onQuotationView && !!quoteTool) ? 'mb-3' : ''}`}>
-        {onPipelineView && (
-        <div className="flex p-1 shrink-0 bg-white rounded-lg shadow-sm border border-slate-200">
-            <button 
-              onClick={() => { setActiveView('pipeline'); setPipelineViewMode('kanban'); }}
-              className={`px-4 py-1.5 text-sm font-semibold rounded-md shadow-sm transition-all ${pipelineViewMode === 'kanban' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>Kanban Board</button>
-            <button 
-              onClick={() => { setActiveView('pipeline'); setPipelineViewMode('list'); }}
-              className={`px-4 py-1.5 text-sm font-semibold rounded-md shadow-sm transition-all ${pipelineViewMode === 'list' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>List View</button>
-            <button 
-              onClick={() => { setActiveView('pipeline'); setPipelineViewMode('companies'); }}
-              className={`px-4 py-1.5 text-sm font-semibold rounded-md shadow-sm transition-all whitespace-nowrap ${pipelineViewMode === 'companies' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>All Companies</button>
-            <button 
-              onClick={() => { setActiveView('pipeline'); setPipelineViewMode('calendar'); }}
-              className={`px-4 py-1.5 text-sm font-semibold rounded-md shadow-sm transition-all ${pipelineViewMode === 'calendar' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>Calendar</button>
-        </div>
-        )}
-        
-        {/* The tool strip lives inside QuotationModule's header on the quotation list so
-            it shares one line with that card's title, search and view toggles. It only
-            needs its own row here when a tool page is open and the module is unmounted. */}
-        {onQuotationView && !!quoteTool && (
-          <div className="flex flex-1 items-center justify-end min-w-0">{quotationTools}</div>
-        )}
+      {/* 3. Pipeline Toolbar (Tabs, All Companies, and Search/Filters) */}
+      {onPipelineView && pipelineViewMode !== 'companies' && (
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          {/* 1. Board View Toggles */}
+          {viewTabs}
 
-        {/* The company / search / filter controls drive the pipeline cards, so they are
-            hidden for List View (which has its own toolbar) and for All Companies, whose
-            reused LeadsPage brings its own search, filters and Add action. */}
-        {onPipelineView && pipelineViewMode !== 'list' && pipelineViewMode !== 'companies' && (
-        <div className="flex items-center gap-2 flex-nowrap min-w-0 w-full md:w-auto">
-          <select 
-            className="border border-slate-200 rounded-lg text-sm px-3 py-2 bg-white text-slate-700 focus:outline-none focus:border-brand-500 shadow-sm font-medium min-w-0 flex-1 md:flex-none md:w-48 truncate"
-            value={customerFilter}
-            onChange={(e) => setCustomerFilter(e.target.value)}
-          >
-            <option value="All Companies">All Companies</option>
-            {Array.from(new Set(cards.map(c => c.customer))).filter(Boolean).sort().map(customer => (
-              <option key={customer} value={customer}>{customer}</option>
-            ))}
-          </select>
-          {!onQuotationView && <>
-          <div className="relative shrink-0">
-            <input type="text" placeholder="Search cards..." className="pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm w-32 md:w-48 focus:outline-none focus:border-brand-500 bg-white shadow-sm" />
-            <svg className="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+          {/* The tool strip lives inside QuotationModule's header on the quotation list so
+              it shares one line with that card's title, search and view toggles. It only
+              needs its own row here when a tool page is open and the module is unmounted. */}
+          {onQuotationView && !!quoteTool && (
+            <div className="flex flex-1 items-center justify-end min-w-0">{quotationTools}</div>
+          )}
+
+          {/* 2. Right Side: All Companies button + Filter + Search */}
+          <div className="flex items-center ml-auto gap-3 flex-nowrap min-w-0 w-full md:w-auto">
+            {allCompaniesButton}
+
+            {pipelineViewMode !== 'list' && pipelineViewMode !== 'companies' && (
+              <>
+                <select 
+                  className="border border-slate-200 rounded-lg text-sm px-3 py-2 bg-white text-slate-700 focus:outline-none focus:border-brand-500 shadow-sm font-medium min-w-0 flex-1 md:flex-none md:w-48 truncate"
+                  value={customerFilter}
+                  onChange={(e) => setCustomerFilter(e.target.value)}
+                >
+                  <option value="All Companies">All Companies</option>
+                  {Array.from(new Set(cards.map(c => c.customer))).filter(Boolean).sort().map(customer => (
+                    <option key={customer} value={customer}>{customer}</option>
+                  ))}
+                </select>
+                {!onQuotationView && <>
+                <div className="relative shrink-0">
+                  <input type="text" placeholder="Search cards..." className="pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm w-32 md:w-48 focus:outline-none focus:border-brand-500 bg-white shadow-sm" />
+                  <svg className="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </div>
+                <button className="p-2 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 shadow-sm transition-colors shrink-0">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
+                </button>
+                <button className="p-2 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 shadow-sm transition-colors shrink-0">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
+                </button>
+                </>}
+              </>
+            )}
           </div>
-          <button className="p-2 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 shadow-sm transition-colors shrink-0">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
-          </button>
-          <button className="p-2 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 shadow-sm transition-colors shrink-0">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
-          </button>
-          </>}
         </div>
-        )}
-      </div>
+      )}
+
+
 
       {/* 4. Kanban Pipeline (Horizontal Scroll) */}
       {activeView === 'enquiry_list' ? (
-        <div className="min-h-[500px] mb-4">
-          <EnquiryModule onBack={() => setActiveView('pipeline')} onView={listView('lead', 'Enquiry')} entryForm={renderEnquiryEntryForm()} onEdit={listEdit('lead', 'Enquiry')} onDelete={listDelete('lead', 'Enquiry')} refreshSignal={listRefresh} />
+        <div className="mb-2.5">
+          <EnquiryModule onBack={() => setActiveView('pipeline')} onView={listView('lead', 'Enquiry')} entryForm={canDo('enquiries', 'create') ? (opts => renderEnquiryEntryForm(opts)) : undefined} onEdit={canDo('enquiries', 'edit') ? listEdit('lead', 'Enquiry') : undefined} onDelete={canDo('enquiries', 'delete') ? listDelete('lead', 'Enquiry') : undefined} refreshSignal={listRefresh} />
         </div>
       ) : activeView === 'quotation_list' ? (
-        <div className="min-h-[500px] mb-4">
+        <div className="mb-2.5">
           {quoteTool ? (
             <div data-testid="quotation-tool">
               <button type="button" onClick={() => setQuoteTool(null)} className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-brand-600">← Back to quotations</button>
@@ -4908,31 +5456,31 @@ export function SalesPipelinePage() {
               {quoteTool === '/quotation/company-profile' && <CompanyProfilePage />}
             </div>
           ) : (
-            <QuotationModule onBack={() => setActiveView('pipeline')} onView={listView('quotation', 'Quotation')} onEdit={listEdit('quotation', 'Quotation')} onDelete={listDelete('quotation', 'Quotation')} refreshSignal={listRefresh} toolbar={quotationTools} />
+            <QuotationModule onBack={() => setActiveView('pipeline')} onView={listView('quotation', 'Quotation')} onEdit={canDo('quotations', 'edit') ? listEdit('quotation', 'Quotation') : undefined} onDelete={canDo('quotations', 'delete') ? listDelete('quotation', 'Quotation') : undefined} refreshSignal={listRefresh} toolbar={quotationTools} />
           )}
         </div>
       ) : activeView === 'sales_order_list' ? (
-        <div className="min-h-[500px] mb-4">
-          <SalesOrderModule onBack={() => setActiveView('pipeline')} onView={listView('order', 'Sales Order')} onEdit={listEdit('order', 'Sales Order')} entryForm={renderSalesOrderEntryForm()} onDelete={listDelete('order', 'Sales Order')} refreshSignal={listRefresh} />
+        <div className="mb-2.5">
+          <SalesOrderModule onBack={() => setActiveView('pipeline')} onView={listView('order', 'Sales Order')} onEdit={canDo('sales-orders', 'edit') ? listEdit('order', 'Sales Order') : undefined} entryForm={canDo('sales-orders', 'create') ? (opts => renderSalesOrderEntryForm(opts)) : undefined} onDelete={canDo('sales-orders', 'delete') ? listDelete('order', 'Sales Order') : undefined} refreshSignal={listRefresh} />
         </div>
       ) : activeView === 'inward_list' ? (
-        <div className="min-h-[500px] mb-4">
-          <InwardModule onBack={() => setActiveView('pipeline')} onView={listView('inward', 'Inward')} entryForm={renderInwardEntryForm()} refreshSignal={inwardRefreshSignal + listRefresh} onEdit={listEdit('inward', 'Inward')} onDelete={listDelete('inward', 'Inward')} />
+        <div className="mb-2.5">
+          <InwardModule onBack={() => setActiveView('pipeline')} onView={listView('inward', 'Inward')} entryForm={canDo('inward', 'create') ? (opts => renderInwardEntryForm(opts)) : undefined} refreshSignal={inwardRefreshSignal + listRefresh} onEdit={canDo('inward', 'edit') ? listEdit('inward', 'Inward') : undefined} onDelete={canDo('inward', 'delete') ? listDelete('inward', 'Inward') : undefined} />
         </div>
       ) : activeView === 'rejected_list' ? (
-        <div className="min-h-[500px] mb-4">
+        <div className="mb-2.5">
           <RejectedModule onBack={() => setActiveView('pipeline')} refreshSignal={listRefresh} onChanged={() => setListRefresh(n => n + 1)} />
         </div>
       ) : activeView === 'fg_list' ? (
-        <div className="min-h-[500px] mb-4">
-          <FinishedGoodsModule onBack={() => setActiveView('pipeline')} entryForm={fgCostingInline ? renderFgCosting(true, costingModalTarget ?? fgBlankPick) : null} onView={listView('finished_goods', 'Finished Goods')} onEdit={listEdit('finished_goods', 'Finished Goods')} onDelete={listDelete('finished_goods', 'Finished Goods')} refreshSignal={listRefresh} />
+        <div className="mb-2.5">
+          <FinishedGoodsModule onBack={() => setActiveView('pipeline')} entryForm={(slots) => (fgCostingInline && canDo('finished-goods', 'create') ? renderFgCosting(true, costingModalTarget ?? fgBlankPick, slots) : null)} onView={listView('finished_goods', 'Finished Goods')} onEdit={canDo('finished-goods', 'edit') ? listEdit('finished_goods', 'Finished Goods') : undefined} onDelete={canDo('finished-goods', 'delete') ? listDelete('finished_goods', 'Finished Goods') : undefined} refreshSignal={listRefresh} />
         </div>
       ) : activeView === 'dc_list' ? (
-        <div className="min-h-[500px] mb-4">
-          <DeliveryChallanModule onBack={() => setActiveView('pipeline')} onView={listView('dc', 'DC')} onEdit={listEdit('dc', 'DC')} entryForm={renderDeliveryChallanEntryForm()} onDelete={listDelete('dc', 'DC')} refreshSignal={listRefresh} />
+        <div className="mb-2.5">
+          <DeliveryChallanModule onBack={() => setActiveView('pipeline')} onView={listView('dc', 'DC')} onEdit={canDo('delivery', 'edit') ? listEdit('dc', 'DC') : undefined} entryForm={canDo('delivery', 'create') ? (opts => renderDeliveryChallanEntryForm(opts)) : undefined} onDelete={canDo('delivery', 'delete') ? listDelete('dc', 'DC') : undefined} refreshSignal={listRefresh} />
         </div>
       ) : activeView === 'invoice_list' ? (
-        <div className="min-h-[500px] mb-4">
+        <div className="mb-2.5">
           <InvoiceModule key={listRefresh} onBack={() => setActiveView('pipeline')} />
         </div>
       ) : pipelineViewMode === 'companies' ? (
@@ -4940,20 +5488,20 @@ export function SalesPipelinePage() {
         // toolbar view. The -m-4 cancels this page's own p-4 so LeadsPage's p-4 / bg-grid
         // line up with the page edge instead of stacking padding on padding.
         <div className="-m-4 min-h-full">
-          <LeadsPage />
+          <LeadsPage hideHeader toolbarLeft={<div className="flex items-center gap-3 shrink-0">{viewTabs}{allCompaniesButton}</div>} />
         </div>
       ) : pipelineViewMode === 'list' ? (
         <div>
           <PipelineListView
-            cards={cards}
+            cards={visibleCards}
             onView={openViewModal}
-            onEdit={card => { if (card.type === 'finished_goods') { void openFgPopup(card, 'edit'); return; } setViewEditMode(true); void openViewModal(card); }}
-            onDelete={card => { void handleDeleteCard({ stopPropagation() { /* not a click event */ } } as unknown as React.MouseEvent, card); }}
+            onEdit={card => { const m = STAGE_MODULE[card.stage] ?? 'sales-pipeline'; if (!canDo(m, 'edit')) { alert('Not authorized: your account cannot edit these records.'); return; } if (card.type === 'finished_goods') { void openFgPopup(card, 'edit'); return; } setViewEditMode(true); void openViewModal(card); }}
+            onDelete={card => { const m = STAGE_MODULE[card.stage] ?? 'sales-pipeline'; if (!canDo(m, 'delete')) { alert('Not authorized: your account cannot delete these records.'); return; } void handleDeleteCard({ stopPropagation() { /* not a click event */ } } as unknown as React.MouseEvent, card); }}
           />
         </div>
       ) : pipelineViewMode === 'calendar' ? (
-        <div className="min-h-[500px] mb-4">
-          <PipelineCalendarView cards={cards} onView={openViewModal} />
+        <div className="mb-2.5">
+          <PipelineCalendarView cards={visibleCards} onView={openViewModal} />
         </div>
       ) : (
       <>
@@ -5007,7 +5555,7 @@ export function SalesPipelinePage() {
             { id: 'Finished Goods', title: 'FINISHED GOODS', desc: 'Ready for delivery', color: 'teal', bg: 'bg-teal-200/70', border: 'border-teal-400', text: 'text-teal-900', card: 'bg-cyan-300 border-cyan-500 hover:bg-cyan-300/80', code: 'bg-cyan-400 text-cyan-950', amount: 'text-cyan-950' },
             { id: 'DC', title: 'DELIVERY CHALLAN', desc: 'Dispatch to company', color: 'rose', bg: 'bg-rose-200/70', border: 'border-rose-400', text: 'text-rose-900', card: 'bg-rose-300 border-rose-500 hover:bg-rose-300/80', code: 'bg-rose-400 text-rose-950', amount: 'text-rose-950' },
             { id: 'Invoice', title: 'INVOICE', desc: 'Billed & Completed', color: 'blue', bg: 'bg-blue-200/70', border: 'border-blue-400', text: 'text-blue-900', card: 'bg-indigo-300 border-indigo-500 hover:bg-indigo-300/80', code: 'bg-indigo-400 text-indigo-950', amount: 'text-indigo-950' }
-          ].map(stage => {
+          ].filter(stage => canView(STAGE_MODULE[stage.id] ?? 'sales-pipeline')).map(stage => {
             const term = (columnSearch[stage.id] || '').trim().toLowerCase();
             const stageCards = cards
               .filter(c => c.stage === stage.id && (customerFilter === 'All Companies' || c.customer === customerFilter))
@@ -5053,7 +5601,7 @@ export function SalesPipelinePage() {
                   )}
                 </div>
 
-                {stage.id !== 'Quotation' && (
+                {stage.id !== 'Quotation' && canDo(STAGE_MODULE[stage.id] ?? 'sales-pipeline', 'create') && (
                 <button className={`w-full bg-white/60 hover:bg-white border ${stage.border} border-dashed ${stage.text} text-xs font-semibold py-2 rounded-lg mb-3 shadow-sm transition-all flex items-center justify-center gap-1`}
                   onClick={() => addForStage(stage.id)}
                 >
@@ -5256,17 +5804,21 @@ export function SalesPipelinePage() {
                           <button onClick={(e) => { e.stopPropagation(); openViewModal(card); }} className="text-slate-400 hover:text-brand-600 transition-colors" title="View Details">
                             <Eye size={14} />
                           </button>
+                          {canDo(STAGE_MODULE[card.stage] ?? 'sales-pipeline', 'edit') && (
                           <button onClick={(e) => { e.stopPropagation(); if (card.type === 'finished_goods') { void openFgPopup(card, 'edit'); return; } setViewEditMode(true); openViewModal(card); }} className="text-slate-400 hover:text-blue-600 transition-colors" title="Inline Edit">
                             <Edit2 size={14} />
                           </button>
-                          {card.type === 'lead' && (
+                          )}
+                          {card.type === 'lead' && canDo('enquiries', 'create') && (
                             <button onClick={(e) => { e.stopPropagation(); duplicateEnquiry(card); }} className="text-slate-400 hover:text-brand-600 transition-colors" title="Duplicate Enquiry">
                               <Copy size={14} />
                             </button>
                           )}
+                          {canDo(STAGE_MODULE[card.stage] ?? 'sales-pipeline', 'delete') && (
                           <button onClick={(e) => handleDeleteCard(e, card)} className="text-slate-400 hover:text-red-600 transition-colors" title="Delete">
                             <Trash2 size={14} />
                           </button>
+                          )}
                         </div>
                       </div>
                     </div>

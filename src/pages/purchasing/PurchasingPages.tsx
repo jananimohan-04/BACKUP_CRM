@@ -99,7 +99,7 @@ export function SuppliersPage() {
          } 
       />
       
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total Suppliers" value={suppliers.length.toString()} icon={<Users size={20} />} accent="brand" />
         <StatCard label="Active" value={suppliers.filter(s => s.status === 'Active').length.toString()} icon={<Users size={20} />} accent="success" />
         <StatCard label="Avg Rating" value="N/A" icon={<TrendingUp size={20} />} accent="neutral" />
@@ -112,7 +112,7 @@ export function SuppliersPage() {
 
       {/* Add / Edit Modal */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editId ? "Edit Supplier" : "New Supplier"} subtitle="Master Data Record" size="xl" footer={<><Button variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button><Button onClick={handleSave}>Save Record</Button></>}>
-        <div className="space-y-6">
+        <div className="space-y-3">
            <div className="grid grid-cols-2 gap-4">
               <FormField label="Supplier Code" required><input className={inputClass} value={formData.code} onChange={e => setFormData({...formData, code: e.target.value})} /></FormField>
               <FormField label="Supplier Name" required><input className={inputClass} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} /></FormField>
@@ -165,7 +165,7 @@ export function SuppliersPage() {
                </div>
 
                {activeTab === 'Profile' && (
-                  <div className="space-y-6">
+                  <div className="space-y-3">
                      <div className="grid grid-cols-3 gap-4">
                         <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                            <p className="text-xs text-slate-500 font-semibold mb-1">Status</p>
@@ -511,7 +511,7 @@ export function PurchaseRequisitionsPage() {
          actions={<Button onClick={() => { setForm(resetForm()); setShowAdd(true); }} icon={<Plus size={16}/>}>New Requisition</Button>}
       />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total PRs" value={prs.length.toString()} icon={<FileText size={20} />} accent="neutral" />
         <StatCard label="Pending Approval" value={prs.filter(p => p.status === 'Pending Approval' || p.status === 'Submitted').length.toString()} icon={<Activity size={20} />} accent="warning" />
         <StatCard label="Approved" value={prs.filter(p => p.status === 'Approved').length.toString()} icon={<TrendingUp size={20} />} accent="success" />
@@ -528,7 +528,7 @@ export function PurchaseRequisitionsPage() {
          <Button variant="secondary" disabled={submitting} onClick={() => submitPR('Draft')}>Save Draft</Button>
          <Button disabled={submitting} onClick={() => submitPR('Pending Approval')}>Submit for Approval</Button>
       </>}>
-         <div className="space-y-6">
+         <div className="space-y-3">
             <div className="grid grid-cols-3 gap-4">
                <FormField label="PR Number" required><input className={inputClass} value={form.prNo} disabled /></FormField>
                <FormField label="Request Date" required><input type="date" className={inputClass} value={form.date} onChange={e => setForm({...form, date: e.target.value})} /></FormField>
@@ -573,7 +573,7 @@ export function PurchaseRequisitionsPage() {
                </div>
                
                {form.items.length === 0 ? (
-                  <div className="text-center p-6 bg-slate-50 rounded-lg border border-dashed border-slate-300 text-slate-500 text-sm">No items added yet.</div>
+                  <div className="text-center p-4 bg-slate-50 rounded-lg border border-dashed border-slate-300 text-slate-500 text-sm">No items added yet.</div>
                ) : (
                   <div className="overflow-x-auto">
                      <table className="w-full text-left text-sm whitespace-nowrap">
@@ -644,7 +644,7 @@ export function PurchaseRequisitionsPage() {
          </div>
       }>
          {viewTarget && (
-            <div className="space-y-6">
+            <div className="space-y-3">
                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100 text-sm">
                   <div><span className="block text-slate-500 mb-1">Date</span><span className="font-medium text-slate-900">{viewTarget.pr_date}</span></div>
                   <div><span className="block text-slate-500 mb-1">Requested By</span><span className="font-medium text-slate-900">{viewTarget.requested_by}</span></div>
@@ -971,7 +971,7 @@ export function PurchaseOrdersPage() {
          actions={<Button onClick={() => { setForm(resetForm()); setShowAdd(true); }} icon={<Plus size={16}/>}>New PO</Button>} 
       />
       
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
         <StatCard label="Total POs" value={allPOs.length.toString()} icon={<ShoppingCart size={20} />} accent="brand" />
         <StatCard label="Draft" value={allPOs.filter(p => p.status === 'Draft').length.toString()} icon={<FileText size={20} />} accent="neutral" />
         <StatCard label="Issued / Sent" value={allPOs.filter(p => p.status === 'Issued').length.toString()} icon={<Send size={20} />} accent="brand" />
@@ -1017,7 +1017,7 @@ export function PurchaseOrdersPage() {
          <Button variant="secondary" disabled={saving} onClick={() => savePO('Draft')}>Save Draft</Button>
          <Button disabled={saving} onClick={() => savePO('Issued')} icon={<Send size={16}/>}>Issue PO</Button>
       </>}>
-         <div className="space-y-6">
+         <div className="space-y-3">
             <div className="grid grid-cols-3 gap-4">
                <FormField label="PO Number" required><input className={inputClass} value={form.poNo} disabled /></FormField>
                <FormField label="Order Date" required><input type="date" className={inputClass} value={form.orderDate} onChange={e => setForm({...form, orderDate: e.target.value})} /></FormField>
@@ -1052,7 +1052,7 @@ export function PurchaseOrdersPage() {
                </div>
                
                {form.items.length === 0 ? (
-                  <div className="text-center p-6 bg-slate-50 rounded-lg border border-dashed border-slate-300 text-slate-500 text-sm">No items added to PO.</div>
+                  <div className="text-center p-4 bg-slate-50 rounded-lg border border-dashed border-slate-300 text-slate-500 text-sm">No items added to PO.</div>
                ) : (
                   <div className="overflow-x-auto">
                      <table className="w-full text-left text-sm whitespace-nowrap">
@@ -1473,7 +1473,7 @@ export function GoodsReceiptPage() {
          actions={<Button onClick={() => { setForm(resetForm()); setShowAdd(true); }} icon={<Plus size={16}/>}>New Goods Receipt</Button>} 
       />
       
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total GRNs" value={grns.length.toString()} icon={<Package size={20} />} accent="brand" />
         <StatCard label="Draft" value={grns.filter(g => g.status === 'Draft').length.toString()} icon={<FileText size={20} />} accent="neutral" />
         <StatCard label="Posted" value={grns.filter(g => g.status === 'Posted').length.toString()} icon={<CheckCircle size={20} />} accent="success" />
@@ -1489,7 +1489,7 @@ export function GoodsReceiptPage() {
          <Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button>
          <Button disabled={saving} onClick={() => saveGRN()} icon={<CheckCircle size={16}/>}>Save Draft</Button>
       </>}>
-         <div className="space-y-6">
+         <div className="space-y-3">
             <div className="grid grid-cols-3 gap-4">
                <FormField label="GRN Number" required><input className={inputClass} value={form.grnNo} disabled /></FormField>
                <FormField label="Receipt Date" required><input type="date" className={inputClass} value={form.receiptDate} onChange={e => setForm({...form, receiptDate: e.target.value})} /></FormField>
@@ -1525,7 +1525,7 @@ export function GoodsReceiptPage() {
                </div>
                
                {form.items.length === 0 ? (
-                  <div className="text-center p-6 bg-slate-50 rounded-lg border border-dashed border-slate-300 text-slate-500 text-sm">Select a Purchase Order to load pending items.</div>
+                  <div className="text-center p-4 bg-slate-50 rounded-lg border border-dashed border-slate-300 text-slate-500 text-sm">Select a Purchase Order to load pending items.</div>
                ) : (
                   <div className="overflow-x-auto">
                      <table className="w-full text-left text-sm whitespace-nowrap">
@@ -1823,7 +1823,7 @@ export function SupplierPerformancePage() {
       ) : (
          <>
             {/* KPI Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
               <div onClick={() => setKpiFilter('All')} className={`cursor-pointer transition-transform hover:scale-105 ${kpiFilter === 'All' ? 'ring-2 ring-brand-500 rounded-xl' : ''}`}>
                  <StatCard label="Total Purchase Value" value={`₹${totalValue.toLocaleString()}`} icon={<TrendingUp size={20} />} accent="brand" />
               </div>
@@ -1862,7 +1862,7 @@ export function SupplierPerformancePage() {
             </div>
             
             <Card>
-               <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl">
+               <div className="px-4 py-2 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl">
                   <h3 className="font-bold text-slate-800">
                      {kpiFilter === 'All' ? 'All Transaction History' : 
                       kpiFilter === 'Open' ? 'Active / Open Orders' :

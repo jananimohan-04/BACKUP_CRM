@@ -67,7 +67,7 @@ export function ProductLibraryPage() {
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 lg:p-6 space-y-5">
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900"><Package className="text-orange-500" size={26} /> Product &amp; Pricing Library</h1>
           <p className="text-sm text-slate-500 mt-1">Manage products, pricing, and costing details for quick quotation creation.</p>

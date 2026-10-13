@@ -7,7 +7,7 @@
 // always performed (insert Completed work order + mark inward rows Processed).
 // Cancel writes nothing and the card stays put.
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import { todayISO } from '@/lib/format';
 import { tint } from '@/lib/entryTints';
@@ -27,7 +27,7 @@ import {
   buildVersionPayload, buildCostingPdfInput, parseQuoteProducts,
   type MaterialLine, type OpLine,
 } from '@/lib/costingEngine';
-import { CheckCheck, Download, Eye, Printer, Save, AlertTriangle, X, Plus, Trash2, Pencil } from 'lucide-react';
+import { CheckCheck, Download, Eye, Printer, Save, AlertTriangle, X, Plus, Trash2, Pencil, ChevronDown } from 'lucide-react';
 
 const cellInputClass = `${inputClass} text-xs !px-2 !py-1 w-full min-w-[3.5rem] tabular-nums`;
 
@@ -80,7 +80,7 @@ async function healWorkOrderPartNos(salesOrderRef: string): Promise<void> {
   } catch { /* backfill best-effort */ }
 }
 
-export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptions = [], pickCompanies = [], onPick, inline = false }: {
+export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptions = [], pickCompanies = [], onPick, inline = false, titleSlot, searchSlot }: {
   card: any;
   onClose: () => void;
   onMoved: () => void;
@@ -92,6 +92,9 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   mode?: 'add' | 'edit' | 'view';
   /** Render the whole thing as an inline page card instead of a popup (add mode only). */
   inline?: boolean;
+  /** Optional list-page header pieces merged into the picker row (one line). */
+  titleSlot?: ReactNode;
+  searchSlot?: ReactNode;
 }) {  const { company, profile } = useAuth() as any;
   const companyName: string = company?.company_name ?? 'ARGUS CNC';
   const userName: string = profile?.email ?? '';
@@ -838,31 +841,155 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
 
   const [pickCompany, setPickCompany] = useState('');
   const [pickProduct, setPickProduct] = useState('');
+  const [compDropdownOpen, setCompDropdownOpen] = useState(false);
+  const [prodDropdownOpen, setProdDropdownOpen] = useState(false);
+  const compRef = useRef<HTMLDivElement>(null);
+  const prodRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      if (compRef.current && !compRef.current.contains(e.target as Node)) {
+        setCompDropdownOpen(false);
+      }
+      if (prodRef.current && !prodRef.current.contains(e.target as Node)) {
+        setProdDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, []);
+
   if (card?.raw?.__pick) {
-    const companies = Array.from(new Set([...pickCompanies, ...pickOptions.map((o) => o.company)].map((c) => String(c || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
-    const key = (v: string) => v.trim().toLowerCase();
-    const products = Array.from(new Set(pickOptions.filter((o) => !pickCompany.trim() || key(o.company) === key(pickCompany)).map((o) => o.product).filter(Boolean)));
+    const companies = Array.from(new Set(
+      [...(pickCompanies.length ? pickCompanies : pickOptions.map((o) => o.company))]
+        .map((c) => String(c || '').trim())
+        .filter(Boolean)
+    )).sort((a, b) => a.localeCompare(b));
+
+    const key = (v: string) => String(v || '').trim().toLowerCase();
+    const queryComp = key(pickCompany);
+
+    // Products matching the typed/selected company
+    const exactMatches = pickOptions.filter((o) => key(o.company) === queryComp);
+    const matchedOptions = exactMatches.length > 0
+      ? exactMatches
+      : pickOptions.filter((o) => !queryComp || key(o.company).includes(queryComp) || queryComp.includes(key(o.company)));
+
+    const products = Array.from(new Set(matchedOptions.map((o) => o.product).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+
+    const filteredCompanies = companies.filter((c) => !queryComp || c.toLowerCase().includes(queryComp));
+    const filteredProducts = products.filter((p) => !pickProduct.trim() || p.toLowerCase().includes(key(pickProduct)));
+
     return (
       <Modal open inline={inline} onClose={onClose} title="Finished Goods + Costing" subtitle="Add Finished Goods" size="3xl" width={960} accent={tint('Finished Goods')}>
-        {/* Everything - section title, both fields, the hint and the actions - on one compact
-            line. The box is w-fit so it hugs its contents instead of spanning the whole modal;
-            the actions simply follow on from the hint. */}
         <div className={`w-fit rounded-xl border p-2.5 ${tint('Finished Goods').panel}`}>
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-[10px] font-bold uppercase tracking-widest text-brand-600">Section 1 — Transaction Details</h3>
-            <div className="flex items-center gap-1.5">
+            {titleSlot ?? <h3 className="text-[10px] font-bold uppercase tracking-widest text-brand-600">Section 1 — Transaction Details</h3>}
+            <div className="flex items-center gap-1.5 relative" ref={compRef}>
               <span className={inlineLbl}>Company *</span>
-              <input className={`${compactInput} w-[15rem]`} list="fg-pick-companies" placeholder="Type or select company" value={pickCompany} onChange={(e) => { setPickCompany(e.target.value); setPickProduct(''); }} />
+              <div className="relative">
+                <input
+                  className={`${compactInput} w-[15rem] pr-6`}
+                  list="fg-pick-companies"
+                  placeholder="Type or select company"
+                  value={pickCompany}
+                  onFocus={() => setCompDropdownOpen(true)}
+                  onChange={(e) => {
+                    setPickCompany(e.target.value);
+                    setPickProduct('');
+                    setCompDropdownOpen(true);
+                  }}
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                  onClick={() => setCompDropdownOpen((o) => !o)}
+                >
+                  <ChevronDown size={14} />
+                </button>
+                {compDropdownOpen && (
+                  <div className="absolute left-0 top-full mt-1 w-[18rem] z-50 bg-white border border-slate-200 rounded-lg shadow-xl max-h-56 overflow-y-auto py-1">
+                    {filteredCompanies.length > 0 ? (
+                      filteredCompanies.map((c) => (
+                        <div
+                          key={c}
+                          className="px-3 py-1.5 text-xs text-slate-700 hover:bg-brand-50 hover:text-brand-800 cursor-pointer font-medium"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setPickCompany(c);
+                            setPickProduct('');
+                            setCompDropdownOpen(false);
+                            // If this company only has 1 product, auto-fill it
+                            const prods = Array.from(new Set(pickOptions.filter((o) => key(o.company) === key(c)).map((o) => o.product).filter(Boolean)));
+                            if (prods.length === 1) setPickProduct(prods[0]);
+                          }}
+                        >
+                          {c}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-3 py-2 text-xs text-slate-400 italic">
+                        No companies with pending items before Finished Goods
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
               <datalist id="fg-pick-companies">{companies.map((c) => <option key={c} value={c} />)}</datalist>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 relative" ref={prodRef}>
               <span className={inlineLbl}>Product *</span>
-              <input className={`${compactInput} w-[15rem]`} list="fg-pick-products" placeholder="Type or select product" value={pickProduct} onChange={(e) => setPickProduct(e.target.value)} />
+              <div className="relative">
+                <input
+                  className={`${compactInput} w-[15rem] pr-6`}
+                  list="fg-pick-products"
+                  placeholder={pickCompany.trim() ? "Type or select product" : "Select company first"}
+                  value={pickProduct}
+                  onFocus={() => setProdDropdownOpen(true)}
+                  onChange={(e) => {
+                    setPickProduct(e.target.value);
+                    setProdDropdownOpen(true);
+                  }}
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                  onClick={() => setProdDropdownOpen((o) => !o)}
+                >
+                  <ChevronDown size={14} />
+                </button>
+                {prodDropdownOpen && (
+                  <div className="absolute left-0 top-full mt-1 w-[18rem] z-50 bg-white border border-slate-200 rounded-lg shadow-xl max-h-56 overflow-y-auto py-1">
+                    {filteredProducts.length > 0 ? (
+                      filteredProducts.map((p) => (
+                        <div
+                          key={p}
+                          className="px-3 py-1.5 text-xs text-slate-700 hover:bg-brand-50 hover:text-brand-800 cursor-pointer font-medium"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setPickProduct(p);
+                            setProdDropdownOpen(false);
+                          }}
+                        >
+                          {p}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-3 py-2 text-xs text-slate-400 italic">
+                        {pickCompany.trim() ? "No products found for this company before Finished Goods" : "Select a company first"}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
               <datalist id="fg-pick-products">{products.map((p) => <option key={p} value={p} />)}</datalist>
             </div>
             <p className="text-[11px] text-slate-400">Pick a product from an order, or type a new one.</p>
             <Button variant="secondary" size="sm" icon={<X size={14} />} onClick={onClose}>Cancel</Button>
             <Button size="sm" disabled={!pickCompany.trim() || !pickProduct.trim()} onClick={() => onPick?.(pickCompany.trim(), pickProduct.trim())}>Continue</Button>
+            {searchSlot}
           </div>
         </div>
       </Modal>
@@ -914,6 +1041,12 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
       ) : (
         <fieldset disabled={mode === 'view'} className="min-w-0 border-0 p-0 m-0">
         <div className="space-y-4">
+          {(titleSlot || searchSlot) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {titleSlot}
+              {searchSlot && <div className="ml-auto flex shrink-0 items-center gap-2">{searchSlot}</div>}
+            </div>
+          )}
           {/* 1 — transaction details, with the products to finish (and how many) right next to the product */}
           <div className="bg-white rounded-xl border border-slate-200 p-4">
             <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-3 border-b border-brand-100 pb-2">Section 1 — Transaction Details</h3>

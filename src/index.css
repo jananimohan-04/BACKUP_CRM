@@ -99,35 +99,43 @@
 
 .scrollbar-none::-webkit-scrollbar { display: none; }
 
-/* Table column headings stay at the top of their table while the rows scroll (see useStickyTableHeads).
-   :where() keeps this at zero specificity, so a heading that sets its own background keeps it. */
+/* Table column headings: sticky at top: 0 with solid background and high z-index so rows scroll underneath */
 :where(main thead th) {
   position: sticky;
   top: 0;
-  z-index: 5;
+  z-index: 20;
   background-color: #f8fafc;
 }
 
 /* List tables: dark header bar with bold white column titles (add `erp-table` to the <table>). */
+.erp-table {
+  width: 100%;
+  border-collapse: collapse;
+}
 .erp-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   background-color: #111c33;
 }
-.erp-table thead tr,
+.erp-table thead tr {
+  background-color: #111c33;
+}
+.erp-table thead th,
 .erp-table thead th button {
-  background-color: transparent;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background-color: #111c33 !important;
   color: #ffffff;
 }
-/* Each <th> is position:sticky (see above), so it stays pinned at the top while its <thead>
-   scrolls away with the page. A pinned heading paints above the scrolling body, so it cannot
-   lean on the <thead> background behind it — left transparent, the tinted rows show straight
-   through it. Each <th> has to carry the header colour itself. */
 .erp-table thead th {
-  background-color: #111c33;
-  color: #ffffff;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  vertical-align: middle;
+  box-shadow: inset 0 -1px 0 #1e293b;
 }
 
 /* Row colours on every page table: a repeating tint per row, deepened for contrast (opt out with class `no-stripe`). */

@@ -620,7 +620,7 @@ export function ProjectCostingPage() {
           </div>
           <div className="max-h-[340px] overflow-auto divide-y">
             {loading ? (
-              <div className="p-6 text-center text-xs text-slate-500">Loading projects...</div>
+              <div className="p-4 text-center text-xs text-slate-500">Loading projects...</div>
             ) : (
               projects.map((p) => (
                 <button
@@ -640,7 +640,7 @@ export function ProjectCostingPage() {
               ))
             )}
             {!loading && !projects.length && (
-              <div className="p-6 text-center text-xs text-slate-500">No project cost records found.</div>
+              <div className="p-4 text-center text-xs text-slate-500">No project cost records found.</div>
             )}
           </div>
           <div className="flex justify-between p-2 border-t text-xs text-slate-500">

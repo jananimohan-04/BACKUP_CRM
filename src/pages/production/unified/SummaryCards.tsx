@@ -27,7 +27,7 @@ export function SummaryCards({ workOrders }: { workOrders: any[] }) {
     : 0;
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
       <StatCard 
         label="Total Production Orders" 
         value={totalOrders.toString()} 

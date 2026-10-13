@@ -1,19 +1,17 @@
 import { useState, useEffect, Fragment, type ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Search, ArrowLeft, FileText, Download, Receipt } from 'lucide-react';
+import { Search, ArrowLeft, FileText, Download } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { useAuth } from '@/contexts/AuthContext';
 import { downloadBrandedDocument, viewBrandedDocument } from '@/lib/brandedDocument';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 
-export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, entryForm }: { onBack: () => void; refreshSignal?: number; onEdit?: (record: any) => void; onDelete?: (record: any) => void; onView?: (record: any) => void; entryForm?: ReactNode }) {
+export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, entryForm }: { onBack: () => void; refreshSignal?: number; onEdit?: (record: any) => void; onDelete?: (record: any) => void; onView?: (record: any) => void; entryForm?: ReactNode | ((props: { onBack: () => void; searchSlot: ReactNode }) => ReactNode) }) {
   const { company } = useAuth();
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  // Expense entries are kept out of the inward list; the Expenses button switches to them.
-  const [showExpenses, setShowExpenses] = useState(false);
   const isExpense = (r: any) => String(r.category || '').trim().toUpperCase() === 'EXPENSES';
 
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
@@ -101,66 +99,17 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
     catch (error) { alert(error instanceof Error ? error.message : 'Unable to download the bill.'); }
   };
 
-  const filteredRecords = records.filter(r => isExpense(r) === showExpenses && r.status !== 'Deleted').filter(r =>
+  const filteredRecords = records.filter(r => r.status !== 'Deleted').filter(r =>
     (r.inward_no || '').toLowerCase().includes(search.toLowerCase()) ||
     (r.party_name || '').toLowerCase().includes(search.toLowerCase()) ||
     (r.product_name || '').toLowerCase().includes(search.toLowerCase()) ||
-    (r.part_name || '').toLowerCase().includes(search.toLowerCase())
+    (r.part_name || '').toLowerCase().includes(search.toLowerCase()) ||
+    (r.category || '').toLowerCase().includes(search.toLowerCase())
   );
-  // Inwards group by product / project. Expenses are two levels: the party, then each of its
-  // orders. One company can hold several orders, so the sales order alone is not a unique key —
-  // the order group is identified by sales order + the entry date and time.
-  const orderStamp = (record: any) => {
-    const d = record?.created_at ? new Date(record.created_at) : null;
-    if (!d || Number.isNaN(d.getTime())) return '';
-    const date = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-    const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
-    return `${date} · ${time}`;
-  };
 
-  const orderSo = (record: any) => record.sales_order_ref || record.project_name || record.enquiry_id || 'No Sales Order';
+  const colCount = 8;
 
-  type OrderGroup = { key: string; label: string; records: any[] };
-  type GroupRow = { key: string; label: string; records: any[]; orders?: OrderGroup[] };
-
-  // Party -> order -> expense rows, kept in the same newest-first order as filteredRecords.
-  const expenseParties: GroupRow[] = [];
-  const partyIndex = new Map<string, GroupRow>();
-  for (const record of filteredRecords) {
-    const party = record.party_name || 'Unassigned Party';
-    let group = partyIndex.get(party);
-    if (!group) {
-      group = { key: `party::${party}`, label: party, records: [], orders: [] };
-      partyIndex.set(party, group);
-      expenseParties.push(group);
-    }
-    // created_at makes two entries for the same order on the same day stay apart.
-    const orderKey = `${orderSo(record)}::${record.created_at || record.id || ''}`;
-    let order = group.orders!.find(o => o.key === orderKey);
-    if (!order) {
-      const stamp = orderStamp(record);
-      order = { key: orderKey, label: stamp ? `${orderSo(record)} · ${stamp}` : orderSo(record), records: [] };
-      group.orders!.push(order);
-    }
-    order.records.push(record);
-    group.records.push(record);
-  }
-
-  const productGroups: GroupRow[] = Array.from(filteredRecords.reduce((groups: Map<string, GroupRow>, record: any) => {
-    const product = record.product_name || record.project_name || record.part_name || 'Unassigned Product';
-    const key = `${record.enquiry_id || record.project_name || ''}::${product}`;
-    const group = groups.get(key) || { key, label: product, records: [] as any[] };
-    group.records.push(record);
-    groups.set(key, group);
-    return groups;
-  }, new Map<string, GroupRow>()).values());
-
-  // Inwards:      Inward No, Party, Part Name, Quantity, Total Amount, Status, Actions
-  // Expenses:     Inward No, Part Name, Quantity, Total Amount, Sales Order, Date & Time, Status, Actions
-  // The party is the group header in the Expenses view, so it is not repeated on every row.
-  const colCount = showExpenses ? 8 : 7;
-
-  const pager = usePager<GroupRow>(showExpenses ? expenseParties : productGroups, `${showExpenses}:${filteredRecords.length}`);
+  const pager = usePager(filteredRecords, search);
 
   // Shared so the two row templates cannot drift apart.
   const actionCell = (record: any) => (
@@ -173,43 +122,39 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
     </td>
   );
 
+  const searchInput = (
+    <div className="relative shrink-0">
+      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+      <input
+        type="text"
+        placeholder="Search inwards..."
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        className="pl-8 pr-2.5 py-1 text-xs border border-slate-300 rounded-md focus:outline-none focus:border-brand-500 bg-white shadow-sm w-36 sm:w-44"
+      />
+    </div>
+  );
+
+  const renderedEntry = typeof entryForm === 'function' ? entryForm({ onBack, searchSlot: searchInput }) : entryForm;
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 px-3 py-1.5 flex flex-wrap justify-between items-center gap-2 gap-y-1">
-        <div className="flex items-center gap-2 min-w-0">
-          <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-600 shrink-0">
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-          <div className="flex items-baseline gap-2 min-w-0">
-            <h2 className="text-sm font-bold text-slate-800 shrink-0">{showExpenses ? 'Expenses' : 'Inwards'}</h2>
-            <p className="text-xs text-slate-500 truncate">{showExpenses ? 'Expenses grouped by party, then by sales order' : 'Manage raw materials inward'}</p>
+    <div className="flex flex-col gap-2.5">
+      {renderedEntry ? (
+        renderedEntry
+      ) : (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 px-3 py-2 flex flex-wrap justify-between items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-600 shrink-0">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <h2 className="text-sm font-bold text-slate-800 shrink-0">Inwards</h2>
           </div>
+          {searchInput}
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setShowExpenses(v => !v)} title={showExpenses ? 'Back to inwards' : 'View expenses'} aria-label="Expenses"
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold border rounded-lg transition-colors whitespace-nowrap ${showExpenses ? 'bg-brand-600 text-white border-brand-600' : 'text-slate-700 border-slate-300 hover:bg-slate-100'}`}>
-            <Receipt size={15} /> Expenses
-          </button>
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="pl-9 pr-4 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-brand-500"
-            />
-          </div>
-        </div>
-      </div>
+      )}
 
-      {/* Always-visible New Inward Entry form, refactored out of the popup so the page
-          loads with it already open above the table. Hidden in the Expenses view, which
-          has no entry form of its own. */}
-      {!showExpenses && entryForm}
-
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
-      <div className="overflow-x-auto p-4">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+      <div className="overflow-x-auto">
         {loading ? (
           <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div></div>
         ) : (
@@ -217,63 +162,40 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="py-2 px-3 font-semibold">Inward No</th>
-                {!showExpenses && <th className="py-2 px-3 font-semibold">Party</th>}
+                <th className="py-2 px-3 font-semibold">Party</th>
+                <th className="py-2 px-3 font-semibold">Category</th>
                 <th className="py-2 px-3 font-semibold">Part Name</th>
                 <th className="py-2 px-3 font-semibold">Quantity</th>
                 <th className="py-2 px-3 font-semibold">Total Amount</th>
-                {showExpenses && <th className="py-2 px-3 font-semibold">Sales Order</th>}
-                {showExpenses && <th className="py-2 px-3 font-semibold">Date &amp; Time</th>}
                 <th className="py-2 px-3 font-semibold">Status</th>
                 <th className="py-2 px-3 font-semibold">Actions</th>
               </tr>
             </thead>
-            {pager.pageItems.map(group => <tbody key={group.key}>
-              {/* Party header (expenses) / product header (inwards). */}
-              <tr className="border-b border-slate-200 bg-brand-50/70">
-                <td colSpan={colCount} className="py-1 px-3 text-sm font-bold text-brand-800">{group.label}<span className="ml-2 rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600">{group.records.length} {showExpenses ? 'expense' : 'inward'}{group.records.length === 1 ? '' : 's'}</span></td>
-              </tr>
-              {showExpenses
-                ? (group.orders ?? []).map(order => (
-                  <Fragment key={order.key}>
-                    {/* Order header: sales order + entry date/time, unique even when one
-                        company holds several orders. */}
-                    <tr className="border-b border-slate-100 bg-slate-50/80">
-                      <td colSpan={colCount} className="py-1 px-3 pl-8 text-xs font-semibold text-slate-600">
-                        <span className="font-mono">{order.label}</span>
-                        <span className="ml-2 rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-500 border border-slate-200">{order.records.length} expense{order.records.length === 1 ? '' : 's'}</span>
-                      </td>
-                    </tr>
-                    {order.records.map(record => (
-                      <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                        <td className="py-2 px-3 text-sm font-mono font-medium text-slate-800">{record.inward_no || '-'}</td>
-                        <td className="py-2 px-3 text-sm text-slate-700">{record.part_name || '-'}</td>
-                        <td className="py-2 px-3 text-sm text-slate-700">{record.quantity ?? '-'}</td>
-                        <td className="py-2 px-3 text-sm font-mono font-semibold text-slate-800 whitespace-nowrap">{inr(rowTotal(record))}</td>
-                        <td className="py-2 px-3 text-sm font-mono font-semibold text-brand-700">{orderSo(record)}</td>
-                        <td className="py-2 px-3 text-sm text-slate-600 whitespace-nowrap">{orderStamp(record) || '-'}</td>
-                        <td className="py-2 px-3 text-sm text-slate-700">{record.status || '-'}</td>
-                        {actionCell(record)}
-                      </tr>
-                    ))}
-                  </Fragment>
-                ))
-                : group.records.map(record => (
-                  <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                    <td className="py-2 px-3 text-sm font-mono font-medium text-slate-800">{record.inward_no || '-'}</td>
-                    <td className="py-2 px-3 text-sm font-semibold text-brand-700">{record.party_name || '-'}</td>
-                    <td className="py-2 px-3 text-sm text-slate-700">{record.part_name || '-'}</td>
-                    <td className="py-2 px-3 text-sm text-slate-700">{record.quantity ?? '-'}</td>
-                    <td className="py-2 px-3 text-sm font-mono font-semibold text-slate-800 whitespace-nowrap">{inr(rowTotal(record))}</td>
-                    <td className="py-2 px-3 text-sm text-slate-700">{record.status || '-'}</td>
-                    {actionCell(record)}
-                  </tr>
-                ))}
-            </tbody>)}
+            <tbody>
+              {pager.pageItems.map(record => (
+                <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                  <td className="py-2 px-3 text-sm font-mono font-medium text-slate-800">{record.inward_no || '-'}</td>
+                  <td className="py-2 px-3 text-sm font-semibold text-brand-700">{record.party_name || '-'}</td>
+                  <td className="py-2 px-3 text-sm">
+                    <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                      isExpense(record)
+                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                        : 'bg-slate-100 text-slate-700'
+                    }`}>
+                      {record.category || 'GOODS PURCHASE'}
+                    </span>
+                  </td>
+                  <td className="py-2 px-3 text-sm text-slate-700">{record.part_name || '-'}</td>
+                  <td className="py-2 px-3 text-sm text-slate-700">{record.quantity ?? '-'}</td>
+                  <td className="py-2 px-3 text-sm font-mono font-semibold text-slate-800 whitespace-nowrap">{inr(rowTotal(record))}</td>
+                  <td className="py-2 px-3 text-sm text-slate-700">{record.status || '-'}</td>
+                  {actionCell(record)}
+                </tr>
+              ))}
               {filteredRecords.length === 0 && (
-                <tbody>
                 <tr><td colSpan={colCount} className="text-center py-8 text-slate-500">No records found.</td></tr>
-                </tbody>
               )}
+            </tbody>
           </table>
         )}
       </div>

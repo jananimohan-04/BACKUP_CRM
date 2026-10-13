@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from 'react';
 import {
   ChevronDown,
   Bell,
-  ChevronRight,
   Settings,
   LogOut,
   User as UserIcon,
@@ -11,7 +10,6 @@ import {
   Building2,
   CalendarDays,
 } from 'lucide-react';
-import { getBreadcrumbs } from '@/config/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { fetchRecentActivity, timeAgo, type ActivityItem } from '@/lib/recentActivity';
@@ -56,7 +54,6 @@ export function Topbar({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const breadcrumbs = getBreadcrumbs(currentPage);
   const { kpis } = useHeaderKpis();
   // Live clock: date + time, ticking every second.
   const [now, setNow] = useState(() => new Date());
@@ -68,46 +65,46 @@ export function Topbar({
   const timePart = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
   return (
-    <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-lg border-b border-slate-200 shadow-sm h-12 flex items-center px-4 lg:px-5 gap-4">
-      {/* Breadcrumbs */}
-      <div className={`flex items-center gap-1.5 text-[13px] min-w-0 ${kpis.length ? 'flex-none max-w-[260px]' : 'flex-1'}`}>
-        <Menu size={18} className="text-slate-400 lg:hidden flex-shrink-0 cursor-pointer hover:text-slate-600 transition-colors" onClick={onMenuClick} />
-        {breadcrumbs.map((bc, i) => (
-          <div key={i} className="flex items-center gap-2 min-w-0">
-            {i > 0 && <ChevronRight size={14} className="text-slate-300 flex-shrink-0" />}
-            <button
-              onClick={() => bc.page && onNavigate(bc.page)}
-              disabled={!bc.page}
-              className={`truncate transition-colors font-medium tracking-wide ${bc.page ? 'text-slate-500 hover:text-brand-600' : 'text-slate-800 font-bold'}`}
-            >
-              {bc.label}
-            </button>
-          </div>
-        ))}
+    <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-lg border-b border-slate-200 shadow-sm min-h-[50px] h-[50px] flex items-center px-4 lg:px-5 gap-4">
+      {/* Mobile Menu Toggle */}
+      <div className="flex items-center lg:hidden">
+        <Menu size={18} className="text-slate-400 flex-shrink-0 cursor-pointer hover:text-slate-600 transition-colors" onClick={onMenuClick} />
       </div>
 
       {/* Sales Pipeline KPIs — inline strip sharing the header row (page supplies the data) */}
-      {kpis.length > 0 && (
-        <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto scrollbar-none py-1">
-          {kpis.map(kpi => (
-            <button
-              key={kpi.key}
-              type="button"
-              onClick={kpi.onClick}
-              title={kpi.label}
-              className={`${kpi.tile} shrink-0 rounded-md px-2 py-1 shadow-sm border cursor-pointer flex items-center justify-between gap-1 w-[118px] hover:-translate-y-0.5 transition-transform`}
-            >
-              <span className="flex items-baseline gap-1.5 min-w-0">
-                <span className="text-[9px] font-bold text-white/80 uppercase tracking-wide whitespace-nowrap truncate">{kpi.label}</span>
-                <span className="text-sm font-bold leading-tight text-white tabular-nums">{kpi.count}</span>
-              </span>
-              <span className={`w-5 h-5 shrink-0 rounded-full flex items-center justify-center ${kpi.icon}`}>
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={kpi.iconPath} /></svg>
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+      {kpis.length > 0 && (() => {
+        const hasAnyActive = kpis.some(k => k.active);
+        return (
+          <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto scrollbar-none py-1">
+            {kpis.map(kpi => (
+              <button
+                key={kpi.key}
+                type="button"
+                onClick={kpi.onClick}
+                title={kpi.label}
+                className={`${kpi.tile} shrink-0 rounded-md px-2 py-1 shadow-sm border cursor-pointer flex items-center justify-between gap-1 w-[124px] transition-all duration-200 ${
+                  kpi.active
+                    ? '!opacity-100 ring-2 ring-amber-400 ring-offset-2 ring-offset-slate-900 border-2 border-amber-300 shadow-[0_0_14px_rgba(251,191,36,0.7)] brightness-110 font-black scale-[1.04] z-10'
+                    : hasAnyActive
+                      ? 'opacity-40 saturate-50 hover:opacity-90 hover:saturate-90'
+                      : 'opacity-85 hover:opacity-100 hover:-translate-y-0.5'
+                }`}
+              >
+                <span className="flex items-baseline gap-1.5 min-w-0">
+                  <span className="text-[9px] font-bold text-white uppercase tracking-wide whitespace-nowrap truncate flex items-center gap-1">
+                    {kpi.active && <span className="w-1.5 h-1.5 rounded-full bg-amber-300 animate-ping inline-block shrink-0" />}
+                    {kpi.label}
+                  </span>
+                  <span className="text-sm font-extrabold leading-tight text-white tabular-nums">{kpi.count}</span>
+                </span>
+                <span className={`w-5 h-5 shrink-0 rounded-full flex items-center justify-center ${kpi.icon} ${kpi.active ? 'ring-2 ring-amber-300 shadow-[0_0_8px_rgba(251,191,36,0.8)]' : ''}`}>
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={kpi.iconPath} /></svg>
+                </span>
+              </button>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Company: shown read-only for normal users, switchable for the Super Admin (in the profile menu) */}
       {company && !isSuperAdmin && (

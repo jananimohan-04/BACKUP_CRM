@@ -161,13 +161,13 @@ export function OldProductionPlanningPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Production Planning" description="Plan and schedule production orders" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<FilterButton /><ExportButton /><DateSelector /></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Planned Orders" value={plannedOrders.toString()} icon={<ClipboardList size={20} />} accent="brand" />
         <StatCard label="Scheduled" value={scheduledOrders.toString()} icon={<Calendar size={20} />} accent="success" />
         <StatCard label="Capacity Used" value={overallCapacity} icon={<Gauge size={20} />} accent="accent" />
         <StatCard label="Backlog (days)" value={backlogDays} icon={<ClipboardList size={20} />} accent="warning" />
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
         <ChartCard title="Planned vs Completed" subtitle="Last 7 months">
           <BarChart data={chartData.length > 0 ? chartData : productionTrend} series={[{ key: 'planned', color: '#c7d2fe', label: 'Planned' }, { key: 'completed', color: '#4f46e5', label: 'Completed' }]} height={220} />
         </ChartCard>
@@ -258,7 +258,7 @@ function WorkOrderDetailModal({ wo, onClose }: { wo: WorkOrder, onClose: () => v
 
   return (
     <Modal open={true} onClose={onClose} title={`Work Order Details`} subtitle={wo.woNo} size="xl">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
         <div className="space-y-4">
           <div><p className="text-xs text-slate-500 uppercase tracking-wider">Part</p><p className="font-semibold text-slate-800">{wo.partName}</p></div>
           <div><p className="text-xs text-slate-500 uppercase tracking-wider">Company</p><p className="text-sm text-slate-700">{wo.customer}</p></div>
@@ -544,7 +544,7 @@ export function WorkOrdersPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Work Orders" description="Manage production work orders and workflow" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<FilterButton /><ExportButton /><DateSelector /></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total WOs" value={totalWOs.toString()} icon={<ClipboardList size={20} />} accent="brand" />
         <StatCard label="In Progress" value={inProgressWOs.toString()} icon={<Cog size={20} />} accent="accent" />
         <StatCard label="Completed" value={completedWOs.toString()} icon={<Package size={20} />} accent="success" />
@@ -899,7 +899,7 @@ export function JobCardsPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Job Cards" description="Track individual job cards and CNC operations" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<FilterButton /><ExportButton /><DateSelector /></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total Job Cards" value={totalJobs.toString()} icon={<Cog size={20} />} accent="brand" />
         <StatCard label="Running" value={runningJobs.toString()} icon={<Cog size={20} />} accent="success" />
         <StatCard label="Planned" value={pendingJobs.toString()} icon={<ClipboardList size={20} />} accent="warning" />
@@ -1059,7 +1059,7 @@ export function MachineSchedulingPage() {
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Production Planning" description="Gantt-style machine allocation and scheduling" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<FilterButton /><DateSelector /></div>} />
       
-      <div className="flex gap-4 mb-6">
+      <div className="flex gap-3 mb-3">
         <div className="flex items-center gap-2 text-xs text-slate-500"><div className="w-3 h-3 rounded bg-brand-500"></div> Running / Planned</div>
         <div className="flex items-center gap-2 text-xs text-slate-500"><div className="w-3 h-3 rounded bg-amber-500"></div> Maintenance / Setup</div>
         <div className="flex items-center gap-2 text-xs text-slate-500"><div className="w-3 h-3 rounded bg-red-500"></div> Breakdown</div>
@@ -1195,7 +1195,7 @@ export function CNCOperationsPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="CNC Operations" description="Live CNC program execution monitoring" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<FilterButton /><ExportButton /></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Active Programs" value={jobData.length.toString()} icon={<Cog size={20} />} accent="brand" />
         <StatCard label="Avg Cycle Time" value={`${avgCycleTime} min`} icon={<Cog size={20} />} accent="accent" />
         <StatCard label="Parts Today" value={totalPartsCompleted.toString()} icon={<Package size={20} />} accent="success" />
@@ -1250,7 +1250,7 @@ function MachineDetailPage({ machine, jobCards, onBack }: { machine: Machine, jo
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <div className="flex items-center gap-4 mb-6">
+      <div className="flex items-center gap-3 mb-3">
         <button onClick={onBack} className="p-2 hover:bg-slate-200 bg-slate-100 rounded-lg text-slate-600 transition-colors">
           ← Back
         </button>
@@ -1263,8 +1263,8 @@ function MachineDetailPage({ machine, jobCards, onBack }: { machine: Machine, jo
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        <Card className="p-6 col-span-1 lg:col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+        <Card className="p-4 col-span-1 lg:col-span-2">
           <h3 className="text-sm font-semibold text-slate-800 border-b border-slate-100 pb-3 mb-4">Current Job Execution</h3>
           {job ? (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
@@ -1293,7 +1293,7 @@ function MachineDetailPage({ machine, jobCards, onBack }: { machine: Machine, jo
           )}
         </Card>
         
-        <Card className="p-6 col-span-1">
+        <Card className="p-4 col-span-1">
           <h3 className="text-sm font-semibold text-slate-800 border-b border-slate-100 pb-3 mb-4">Machine Metrics</h3>
           <div className="flex justify-center mb-6">
             <GaugeChart value={machine.utilization} label="OEE" color={machine.utilization > 80 ? '#16a34a' : '#f59e0b'} size={140} />
@@ -1306,7 +1306,7 @@ function MachineDetailPage({ machine, jobCards, onBack }: { machine: Machine, jo
         </Card>
       </div>
       
-      <Card className="p-6">
+      <Card className="p-4">
         <h3 className="text-sm font-semibold text-slate-800 border-b border-slate-100 pb-3 mb-4">Production Timeline (Today)</h3>
         {/* No machine state log is recorded yet, so there is no real timeline to show */}
         <div className="h-24 flex items-center justify-center text-slate-500 text-sm border-2 border-dashed border-slate-200 rounded-lg">
@@ -1368,7 +1368,7 @@ export function ShopFloorPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Shop Floor Live" description="Real-time shop floor monitoring" actions={<div className="flex items-center gap-2">{loading && <Badge variant="neutral">Syncing...</Badge>}<Badge variant="success" dot>Live</Badge><DateSelector /></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Active Machines" value={activeMachinesCount.toString()} icon={<Cog size={20} />} accent="success" />
         <StatCard label="Running Jobs" value={runningJobsCount.toString()} icon={<Activity size={20} />} accent="brand" />
         <StatCard label="Total Production" value={totalProd.toString()} icon={<Package size={20} />} accent="accent" />
@@ -1476,19 +1476,19 @@ export function ProductionTrackingPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Production Tracking" description="Track production progress across all work orders" actions={<div className="flex items-center gap-2">{loading && <Badge variant="neutral">Syncing...</Badge>}<FilterButton /><ExportButton /><DateSelector /></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total Planned" value={totalPlanned.toString()} icon={<ClipboardList size={20} />} accent="brand" />
         <StatCard label="Completed" value={totalCompleted.toString()} icon={<Package size={20} />} accent="success" />
         <StatCard label="Rejected" value={totalRejected.toString()} icon={<Cog size={20} />} accent="error" />
         <StatCard label="WIP" value={totalWip.toString()} icon={<Cog size={20} />} accent="warning" />
       </div>
       <Card className="overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100"><h3 className="text-sm font-semibold text-slate-800">Work Order Progress</h3></div>
+        <div className="px-4 py-2.5 border-b border-slate-100"><h3 className="text-sm font-semibold text-slate-800">Work Order Progress</h3></div>
         <div className="divide-y divide-slate-50">
           {woData.map((w) => {
             const pct = w.quantity > 0 ? (w.completed / w.quantity) * 100 : 0;
             return (
-              <div key={w.id} className="px-5 py-4 hover:bg-slate-50/50 transition-colors">
+              <div key={w.id} className="px-4 py-2.5 hover:bg-slate-50/50 transition-colors">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-3">
                     <span className="font-mono text-xs text-slate-700">{w.woNo}</span>
@@ -1554,7 +1554,7 @@ export function FinishedGoodsPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Finished Goods" description="Track completed production and stock" actions={<div className="flex items-center gap-2">{loading && <Badge variant="neutral">Syncing...</Badge>}<FilterButton /><ExportButton /></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total Finished" value={totalFinished.toString()} icon={<Package size={20} />} accent="success" />
         <StatCard label="Delivered" value="0" icon={<Package size={20} />} accent="brand" />
         <StatCard label="In Stock" value={totalFinished.toString()} icon={<Package size={20} />} accent="accent" />

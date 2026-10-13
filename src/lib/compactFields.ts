@@ -6,7 +6,7 @@
 // The border colour comes from --entry-border: each tinted entry section sets it to its own
 // accent, and anywhere else it falls back to slate-300 (see index.css :root).
 export const compactInput =
-  'h-8 px-2 py-1 text-xs font-medium rounded border border-[color:var(--entry-border)] bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm';
+  'h-7 px-2 py-0.5 text-xs font-medium rounded border border-[color:var(--entry-border)] bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm';
 
 // Same field sized to fill its grid cell, for the product-line sub-tables.
 export const compactCell = `${compactInput} w-full`;

@@ -189,6 +189,13 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
 
   const pager = usePager(shown, shown.length);
 
+  const searchInput = (
+    <div className="relative shrink-0">
+      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+      <input type="text" placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 pr-2.5 py-1 text-xs border border-slate-300 rounded-md focus:outline-none focus:border-brand-500 bg-white shadow-sm w-36 sm:w-44" />
+    </div>
+  );
+
   // The rejection form itself: company / order picker, per-order summary and the
   // rejection line rows. Shared by the always-visible Add Rejected card above the table
   // and by the popup used to view or edit an existing group, so the fields and the
@@ -200,6 +207,13 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
               <p className="text-base font-bold text-slate-900">{dlg.company} <span className="font-mono text-sm font-medium text-slate-500">({chosenOrder?.lead_no || dlg.orderNo})</span></p>
             ) : (
               <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5 shrink-0 mr-1">
+                  <button type="button" onClick={onBack} title="Back to Pipeline" className="p-1 hover:bg-slate-200/80 rounded-md transition-colors text-slate-600 shrink-0 cursor-pointer">
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
+                  <h2 className="text-sm font-bold text-slate-800 shrink-0">Rejected</h2>
+                  <span className="h-5 w-px shrink-0 bg-slate-300 ml-1" aria-hidden="true" />
+                </div>
                 <div className="flex items-center gap-1.5"><span className={inlineLbl}>Company *</span>
                   <select className={`${compactInput} w-[14rem]`} value={dlg.company} onChange={e => setDlg({ ...dlg, company: e.target.value, orderNo: '', lines: [emptyLine()], origIds: [] })}>
                     <option value="">Select company</option>
@@ -210,6 +224,10 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
                     <option value="">Select order</option>
                     {companyOrders.map(o => <option key={o.id} value={o.order_no}>{o.lead_no || o.order_no}{o.lead_no ? ` (${o.order_no})` : ''}</option>)}
                   </select></div>
+                <div className="ml-auto flex shrink-0 items-center gap-2">
+                  <span className="h-6 w-px shrink-0 bg-slate-300 mx-0.5" aria-hidden="true" />
+                  {searchInput}
+                </div>
               </div>
             )}
 
@@ -272,22 +290,16 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
   </>);
  
   return (
-    <div className="flex flex-col gap-4" data-testid="rejected-list">
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 px-3 py-1.5 flex flex-wrap justify-between items-center gap-2 gap-y-1">
-        <div className="flex items-center gap-2 min-w-0">
-          <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-600 shrink-0"><ArrowLeft className="w-4 h-4" /></button>
-          <div className="flex items-baseline gap-2 min-w-0">
+    <div className="flex flex-col gap-2.5" data-testid="rejected-list">
+      {dlg?.mode !== 'add' && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 px-3 py-2 flex flex-wrap justify-between items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-600 shrink-0"><ArrowLeft className="w-4 h-4" /></button>
             <h2 className="text-sm font-bold text-slate-800 shrink-0">Rejected</h2>
-            <p className="text-xs text-slate-500 truncate">Rejections by order · {shown.length} order{shown.length === 1 ? '' : 's'} · {grand} pcs rejected</p>
           </div>
+          {searchInput}
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input type="text" placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 pr-4 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-brand-500" />
-          </div>
-        </div>
-      </div>
+      )}
       {/* Always-visible Add Rejected entry form. The same form the "Add Rejected" popup
           showed, refactored to sit above the table - view / edit still use the popup. */}
       {dlg?.mode === 'add' && (
@@ -307,10 +319,8 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
           </div>
         </section>
       )}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
-      <PagerFooter pager={pager} />
-
-      <div className="overflow-x-auto p-4">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+      <div className="overflow-x-auto">
         {missing && <p className="mb-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Rejections are stored with production batches. Apply the production-batches migration (20260929010000_production_batches.sql) to use this list.</p>}
         {loading ? (
           <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" /></div>
@@ -350,6 +360,7 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
           </table>
         )}
       </div>
+      <PagerFooter pager={pager} />
       </div>
 
       <Modal open={!!dlg && dlg.mode !== 'add'} onClose={openAdd} title={view ? 'View Rejected' : dlg?.mode === 'edit' ? 'Edit Rejected' : 'Add Rejected'} size="lg" width={820}

@@ -447,7 +447,7 @@ export function BankEntryPage() {
                     </tr>
                   ))}
                   {!loadingData && shownData.length === 0 && (
-                    <tr><td colSpan={11} className="px-3 py-14 text-center">
+                    <tr><td colSpan={11} className="px-3 py-8 text-center">
                       <Inbox size={30} className="mx-auto text-slate-300 mb-2" />
                       <p className="text-sm font-semibold text-slate-600">No bank data for these filters</p>
                       <p className="text-xs text-slate-400 mt-0.5">Import a statement above or change the filters.</p>

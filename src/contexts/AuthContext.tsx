@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { effectiveMatrix, type PermAction, type PermMatrix } from '@/config/permissions';
 
 export type ErpRole = 'SUPER_ADMIN' | 'COMPANY_ADMIN' | 'USER';
 
@@ -44,6 +45,14 @@ interface AuthContextValue {
   isSuperAdmin: boolean;
   isCompanyAdmin: boolean;
   errorMessage: string | null;
+  /** Effective module/action matrix (single permission system). Empty until loaded. */
+  permissions: PermMatrix | null;
+  permsLoading: boolean;
+  /** Module visible in navigation/views (dashboard is always visible). */
+  canView: (moduleKey: string) => boolean;
+  /** Action allowed within a module. */
+  canDo: (moduleKey: string, action: PermAction) => boolean;
+  refreshPermissions: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   /** TEMPORARY (local dev only): password sign-in. Remove once Google OAuth is configured locally. */
   signInWithPassword: (email: string, password: string) => Promise<void>;
@@ -69,6 +78,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [company, setCompany] = useState<ErpCompany | null>(null);
   const [companies, setCompanies] = useState<ErpCompany[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [permissions, setPermissions] = useState<PermMatrix | null>(null);
+  const [permsLoading, setPermsLoading] = useState(false);
   const loadedForUser = useRef<string | null>(null);
 
   const clear = useCallback(() => {
@@ -77,7 +88,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(null);
     setCompany(null);
     setCompanies([]);
+    setPermissions(null);
+    setPermsLoading(false);
     setErrorMessage(null);
+  }, []);
+
+  // Effective permissions always come from the database (erp_get_permissions),
+  // never from client state. Admins resolve to full access by role.
+  const loadPermissions = useCallback(async (role: ErpRole | null) => {
+    setPermsLoading(true);
+    try {
+      const { data, error } = await supabase.rpc('erp_get_permissions');
+      if (error) {
+        console.error('erp_get_permissions failed:', error);
+        setPermissions(null);
+        return;
+      }
+      const payload = data as { role?: ErpRole | null; permissions?: { module_key: string; can_view: boolean; can_create: boolean; can_edit: boolean; can_delete: boolean; can_approve: boolean; can_export: boolean }[] };
+      setPermissions(effectiveMatrix(payload.role ?? role ?? null, payload.permissions));
+    } catch (e) {
+      console.error('erp_get_permissions failed:', e);
+      setPermissions(null);
+    } finally {
+      setPermsLoading(false);
+    }
   }, []);
 
   // Role, company and status always come from the database (erp_get_session), never from client state.
@@ -96,7 +130,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setCompanies(payload.companies ?? []);
     setErrorMessage(null);
     setStatus(payload.status);
-  }, []);
+    if (payload.status === 'authorized' && payload.user) {
+      void loadPermissions(payload.user.role);
+    } else {
+      setPermissions(null);
+    }
+  }, [loadPermissions]);
 
   useEffect(() => {
     const handleSession = (userId: string | null) => {
@@ -159,6 +198,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await loadErpSession();
   }, [loadErpSession]);
 
+  const refreshPermissions = useCallback(async () => {
+    await loadPermissions(profile?.role ?? null);
+  }, [loadPermissions, profile?.role]);
+
+  const canView = useCallback((moduleKey: string) => {
+    if (moduleKey === 'dashboard') return true;
+    return permissions?.[moduleKey]?.view ?? false;
+  }, [permissions]);
+
+  const canDo = useCallback((moduleKey: string, action: PermAction) => {
+    return permissions?.[moduleKey]?.[action] ?? false;
+  }, [permissions]);
+
   const setActiveCompany = useCallback(async (companyId: string | null) => {
     const { error } = await supabase.rpc('erp_set_active_company', { p_company_id: companyId });
     if (error) {
@@ -177,6 +229,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isSuperAdmin: status === 'authorized' && profile?.role === 'SUPER_ADMIN',
     isCompanyAdmin: status === 'authorized' && profile?.role === 'COMPANY_ADMIN',
     errorMessage,
+    permissions,
+    permsLoading,
+    canView,
+    canDo,
+    refreshPermissions,
     signInWithGoogle,
     signInWithPassword,
     signOut,

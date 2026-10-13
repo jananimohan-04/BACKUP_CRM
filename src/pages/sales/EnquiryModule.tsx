@@ -1,15 +1,14 @@
 import { useState, useEffect, type ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Search, Calendar, List, Kanban as KanbanIcon, ArrowLeft, FileText } from 'lucide-react';
+import { Search, ArrowLeft, FileText } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 
-export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView, entryForm }: { onBack: () => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onView?: (record: any) => void; entryForm?: ReactNode }) {
+export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView, entryForm }: { onBack: () => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onView?: (record: any) => void; entryForm?: ReactNode | ((props: { onBack: () => void; searchSlot: ReactNode }) => ReactNode) }) {
   const [enquiries, setEnquiries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [viewMode, setViewMode] = useState<'list' | 'kanban' | 'calendar'>('list');
   const [selectedEnquiry, setSelectedEnquiry] = useState<any | null>(null);
   const [relatedQuote, setRelatedQuote] = useState<any | null>(null);
 
@@ -71,44 +70,39 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
 
   const pager = usePager(filteredEnquiries, filteredEnquiries.length);
 
+  const searchInput = (
+    <div className="relative shrink-0">
+      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+      <input 
+        type="text" 
+        placeholder="Search enquiries..." 
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        className="pl-8 pr-2.5 py-1 text-xs border border-slate-300 rounded-md focus:outline-none focus:border-brand-500 bg-white shadow-sm w-32 sm:w-36"
+      />
+    </div>
+  );
+
+  const renderedEntry = typeof entryForm === 'function' ? entryForm({ onBack, searchSlot: searchInput }) : entryForm;
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 px-3 py-1.5 flex flex-wrap justify-between items-center gap-2 gap-y-1">
-        <div className="flex items-center gap-2 min-w-0">
-          <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-600 shrink-0">
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-          <div className="flex items-baseline gap-2 min-w-0">
+    <div className="flex flex-col gap-2.5">
+      {renderedEntry ? (
+        renderedEntry
+      ) : (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 px-3 py-2 flex flex-wrap justify-between items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-600 shrink-0">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
             <h2 className="text-sm font-bold text-slate-800 shrink-0">Enquiries</h2>
-            <p className="text-xs text-slate-500 truncate">Manage all incoming enquiries</p>
           </div>
+          {searchInput}
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input 
-              type="text" 
-              placeholder="Search enquiries..." 
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="pl-9 pr-4 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-brand-500"
-            />
-          </div>
-          <div className="flex bg-slate-100 rounded-lg p-1 border border-slate-200">
-            <button onClick={() => setViewMode('kanban')} className={`p-1 rounded-md transition-colors ${viewMode === 'kanban' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}><KanbanIcon className="w-4 h-4" /></button>
-            <button onClick={() => setViewMode('list')} className={`p-1 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}><List className="w-4 h-4" /></button>
-            <button onClick={() => setViewMode('calendar')} className={`p-1 rounded-md transition-colors ${viewMode === 'calendar' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}><Calendar className="w-4 h-4" /></button>
-          </div>
-        </div>
-      </div>
+      )}
 
-      {/* Always-visible New Enquiry entry form, refactored out of the old popup so the
-          page loads with it already open above the table. It is its own card, sitting on
-          the page background between the page header and the table. */}
-      {entryForm}
-
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
-      <div className="overflow-x-auto p-4">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+      <div className="overflow-x-auto">
         {loading ? (
           <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div></div>
         ) : (

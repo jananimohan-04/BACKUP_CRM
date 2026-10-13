@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Eye, Edit, Trash2, Users as UsersIcon, Building2, ShieldCheck, Settings as SettingsIcon, FileText } from 'lucide-react';
+import { Eye, Edit, Trash2, Users as UsersIcon, Building2, ShieldCheck, Settings as SettingsIcon, FileText, ChevronDown, ChevronRight, Search, Lock, KeyRound } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, Button, StatCard } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { supabase } from '@/lib/supabase';
 import { useAuth, type ErpRole } from '@/contexts/AuthContext';
+import {
+  ADMIN_RESERVED_MODULES, MODULE_CATALOG, PERM_CATEGORIES,
+  emptyMatrix, fullMatrix, matrixToPayload, rowsToMatrix,
+  type PermAction, type PermMatrix,
+} from '@/config/permissions';
 
 // ---------------------------------------------------------------------------------------
 // Users and companies are read through RLS and written ONLY through the erp_save_user /
@@ -60,6 +65,7 @@ function useCompanies() {
 const emptyUserForm = { id: null as string | null, full_name: '', email: '', role: 'USER' as ErpRole, status: 'Active' as 'Active' | 'Inactive', company_id: '' };
 
 export function UsersPage() {
+  const navigate = useNavigate();
   const { profile, company, isSuperAdmin, isCompanyAdmin } = useAuth();
   const [searchParams] = useSearchParams();
   const { companies } = useCompanies();
@@ -169,6 +175,7 @@ export function UsersPage() {
           <button title="View" onClick={() => setViewing(r)} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Eye size={15} /></button>
           {canEdit(r) && (
             <>
+              <button title="Manage access" aria-label={`Manage access for ${r.email}`} onClick={() => navigate(`/admin/access?user=${r.id}${r.company_id ? `&company=${r.company_id}` : ''}`)} className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors"><KeyRound size={15} /></button>
               <button title="Edit" onClick={() => openEdit(r)} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Edit size={15} /></button>
               {r.id !== profile?.id && <button title="Delete user" aria-label={`Delete user ${r.email}`} onClick={() => { setDeleteError(null); setToDelete(r); }} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><Trash2 size={15} /></button>}
             </>
@@ -193,7 +200,7 @@ export function UsersPage() {
           </select>
         ) : undefined}
       />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total Users" value={visibleUsers.length.toString()} icon={<UsersIcon size={20} />} accent="brand" />
         <StatCard label="Active" value={visibleUsers.filter(u => u.status === 'Active').length.toString()} icon={<UsersIcon size={20} />} accent="success" />
         <StatCard label="Inactive" value={visibleUsers.filter(u => u.status !== 'Active').length.toString()} icon={<UsersIcon size={20} />} accent="neutral" />
@@ -350,6 +357,7 @@ export function CompaniesPage() {
       key: 'actions', label: 'Actions', align: 'center', render: (r) => (
         <div className="flex items-center justify-center gap-1">
           <button title="View users" onClick={() => navigate(`/admin/users?company=${r.id}`)} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><UsersIcon size={15} /></button>
+          <button title="Manage access" aria-label={`Manage access for ${r.company_name}`} onClick={() => navigate(`/admin/access?company=${r.id}`)} className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors"><KeyRound size={15} /></button>
           <button title="Edit" onClick={() => { setForm({ id: r.id, company_name: r.company_name, code: r.code ?? '', status: r.status }); setFormError(null); setShowForm(true); }} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Edit size={15} /></button>
           <button title="Delete company" aria-label={`Delete company ${r.company_name}`} onClick={() => { setDeleteError(null); setConfirmText(''); setToDelete(r); }} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><Trash2 size={15} /></button>
         </div>
@@ -360,7 +368,7 @@ export function CompaniesPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Company Management" description="Companies using this ERP. Each company's data is isolated by the database." />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Companies" value={companies.length.toString()} icon={<Building2 size={20} />} accent="brand" />
         <StatCard label="Active" value={companies.filter(c => c.status === 'Active').length.toString()} icon={<Building2 size={20} />} accent="success" />
         <StatCard label="Inactive" value={companies.filter(c => c.status !== 'Active').length.toString()} icon={<Building2 size={20} />} accent="neutral" />
@@ -433,3 +441,357 @@ export function RolesPage() { return <AdminStub title="Roles" description="Defin
 export function PermissionsPage() { return <AdminStub title="Permissions" description="Granular access control matrix" icon={ShieldCheck} />; }
 export function SettingsPage() { return <AdminStub title="Company Settings" description="Global ERP configuration and preferences" icon={SettingsIcon} />; }
 export function AuditLogsPage() { return <AdminStub title="Audit Logs" description="System-wide activity monitoring" icon={FileText} />; }
+
+// ======================================================================================
+// Company & Access Management: All Companies → Company → Users → User Permissions
+// ======================================================================================
+
+const ACTION_LABELS: Record<PermAction, string> = {
+  view: 'View', create: 'Create', edit: 'Edit', delete: 'Delete', approve: 'Approve', export: 'Export',
+};
+
+function PermissionEditor({ userId, userEmail, userRole, onSaved }: {
+  userId: string; userEmail: string; userRole: ErpRole; onSaved?: () => void;
+}) {
+  const { profile, isSuperAdmin, refreshPermissions } = useAuth();
+  const [matrix, setMatrix] = useState<PermMatrix>(emptyMatrix);
+  const [saved, setSaved] = useState<PermMatrix | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  const isSelf = profile?.id === userId;
+  const isSuperTarget = userRole === 'SUPER_ADMIN';
+  // Company Admins can never grant these (mirrors the database rule).
+  const lockedForCaller = useCallback((key: string) => !isSuperAdmin && ADMIN_RESERVED_MODULES.includes(key), [isSuperAdmin]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const { data, error: err } = await supabase.rpc('erp_get_user_permissions', { p_user_id: userId });
+    setLoading(false);
+    if (err) { setError(err.message); return; }
+    // Admins resolve to full access even with no rows: show that reality as the base.
+    const base = (data?.role === 'SUPER_ADMIN' || data?.role === 'COMPANY_ADMIN')
+      ? fullMatrix()
+      : rowsToMatrix(data?.permissions);
+    setMatrix(base);
+    setSaved(JSON.parse(JSON.stringify(base)));
+  }, [userId]);
+  useEffect(() => { load(); }, [load]);
+
+  const dirty = saved !== null && JSON.stringify(matrix) !== JSON.stringify(saved);
+  const grantedCount = MODULE_CATALOG.filter((m) => matrix[m.key]?.view).length;
+
+  const setModule = (key: string, patch: Partial<Record<PermAction, boolean>>) => {
+    setMatrix((prev) => {
+      const next = { ...prev, [key]: { ...prev[key], ...patch } };
+      // View off clears every action; an action on implies view.
+      if (patch.view === false) {
+        next[key] = { view: false, create: false, edit: false, delete: false, approve: false, export: false };
+      } else if (Object.entries(patch).some(([a, v]) => a !== 'view' && v)) {
+        next[key] = { ...next[key], view: true };
+      }
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    const next = emptyMatrix();
+    MODULE_CATALOG.forEach((m) => {
+      if (lockedForCaller(m.key)) return;
+      m.actions.forEach((a) => { next[m.key][a] = true; });
+    });
+    setMatrix(next);
+  };
+
+  const save = async () => {
+    if (isSelf) { setError('You cannot edit your own permissions — ask another administrator.'); return; }
+    if (isSuperTarget) { setError('Super Admins always have full access — nothing to configure.'); return; }
+    const revoked = saved ? MODULE_CATALOG.filter((m) => saved[m.key]?.view && !matrix[m.key]?.view).map((m) => m.label) : [];
+    if (revoked.length && !window.confirm(`Remove access to ${revoked.join(', ')} for ${userEmail}?`)) return;
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    const { error: err } = await supabase.rpc('erp_save_permissions', { p_user_id: userId, p_permissions: matrixToPayload(matrix) });
+    setSaving(false);
+    if (err) { setError(err.message); return; }
+    setSaved(JSON.parse(JSON.stringify(matrix)));
+    setNotice('Permissions saved. They apply the next time the user loads a page (no re-login needed).');
+    // If an admin trimmed their own session's scope indirectly, refresh local nav.
+    if (profile) void refreshPermissions();
+    onSaved?.();
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-3 border-slate-200 border-t-brand-500 rounded-full animate-spin" style={{ borderWidth: '3px' }} /></div>;
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="min-w-0">
+          <h3 className="text-sm font-bold text-slate-800 truncate">User Access — {userEmail}</h3>
+          <p className="text-xs text-slate-500">{grantedCount} of {MODULE_CATALOG.length} modules enabled{dirty ? ' · unsaved changes' : ''}</p>
+        </div>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={selectAll}>Select All Allowed</Button>
+          <Button variant="secondary" size="sm" onClick={() => setMatrix(emptyMatrix())}>Clear</Button>
+          <Button variant="secondary" size="sm" disabled={!dirty} onClick={() => saved && setMatrix(JSON.parse(JSON.stringify(saved)))}>Cancel</Button>
+          <Button size="sm" disabled={!dirty || saving} onClick={save}>{saving ? 'Saving…' : 'Save Permissions'}</Button>
+        </div>
+      </div>
+      {error && <p className="text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 text-sm">{error}</p>}
+      {notice && <p className="text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-sm">{notice}</p>}
+      {isSuperTarget && <p className="text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">Super Admins always have full access across all companies — there is nothing to configure here.</p>}
+      {PERM_CATEGORIES.map((cat) => {
+        const mods = MODULE_CATALOG.filter((m) => m.category === cat);
+        const isCollapsed = collapsed.has(cat);
+        return (
+          <div key={cat} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <button type="button" onClick={() => setCollapsed((prev) => { const n = new Set(prev); if (n.has(cat)) n.delete(cat); else n.add(cat); return n; })}
+              className="w-full flex items-center gap-2 px-4 py-2.5 bg-slate-50/70 border-b border-slate-100 hover:bg-slate-50">
+              {isCollapsed ? <ChevronRight size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />}
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">{cat}</span>
+              <span className="text-[11px] text-slate-400">{mods.filter((m) => matrix[m.key]?.view).length}/{mods.length} on</span>
+            </button>
+            {!isCollapsed && (
+              <div className="divide-y divide-slate-100">
+                {mods.map((m) => {
+                  const locked = lockedForCaller(m.key);
+                  const f = matrix[m.key];
+                  return (
+                    <div key={m.key} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-2">
+                      <label className="flex items-center gap-2 min-w-[11rem] cursor-pointer">
+                        <button type="button" role="switch" aria-checked={f.view} disabled={locked || isSuperTarget}
+                          onClick={() => setModule(m.key, { view: !f.view })}
+                          className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${f.view ? 'bg-brand-600' : 'bg-slate-300'} ${(locked || isSuperTarget) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${f.view ? 'left-[18px]' : 'left-0.5'}`} />
+                        </button>
+                        <span className="text-sm font-semibold text-slate-700">{m.label}</span>
+                        {locked && <Lock size={12} className="text-slate-400" />}
+                      </label>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        {m.actions.filter((a) => a !== 'view').map((a) => (
+                          <label key={a} className={`flex items-center gap-1.5 text-xs ${(locked || isSuperTarget || !f.view) ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 cursor-pointer'}`}>
+                            <input type="checkbox" disabled={locked || isSuperTarget || !f.view} checked={!!f[a]}
+                              onChange={(e) => setModule(m.key, { [a]: e.target.checked } as Partial<Record<PermAction, boolean>>)}
+                              className="w-3.5 h-3.5 rounded accent-brand-600" />
+                            {ACTION_LABELS[a]}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+interface AccessUser {
+  id: string;
+  email: string;
+  full_name: string;
+  role: ErpRole;
+  status: 'Active' | 'Inactive';
+  company_id: string | null;
+  company_name: string;
+}
+
+export function AccessPage() {
+  const { profile, company, isSuperAdmin } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { companies } = useCompanies();
+  const [users, setUsers] = useState<AccessUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [moduleCounts, setModuleCounts] = useState<Record<string, number>>({});
+  const selectedUserId = searchParams.get('user') ?? null;
+  const focusedCompany = searchParams.get('company') ?? null;
+
+  const loadUsers = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('company_users')
+      .select('id, email, full_name, role, status, company_id, companies!company_users_company_id_fkey(company_name)')
+      .order('created_at', { ascending: false });
+    if (error) console.error('Failed to load users:', error);
+    const rows = ((data as any[]) || []).map((u) => ({
+      id: u.id, email: u.email, full_name: u.full_name, role: u.role, status: u.status,
+      company_id: u.company_id, company_name: u.companies?.company_name ?? (u.role === 'SUPER_ADMIN' ? 'All companies' : '—'),
+    }));
+    // Company Admins see their own company (RLS already restricts; this is display only).
+    setUsers(isSuperAdmin ? rows : rows.filter((u) => u.company_id === profile?.company_id || u.id === profile?.id));
+    setLoading(false);
+  }, [isSuperAdmin, profile?.company_id, profile?.id]);
+  useEffect(() => { loadUsers(); }, [loadUsers]);
+
+  const visibleCompanies = useMemo(() => {
+    const list = isSuperAdmin ? companies : companies.filter((c) => c.id === profile?.company_id);
+    const q = query.trim().toLowerCase();
+    const rf = roleFilter, sf = statusFilter;
+    return list
+      .filter((c) => !focusedCompany || c.id === focusedCompany)
+      .map((c) => ({
+        ...c,
+        users: users.filter((u) =>
+          u.company_id === c.id &&
+          (!q || u.email.toLowerCase().includes(q) || (u.full_name || '').toLowerCase().includes(q)) &&
+          (!rf || u.role === rf) &&
+          (!sf || u.status === sf)),
+      }))
+      .filter((c) => {
+        const q = query.trim().toLowerCase();
+        return c.users.length > 0 || (!q && !roleFilter && !statusFilter && !focusedCompany) || (q && c.company_name.toLowerCase().includes(q));
+      });
+  }, [companies, users, query, roleFilter, statusFilter, focusedCompany, isSuperAdmin]);
+
+  // Company Admins land expanded on their own company; deep links expand too.
+  useEffect(() => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (!isSuperAdmin && profile?.company_id) next.add(profile.company_id);
+      if (focusedCompany) next.add(focusedCompany);
+      const sel = users.find((u) => u.id === selectedUserId);
+      if (sel?.company_id) next.add(sel.company_id);
+      return next;
+    });
+  }, [isSuperAdmin, profile?.company_id, focusedCompany, selectedUserId, users]);
+
+  const toggleCompany = async (id: string) => {
+    setExpanded((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+    // Lazy module counts for the expanded company (one small RPC per user).
+    const list = users.filter((u) => u.company_id === id && moduleCounts[u.id] === undefined);
+    if (!list.length) return;
+    const entries = await Promise.all(list.map(async (u) => {
+      const { data, error } = await supabase.rpc('erp_get_user_permissions', { p_user_id: u.id });
+      if (error || !data) return [u.id, -1] as const;
+      if (data.role === 'SUPER_ADMIN' || data.role === 'COMPANY_ADMIN') return [u.id, -2] as const; // full by role
+      return [u.id, (data.permissions ?? []).filter((p: any) => p.can_view).length] as const;
+    }));
+    setModuleCounts((prev) => {
+      const n = { ...prev };
+      entries.forEach(([id, c]) => { n[id] = c; });
+      return n;
+    });
+  };
+
+  const selectUser = (id: string | null) => {
+    const next = new URLSearchParams(searchParams);
+    if (id) next.set('user', id); else next.delete('user');
+    setSearchParams(next, { replace: true });
+  };
+
+  const selectedUser = users.find((u) => u.id === selectedUserId) ?? null;
+  const canManage = (u: AccessUser) =>
+    u.id !== profile?.id && (isSuperAdmin || (u.role !== 'SUPER_ADMIN' && u.company_id === profile?.company_id));
+
+  return (
+    <div className="p-4 lg:p-6 bg-grid min-h-full">
+      <PageHeader
+        title="Company & Access Management"
+        description={isSuperAdmin ? 'All Companies → Company → Users → Permissions' : `${company?.company_name ?? 'Your company'} → Users → Permissions`}
+        actions={focusedCompany ? <Button variant="secondary" size="sm" onClick={() => { const n = new URLSearchParams(searchParams); n.delete('company'); n.delete('user'); setSearchParams(n, { replace: true }); }}>← All companies</Button> : undefined}
+      />
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] gap-3 items-start">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-3 border-b border-slate-100 flex flex-col gap-2">
+            <div className="relative">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search companies or users…"
+                className="w-full pl-8 pr-2.5 py-1.5 text-sm rounded-lg border border-slate-200 focus:outline-none focus:border-brand-500" />
+            </div>
+            <div className="flex gap-2">
+              <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="flex-1 px-2 py-1.5 text-xs rounded-lg border border-slate-200 bg-white">
+                <option value="">All roles</option>
+                <option value="COMPANY_ADMIN">Company Admin</option>
+                <option value="USER">Member</option>
+                {isSuperAdmin && <option value="SUPER_ADMIN">Super Admin</option>}
+              </select>
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="flex-1 px-2 py-1.5 text-xs rounded-lg border border-slate-200 bg-white">
+                <option value="">Any status</option>
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+              </select>
+            </div>
+          </div>
+          <div className="max-h-[60vh] overflow-y-auto">
+            {loading ? (
+              <p className="text-sm text-slate-400 text-center py-8">Loading…</p>
+            ) : visibleCompanies.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-8">No companies or users match.</p>
+            ) : visibleCompanies.map((c) => {
+              const open = expanded.has(c.id);
+              return (
+                <div key={c.id} className="border-b border-slate-100 last:border-0">
+                  <button type="button" onClick={() => toggleCompany(c.id)}
+                    className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-slate-50 text-left">
+                    {open ? <ChevronDown size={14} className="text-slate-400 shrink-0" /> : <ChevronRight size={14} className="text-slate-400 shrink-0" />}
+                    <Building2 size={14} className="text-brand-500 shrink-0" />
+                    <span className="text-sm font-bold text-slate-800 truncate">{c.company_name}</span>
+                    <span className="ml-auto text-[11px] text-slate-400 shrink-0">{c.users.length} user{c.users.length === 1 ? '' : 's'}</span>
+                  </button>
+                  {open && (
+                    <div className="pb-1">
+                      {c.users.length === 0 && <p className="text-xs text-slate-400 px-9 py-1.5">No users match the filters.</p>}
+                      {c.users.map((u) => {
+                        const mc = moduleCounts[u.id];
+                        const active = u.id === selectedUserId;
+                        return (
+                          <button key={u.id} type="button" onClick={() => selectUser(active ? null : u.id)}
+                            className={`w-full flex items-center gap-2 pl-9 pr-3 py-1.5 text-left hover:bg-brand-50/50 ${active ? 'bg-brand-50' : ''}`}>
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-[13px] font-semibold text-slate-700 truncate">{u.full_name || u.email}</span>
+                              <span className="block text-[11px] text-slate-400 truncate">
+                                {ROLE_LABELS[u.role] ?? u.role} · {u.status}
+                                {mc === undefined ? '' : mc === -2 ? ' · full access (role)' : ` · ${mc} modules`}
+                              </span>
+                            </span>
+                            <Badge variant={u.status === 'Active' ? 'success' : 'error'} dot>{u.status}</Badge>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 min-h-[24rem]">
+          {selectedUser ? (
+            canManage(selectedUser) ? (
+              <PermissionEditor key={selectedUser.id} userId={selectedUser.id} userEmail={selectedUser.email} userRole={selectedUser.role} onSaved={() => loadUsers()} />
+            ) : (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <ShieldCheck size={28} className="text-slate-300 mb-3" />
+                <p className="text-sm font-semibold text-slate-700">{selectedUser.email}</p>
+                <p className="text-xs text-slate-400 mt-1 max-w-xs">
+                  {selectedUser.id === profile?.id
+                    ? 'You cannot edit your own permissions — ask another administrator.'
+                    : 'You are not authorized to manage this user.'}
+                </p>
+              </div>
+            )
+          ) : (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <KeyRound size={28} className="text-slate-300 mb-3" />
+              <p className="text-sm font-semibold text-slate-700">Select a user to manage access</p>
+              <p className="text-xs text-slate-400 mt-1 max-w-xs">Expand a company, pick a user, then toggle modules and actions. Changes save only when you press Save Permissions.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

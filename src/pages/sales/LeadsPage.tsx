@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
+import type { ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Eye, Edit, ArrowRightCircle, FileText, Trash2 } from 'lucide-react';
 import { PageHeader, DateSelector } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
-import { Badge, Button, StatCard, statusToVariant } from '@/components/ui/Card';
+import { Badge, Button, statusToVariant } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { generateUniqueProjectNo } from '@/lib/projectNumber';
@@ -21,7 +22,7 @@ async function uploadLeadProductFile(companyId: string | undefined | null, file:
   return path;
 }
 
-export function LeadsPage() {
+export function LeadsPage({ hideHeader = false, toolbarLeft }: { hideHeader?: boolean; toolbarLeft?: ReactNode } = {}) {
   const { profile, company } = useAuth();
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -737,16 +738,9 @@ export function LeadsPage() {
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="All Companies" description="Manage all incoming enquiries and convert qualified companies to companies" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}</div>} />
-      
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Total Companies" value={displayLeads.length.toString()} icon={<FileText size={20} />} accent="brand" />
-        <StatCard label="New" value={displayLeads.filter(l => l.status === 'New').length.toString()} icon={<FileText size={20} />} accent="warning" />
-        <StatCard label="Converted" value={displayLeads.filter(l => l.status === 'Converted').length.toString()} icon={<FileText size={20} />} accent="success" />
-        <StatCard label="Lost" value={displayLeads.filter(l => l.status === 'Lost').length.toString()} icon={<FileText size={20} />} accent="error" />
-      </div>
+      {!hideHeader && <PageHeader title="All Companies" description="Manage all incoming enquiries and convert qualified companies to companies" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}</div>} />}
 
-      <DataTable data={displayLeads} columns={columns} searchKeys={['company', 'leadNo', 'city', 'gst']} onAdd={() => { setEditId(null); setMasterEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Company" inlineAdd toolbarDate={<DateSelector />} filterOptions={[{ label: 'New', value: 'New' }, { label: 'Converted', value: 'Converted' }, { label: 'Lost', value: 'Lost' }]} />
+      <DataTable data={displayLeads} columns={columns} searchKeys={['company', 'leadNo', 'city', 'gst']} onAdd={() => { setEditId(null); setMasterEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Company" inlineAdd toolbarLeft={toolbarLeft} toolbarDate={<DateSelector />} filterOptions={[{ label: 'New', value: 'New' }, { label: 'Converted', value: 'Converted' }, { label: 'Lost', value: 'Lost' }]} />
 
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title={editId || masterEditId ? "Edit Company" : "Add New Company"} size="xl" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>Save Company</Button></>}>
         <div className="grid grid-cols-2 gap-4">

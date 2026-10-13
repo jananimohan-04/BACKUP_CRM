@@ -27,7 +27,7 @@ function InspectionList({ type, title, description }: { type: 'Incoming' | 'In-P
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title={title} description={description} actions={<div className="flex items-center gap-2"><FilterButton /><ExportButton /></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total Inspections" value={data.length.toString()} icon={<ShieldCheck size={20} />} accent="brand" />
         <StatCard label="Passed" value={data.filter(d => d.status === 'Pass').length.toString()} icon={<CheckCircle2 size={20} />} accent="success" />
         <StatCard label="Failed / Rework" value={data.filter(d => d.status === 'Fail' || d.status === 'Rework').length.toString()} icon={<AlertTriangle size={20} />} accent="error" />
@@ -80,7 +80,7 @@ export function NCRPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Non-Conformance Reports (NCR)" description="Manage rejections and non-conforming products" actions={<div className="flex items-center gap-2"><FilterButton /><ExportButton /></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total NCRs" value={ncrs.length.toString()} icon={<AlertTriangle size={20} />} accent="brand" />
         <StatCard label="Open" value={openCount.toString()} icon={<AlertTriangle size={20} />} accent="error" />
         <StatCard label="Under Investigation" value={investigatingCount.toString()} icon={<Settings size={20} />} accent="warning" />

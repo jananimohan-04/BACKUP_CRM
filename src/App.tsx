@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { useStickyTableHeads } from './lib/useStickyTableHeads';
 import { BrowserRouter, Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { PortalApp } from './pages/portal/PortalApp';
@@ -82,8 +82,9 @@ import {
 import { QuantityTrackingPage } from './pages/reports/QuantityTrackingPage';
 
 import {
-  UsersPage, CompaniesPage, RolesPage, PermissionsPage, SettingsPage, AuditLogsPage
+  UsersPage, CompaniesPage, SettingsPage, AuditLogsPage, AccessPage
 } from './pages/admin/AdminPages';
+import { RequireModule, moduleForPage } from '@/components/auth/RequireModule';
 
 // Placeholder Component for unbuilt pages
 function PlaceholderPage({ title }: { title: string }) {
@@ -119,7 +120,11 @@ function MainLayout() {
     navigate(`/${page}`);
   };
 
-  const { signOut, company } = useAuth();
+  const { signOut, company, refreshPermissions } = useAuth();
+
+  // Re-read effective permissions on every navigation so an admin's change
+  // applies without forcing the affected user to log in again.
+  useEffect(() => { void refreshPermissions(); }, [location.pathname, refreshPermissions]);
 
   const handleLogout = async () => {
     await signOut();
@@ -146,6 +151,7 @@ function MainLayout() {
         />
         {/* Keyed by company so every page refetches when the Super Admin switches company */}
         <main ref={mainRef} key={company?.id ?? 'all-companies'} className="flex-1 overflow-y-auto scrollbar-dark">
+          <RequireModule module={moduleForPage(currentPage)}>
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard onNavigate={handleNavigate} />} />
@@ -252,14 +258,16 @@ function MainLayout() {
             {/* Administration */}
             <Route path="/admin/users" element={<RequireRole roles={['SUPER_ADMIN', 'COMPANY_ADMIN']}><UsersPage /></RequireRole>} />
             <Route path="/admin/companies" element={<RequireRole roles={['SUPER_ADMIN']}><CompaniesPage /></RequireRole>} />
-            <Route path="/admin/roles" element={<RolesPage />} />
-            <Route path="/admin/permissions" element={<PermissionsPage />} />
+            <Route path="/admin/access" element={<RequireRole roles={['SUPER_ADMIN', 'COMPANY_ADMIN']}><AccessPage /></RequireRole>} />
+            <Route path="/admin/roles" element={<Navigate to="/admin/access" replace />} />
+            <Route path="/admin/permissions" element={<Navigate to="/admin/access" replace />} />
             <Route path="/admin/settings" element={<SettingsPage />} />
             <Route path="/admin/audit-logs" element={<AuditLogsPage />} />
 
             {/* Fallback */}
             <Route path="*" element={<PlaceholderPage title="Page Not Found" />} />
           </Routes>
+          </RequireModule>
         </main>
       </div>
       <AdminAssistant />

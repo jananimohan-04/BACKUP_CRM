@@ -302,7 +302,7 @@ export function MetalCalculatorPage({ embedded }: { embedded?: { onAdd: (item: B
 
   return (
     <div className={embedded ? '' : 'p-4 lg:p-6 bg-grid min-h-full'}>
-      <div className={embedded ? '' : 'bg-white border border-slate-200 rounded-2xl shadow-sm p-5 lg:p-6'}>
+      <div className={embedded ? '' : 'bg-white border border-slate-200 rounded-2xl shadow-sm p-4'}>
         {!embedded && <div className="flex items-center gap-3 pb-4 mb-5 border-b border-slate-100">
           <div className="w-9 h-9 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center flex-shrink-0"><Calculator size={20} /></div>
           <div className="min-w-0">

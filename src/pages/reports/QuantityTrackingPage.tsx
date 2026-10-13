@@ -164,8 +164,8 @@ export function QuantityTrackingPage() {
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan={12} className="px-3 py-8 text-center text-slate-500"><PackageSearch className="inline mr-2" size={16} />Loading live quantities…</td></tr>}
-              {!loading && filtered.length === 0 && <tr><td colSpan={12} className="px-3 py-8 text-center text-slate-500">No orders match the filters.</td></tr>}
+              {loading && <tr><td colSpan={12} className="px-3 py-6 text-center text-slate-500"><PackageSearch className="inline mr-2" size={16} />Loading live quantities…</td></tr>}
+              {!loading && filtered.length === 0 && <tr><td colSpan={12} className="px-3 py-6 text-center text-slate-500">No orders match the filters.</td></tr>}
               {filtered.map((q) => (
                 <tr key={`${q.soId ?? ''}-${q.soNo}`} className="border-t border-slate-100 hover:bg-slate-50/60 cursor-pointer" onClick={() => setSelected(selected?.soNo === q.soNo ? null : q)}>
                   <td className="px-3 py-2 font-mono font-semibold">{uniqueOf(q.soNo)}</td>

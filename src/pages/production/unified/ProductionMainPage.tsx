@@ -60,7 +60,7 @@ export function ProductionMainPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex items-center gap-6 border-b border-slate-200 mb-6 overflow-x-auto">
+      <div className="flex items-center gap-4 border-b border-slate-200 mb-3 overflow-x-auto">
         {TABS.map(tab => (
           <button
             key={tab}
@@ -80,7 +80,7 @@ export function ProductionMainPage() {
       {isOrders ? (
         <ProductionOrdersTab workOrders={workOrders} refresh={fetchData} />
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 min-h-[500px]">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200">
           {activeTab === 'Part Routing' && <PartRoutingTab />}
           {activeTab === 'Live Production' && <LiveProductionTab workOrders={workOrders} />}
           {activeTab === 'Job Card' && <JobCardsTab workOrders={workOrders} />}

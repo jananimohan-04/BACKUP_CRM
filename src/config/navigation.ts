@@ -29,6 +29,8 @@ export interface NavItem {
   iconClass?: string;
   /** Only shown to these roles (visibility only — the database enforces access). */
   roles?: ErpRole[];
+  /** Permission module owning this entry (sidebar hides it without view access). */
+  module?: string;
 }
 
 export interface NavSection {
@@ -39,12 +41,12 @@ export interface NavSection {
 export const navSections: NavSection[] = [
   {
     label: 'Overview',
-    items: [{ label: 'Dashboard', icon: LayoutDashboard, page: 'dashboard', iconClass: 'text-sky-400' }],
+    items: [{ label: 'Dashboard', icon: LayoutDashboard, page: 'dashboard', iconClass: 'text-sky-400', module: 'dashboard' }],
   },
   {
     label: 'Sales',
     items: [
-      { label: 'Sales Pipeline', icon: TrendingUp, page: 'sales/pipeline', iconClass: 'text-emerald-400' },
+      { label: 'Sales Pipeline', icon: TrendingUp, page: 'sales/pipeline', iconClass: 'text-emerald-400', module: 'sales-pipeline' },
       // "All Companies" now lives in the Sales Pipeline toolbar (as a view tab) rather
       // than as a separate sidebar entry. The /sales/leads route and LeadsPage are unchanged.
     ],
@@ -52,58 +54,59 @@ export const navSections: NavSection[] = [
   {
     label: 'Engineering',
     items: [
-      { label: 'Products and Drawings', icon: FileText, page: 'engineering/cnc-vault', iconClass: 'text-amber-400' },
+      { label: 'Products and Drawings', icon: FileText, page: 'engineering/cnc-vault', iconClass: 'text-amber-400', module: 'engineering' },
     ],
   },
   {
     label: 'Production',
     items: [
-      { label: 'Production', icon: Cog, page: 'production/planning', iconClass: 'text-orange-400' },
-      { label: 'Scheduling', icon: ClipboardList, page: 'production/scheduling', iconClass: 'text-violet-400' },
-      { label: 'Machine Log', icon: Cog, page: 'production/tracking', iconClass: 'text-teal-300' },
-      { label: 'Process Master', icon: Factory, page: 'production/process-master', iconClass: 'text-rose-400' },
-      { label: 'Finished Goods', icon: Package, page: 'production/finished-goods', iconClass: 'text-lime-400' },
+      { label: 'Production', icon: Cog, page: 'production/planning', iconClass: 'text-orange-400', module: 'production' },
+      { label: 'Scheduling', icon: ClipboardList, page: 'production/scheduling', iconClass: 'text-violet-400', module: 'scheduling' },
+      { label: 'Machine Log', icon: Cog, page: 'production/tracking', iconClass: 'text-teal-300', module: 'machine-log' },
+      { label: 'Process Master', icon: Factory, page: 'production/process-master', iconClass: 'text-rose-400', module: 'process-master' },
+      { label: 'Finished Goods', icon: Package, page: 'production/finished-goods', iconClass: 'text-lime-400', module: 'finished-goods' },
     ],
   },
   {
     label: 'Logistics',
     items: [
-      { label: 'Delivery Challan', icon: FileText, page: 'operations/delivery', iconClass: 'text-indigo-300' },
+      { label: 'Delivery Challan', icon: FileText, page: 'operations/delivery', iconClass: 'text-indigo-300', module: 'delivery' },
     ],
   },
   {
     label: 'Finance',
     items: [
-      { label: 'Invoices', icon: FileText, page: 'finance/invoices', iconClass: 'text-yellow-300' },
-      { label: 'Bank Entry', icon: Landmark, page: 'finance/bank-entry', iconClass: 'text-lime-400' },
-      { label: 'Petty Cash', icon: Wallet, page: 'finance/petty-cash', iconClass: 'text-amber-400' },
-      { label: 'Project Costing', icon: Calculator, page: 'costing/job-costing', iconClass: 'text-fuchsia-400' },
+      { label: 'Invoices', icon: FileText, page: 'finance/invoices', iconClass: 'text-yellow-300', module: 'invoices' },
+      { label: 'Bank Entry', icon: Landmark, page: 'finance/bank-entry', iconClass: 'text-lime-400', module: 'bank-entry' },
+      { label: 'Petty Cash', icon: Wallet, page: 'finance/petty-cash', iconClass: 'text-amber-400', module: 'petty-cash' },
+      { label: 'Project Costing', icon: Calculator, page: 'costing/job-costing', iconClass: 'text-fuchsia-400', module: 'project-costing' },
     ],
   },
   {
     label: 'Accounts',
     items: [
-      { label: 'Ledger', icon: BookOpen, page: 'accounts/ledger', iconClass: 'text-amber-300' },
-      { label: 'Trial Balance', icon: Scale, page: 'accounts/trial-balance', iconClass: 'text-purple-300' },
-      { label: 'Profit & Loss', icon: BarChart3, page: 'accounts/profit-loss', iconClass: 'text-blue-400' },
-      { label: 'Balance Sheet', icon: Landmark, page: 'accounts/balance-sheet', iconClass: 'text-slate-300' },
+      { label: 'Ledger', icon: BookOpen, page: 'accounts/ledger', iconClass: 'text-amber-300', module: 'ledger' },
+      { label: 'Trial Balance', icon: Scale, page: 'accounts/trial-balance', iconClass: 'text-purple-300', module: 'ledger' },
+      { label: 'Profit & Loss', icon: BarChart3, page: 'accounts/profit-loss', iconClass: 'text-blue-400', module: 'ledger' },
+      { label: 'Balance Sheet', icon: Landmark, page: 'accounts/balance-sheet', iconClass: 'text-slate-300', module: 'ledger' },
     ],
   },
   {
     label: 'Supply Chain',
     items: [
-      { label: 'Inventory', icon: Boxes, page: 'inventory/stock', iconClass: 'text-orange-300' },
-      { label: 'Purchase', icon: ShoppingCart, page: 'purchasing/orders', iconClass: 'text-pink-400' },
+      { label: 'Inventory', icon: Boxes, page: 'inventory/stock', iconClass: 'text-orange-300', module: 'inventory' },
+      { label: 'Purchase', icon: ShoppingCart, page: 'purchasing/orders', iconClass: 'text-pink-400', module: 'purchase-orders' },
     ],
   },
   {
     label: 'System',
     items: [
-      { label: 'Reports', icon: BarChart3, page: 'reports/production', iconClass: 'text-red-400' },
-      { label: 'Order Quantity Tracking', icon: Package, page: 'reports/order-tracking', iconClass: 'text-teal-400' },
-      { label: 'User Management', icon: Users, page: 'admin/users', roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'], iconClass: 'text-cyan-400' },
-      { label: 'Company Management', icon: Building2, page: 'admin/companies', roles: ['SUPER_ADMIN'], iconClass: 'text-indigo-400' },
-      { label: 'Settings', icon: Settings, page: 'admin/settings', iconClass: 'text-gray-400' },
+      { label: 'Reports', icon: BarChart3, page: 'reports/production', iconClass: 'text-red-400', module: 'reports' },
+      { label: 'Order Quantity Tracking', icon: Package, page: 'reports/order-tracking', iconClass: 'text-teal-400', module: 'reports' },
+      { label: 'User Management', icon: Users, page: 'admin/users', roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'], iconClass: 'text-cyan-400', module: 'admin-users' },
+      { label: 'Access Management', icon: Users, page: 'admin/access', roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'], iconClass: 'text-emerald-400', module: 'admin-access' },
+      { label: 'Company Management', icon: Building2, page: 'admin/companies', roles: ['SUPER_ADMIN'], iconClass: 'text-indigo-400', module: 'admin-companies' },
+      { label: 'Settings', icon: Settings, page: 'admin/settings', iconClass: 'text-gray-400', module: 'settings' },
     ],
   },
 ];

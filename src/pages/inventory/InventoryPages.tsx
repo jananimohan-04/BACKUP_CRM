@@ -219,7 +219,7 @@ export function RawMaterialsPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Raw Materials" description="Manage raw material inventory and stock levels" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<FilterButton /><ExportButton /></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total Materials" value={totalMaterials.toString()} icon={<Boxes size={20} />} accent="brand" />
         <StatCard label="In Stock" value={inStock.toString()} icon={<Package size={20} />} accent="success" />
         <StatCard label="Low Stock" value={lowStock.toString()} icon={<AlertTriangle size={20} />} accent="warning" />
@@ -345,7 +345,7 @@ export function ComponentsPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Components" description="Manufactured and bought-out components" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<FilterButton /><ExportButton /></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total Components" value={totalComponents.toString()} icon={<Package size={20} />} accent="brand" />
         <StatCard label="Make" value={makeComponents.toString()} icon={<Package size={20} />} accent="accent" />
         <StatCard label="Buy" value={buyComponents.toString()} icon={<Package size={20} />} accent="navy" />
@@ -410,18 +410,18 @@ export function StockOverviewPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Stock Overview" description="Complete inventory valuation and levels" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<FilterButton /><ExportButton /></div>} />
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
-        <Card className="p-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+        <Card className="p-4">
           <h3 className="text-lg font-semibold text-slate-800 mb-2">Total Inventory Value</h3>
           <p className="text-3xl font-bold text-brand-600">{formatCurrency(totalValue)}</p>
           <p className="text-sm text-slate-500 mt-2">Calculated from real-time stock</p>
         </Card>
-        <Card className="p-6">
+        <Card className="p-4">
           <h3 className="text-lg font-semibold text-slate-800 mb-2">Raw Material Value</h3>
           <p className="text-3xl font-bold text-accent-600">{formatCurrency(rmValue)}</p>
           <p className="text-sm text-slate-500 mt-2">{rmPercentage}% of total inventory</p>
         </Card>
-        <Card className="p-6">
+        <Card className="p-4">
           <h3 className="text-lg font-semibold text-slate-800 mb-2">Finished Goods Value</h3>
           <p className="text-3xl font-bold text-success-600">{formatCurrency(fgValue)}</p>
           <p className="text-sm text-slate-500 mt-2">{fgPercentage}% of total inventory</p>
@@ -493,7 +493,7 @@ export function StockMovementsPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Stock Movements" description="Track all inward, outward, and transfer movements" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<FilterButton /><ExportButton /></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total Movements" value={totalMovements.toString()} icon={<ArrowRightLeft size={20} />} accent="brand" />
         <StatCard label="Receipts" value={receipts.toString()} icon={<ArrowDownToLine size={20} />} accent="success" />
         <StatCard label="Issues" value={issues.toString()} icon={<ArrowUpFromLine size={20} />} accent="warning" />
@@ -587,7 +587,7 @@ export function WarehousesPage() {
         actions={<Button onClick={() => setShowAdd(true)}><Plus size={16}/> Add Warehouse</Button>}
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
          <StatCard label="Total Warehouses" value={warehouses.length.toString()} icon={<Building size={20} className="text-brand-500"/>} />
          <StatCard label="Active Warehouses" value={warehouses.filter(w => w.status==='Active').length.toString()} icon={<Layout size={20} className="text-emerald-500"/>} />
       </div>
@@ -634,7 +634,7 @@ export function WarehousesPage() {
                </div>
 
                {activeTab === 'Overview' && (
-                  <div className="space-y-6">
+                  <div className="space-y-3">
                      <div className="grid grid-cols-3 gap-4">
                         <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                            <p className="text-xs text-slate-500 font-semibold mb-1">Total Zones</p>
@@ -931,7 +931,7 @@ export function MaterialRequestsPage() {
         actions={<Button onClick={() => { setReqForm(resetForm()); setSelectedWo(''); setShowAdd(true); }}><Plus size={16}/> Create Request</Button>}
       />
 
-      <Card className="mb-6">
+      <Card className="mb-3">
         <DataTable 
           data={requests}
           columns={[
@@ -954,7 +954,7 @@ export function MaterialRequestsPage() {
       </Card>
 
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="CREATE MATERIAL REQUEST" size="xl" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave} disabled={saving}>{saving ? 'Submitting...' : 'Submit Request'}</Button></>}>
-         <div className="space-y-6">
+         <div className="space-y-3">
             <div className="p-4 bg-brand-50 border border-brand-100 rounded-xl mb-4">
               <label className="block text-xs font-bold text-brand-700 uppercase mb-2">REQUEST FOR (WORK ORDER)</label>
               <select value={selectedWo} onChange={(e) => handleWoChange(e.target.value)} className={inputClass}>
@@ -1021,7 +1021,7 @@ export function MaterialRequestsPage() {
 
       <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title={`MATERIAL REQUEST: ${viewTarget?.request_no}`} size="xl">
          {viewTarget && (
-            <div className="space-y-6">
+            <div className="space-y-3">
                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
                   <div><p className="text-xs text-slate-500 font-medium">Work Order</p><p className="font-bold text-slate-800">{viewTarget.work_order_no}</p></div>
                   <div><p className="text-xs text-slate-500 font-medium">Part Name</p><p className="font-semibold text-slate-800">{viewTarget.part_name}</p></div>
@@ -1211,7 +1211,7 @@ export function LowStockPage() {
 
       <Modal open={showPRModal} onClose={() => setShowPRModal(false)} title="CREATE PURCHASE REQUISITION" subtitle={prTarget?.name} footer={<><Button variant="secondary" onClick={() => setShowPRModal(false)}>Cancel</Button><Button onClick={handleSavePR} disabled={savingPR}>{savingPR ? 'Submitting...' : 'Submit PR'}</Button></>}>
         {prTarget && (
-          <div className="space-y-6">
+          <div className="space-y-3">
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
               <h4 className="text-sm font-bold text-amber-800 mb-2">Shortage Analysis</h4>
               <div className="grid grid-cols-3 gap-4 text-sm">

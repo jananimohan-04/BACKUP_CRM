@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { navSections } from '@/config/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,20 +18,53 @@ export function Sidebar({
   mobileOpen?: boolean;
   onCloseMobile?: () => void;
 }) {
-  const { profile } = useAuth();
+  const { profile, canView, permissions } = useAuth();
   // Closed by default: an icon rail that opens (over the page, without pushing it) while the mouse is on it.
   const [hovered, setHovered] = useState(false);
   const closed = pinnedClosed && !hovered && !mobileOpen;
   const collapsed = false; // when visible the menu always shows full labels; 'closed' hides it entirely
-  const visibleSections = navSections
-    .map((s) => ({ ...s, items: s.items.filter((i) => !i.roles || (profile && i.roles.includes(profile.role))) }))
-    .filter((s) => s.items.length > 0);
+  // One permission system: role gates (legacy) AND module view access. While
+  // permissions load, nothing renders so unauthorized menus never flash.
+  const permsReady = permissions !== null;
+  const visibleSections = !permsReady
+    ? []
+    : navSections
+      .map((s) => ({
+        ...s,
+        items: s.items.filter(
+          (i) =>
+            (!i.roles || (profile && i.roles.includes(profile.role))) &&
+            (!i.module || canView(i.module)),
+        ),
+      }))
+      .filter((s) => s.items.length > 0);
+
+  const isItemActive = (itemPage: string) => {
+    if (currentPage === itemPage) return true;
+    if (currentPage.startsWith(itemPage + '/')) return true;
+    if (itemPage === 'sales/pipeline' && (currentPage.startsWith('sales/') || currentPage === 'sales')) return true;
+    return false;
+  };
 
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
     const initial = new Set<string>();
     navSections.forEach((s) => initial.add(s.label));
     return initial;
   });
+
+  useEffect(() => {
+    const activeSection = visibleSections.find((s) => s.items.some((i) => isItemActive(i.page)));
+    if (activeSection) {
+      setExpandedSections((prev) => {
+        if (!prev.has(activeSection.label)) {
+          const next = new Set(prev);
+          next.add(activeSection.label);
+          return next;
+        }
+        return prev;
+      });
+    }
+  }, [currentPage]);
 
   const toggleSection = (label: string) => {
     setExpandedSections((prev) => {
@@ -83,14 +116,14 @@ export function Sidebar({
       <nav className="flex-1 overflow-y-auto scrollbar-dark py-4 px-3 space-y-1 relative z-0">
         {visibleSections.map((section) => {
           const isExpanded = expandedSections.has(section.label);
-          const hasActive = section.items.some((i) => currentPage === i.page);
+          const hasActive = section.items.some((i) => isItemActive(i.page));
           return (
             <div key={section.label} className="mb-2">
               {!collapsed && (
                 <button
                   onClick={() => toggleSection(section.label)}
                   className={`w-full flex items-center justify-between px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${
-                    hasActive ? 'text-brand-400' : 'text-navy-400 hover:text-navy-200'
+                    hasActive ? 'text-brand-400 font-extrabold' : 'text-navy-400 hover:text-navy-200'
                   }`}
                 >
                   <span>{section.label}</span>
@@ -103,7 +136,7 @@ export function Sidebar({
               {(isExpanded || collapsed) && (
                 <div className="mt-1 space-y-1">
                   {section.items.map((item) => {
-                    const active = currentPage === item.page;
+                    const active = isItemActive(item.page);
                     return (
                       <button
                         key={item.page}
@@ -112,14 +145,14 @@ export function Sidebar({
                           if (onCloseMobile) onCloseMobile();
                         }}
                         title={collapsed ? item.label : undefined}
-                        className={`w-full flex items-center px-3 py-1.5 rounded-lg text-sm transition-all duration-200 group relative ${
+                        className={`w-full flex items-center px-3 py-2 rounded-lg text-sm transition-all duration-200 group relative ${
                           active
-                            ? 'bg-brand-600/10 text-brand-500 font-semibold'
+                            ? 'bg-brand-600 text-white font-bold shadow-md shadow-brand-500/25 ring-1 ring-white/20'
                             : 'text-navy-300 hover:bg-navy-900 hover:text-white'
                         }`}
                       >
                         {active && (
-                           <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-brand-500 rounded-r-full shadow-glow-red" />
+                           <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-6 bg-white rounded-r-full shadow-sm" />
                         )}
                         {!collapsed && <span className="truncate text-[13px]">{item.label}</span>}
                       </button>

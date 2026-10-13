@@ -195,7 +195,7 @@ export function PartsPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Part Master" description="Central registry of all manufactured parts" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<DateSelector /></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total Parts" value={partsData.length.toString()} icon={<Boxes size={20} />} accent="brand" />
         <StatCard label="Active" value={activeCount.toString()} icon={<Boxes size={20} />} accent="success" />
         <StatCard label="Prototypes" value={prototypeCount.toString()} icon={<Boxes size={20} />} accent="warning" />
@@ -314,7 +314,7 @@ export function DrawingsPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="CAD / Drawing Management" description="Engineering drawings registered in the Part Master" actions={<div className="flex items-center gap-2">{loading && <Badge variant="neutral">Syncing...</Badge>}<ExportButton /></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total Drawings" value={totalDrawings.toString()} icon={<FileText size={20} />} accent="brand" />
         <StatCard label="With Revision" value={withRevision.toString()} icon={<FileText size={20} />} accent="success" />
         <StatCard label="Pending Approval" value={revStats.pending.toString()} icon={<FileText size={20} />} accent="warning" />
@@ -502,14 +502,14 @@ export function BOMPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Bill of Materials" description={parentPart ? `Multi-level BOM for ${parentPart.part_name}` : 'Multi-level BOM — select a parent part'} actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<ParentPartSelect parts={parentParts} value={parentPartNo} onChange={setParentPartNo} /><Button size="sm" icon={<Plus size={14} />} disabled={!parentPartNo} onClick={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }}>Add Component</Button><Button variant="secondary" size="sm" icon={<Download size={14} />} onClick={handleExport}>Export</Button></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="BOM Levels" value={maxLevel.toString()} icon={<Boxes size={20} />} accent="brand" />
         <StatCard label="Total Components" value={bomData.length.toString()} icon={<Boxes size={20} />} accent="accent" />
         <StatCard label="Make Items" value={makeItemsCount.toString()} icon={<Cog size={20} />} accent="navy" />
         <StatCard label="Buy Items" value={buyItemsCount.toString()} icon={<Boxes size={20} />} accent="success" />
       </div>
       <Card className="overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold text-slate-800">BOM Structure{parentPart ? ` — ${parentPart.part_name}` : ''}</h3>
             {parentPart && <p className="text-xs text-slate-500 mt-0.5">Rev: {parentPart.revision || '—'} • Material: {parentPart.material || '—'}</p>}
@@ -519,33 +519,33 @@ export function BOMPage() {
           <table className="w-full text-sm whitespace-nowrap">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/30">
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Level</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Company ID</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Product / Component</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Material</th>
-                <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Qty</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">UOM</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Make/Buy</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Operation</th>
-                <th className="px-5 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions</th>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Level</th>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Company ID</th>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Product / Component</th>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Material</th>
+                <th className="px-4 py-2 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Qty</th>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">UOM</th>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Make/Buy</th>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Operation</th>
+                <th className="px-4 py-2 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions</th>
               </tr>
             </thead>
             <tbody>
               {bomData.map((item) => (
                 <tr key={item.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
-                  <td className="px-5 py-3">
+                  <td className="px-4 py-2">
                     <div className="flex items-center" style={{ paddingLeft: `${item.level * 20}px` }}>
                       <span className={`w-6 h-6 rounded flex items-center justify-center text-xs font-bold ${item.level === 0 ? 'bg-brand-100 text-brand-700' : 'bg-slate-100 text-slate-500'}`}>L{item.level}</span>
                     </div>
                   </td>
-                  <td className="px-5 py-3"><span className="text-slate-700">{item.projectName || '—'}</span></td>
-                  <td className="px-5 py-3"><span className={item.level === 0 ? 'font-semibold text-slate-800' : 'text-slate-700'}>{item.partName}</span></td>
-                  <td className="px-5 py-3 text-sm text-slate-600">{item.material || '—'}</td>
-                  <td className="px-5 py-3 text-right font-medium text-slate-700">{item.quantity}</td>
-                  <td className="px-5 py-3 text-sm text-slate-500">{item.unit}</td>
-                  <td className="px-5 py-3"><Badge variant={item.make === 'Make' ? 'brand' : 'success'}>{item.make}</Badge></td>
-                  <td className="px-5 py-3 text-xs text-slate-500">{item.operation || '—'}</td>
-                  <td className="px-5 py-3">
+                  <td className="px-4 py-2"><span className="text-slate-700">{item.projectName || '—'}</span></td>
+                  <td className="px-4 py-2"><span className={item.level === 0 ? 'font-semibold text-slate-800' : 'text-slate-700'}>{item.partName}</span></td>
+                  <td className="px-4 py-2 text-sm text-slate-600">{item.material || '—'}</td>
+                  <td className="px-4 py-2 text-right font-medium text-slate-700">{item.quantity}</td>
+                  <td className="px-4 py-2 text-sm text-slate-500">{item.unit}</td>
+                  <td className="px-4 py-2"><Badge variant={item.make === 'Make' ? 'brand' : 'success'}>{item.make}</Badge></td>
+                  <td className="px-4 py-2 text-xs text-slate-500">{item.operation || '—'}</td>
+                  <td className="px-4 py-2">
                     <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button onClick={() => setViewTarget(item)} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Eye size={15} /></button>
                       <button onClick={() => handleEditClick(item)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Edit size={15} /></button>
@@ -768,14 +768,14 @@ export function RoutingPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Process Routing" description={parentPart ? `Manufacturing routing for ${parentPart.part_name}` : 'Manufacturing routing — select a part'} actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<ParentPartSelect parts={parentParts} value={parentPartNo} onChange={setParentPartNo} /><Button size="sm" icon={<Plus size={14} />} disabled={!parentPartNo} onClick={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }}>Add Operation</Button></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total Operations" value={routingData.length.toString()} icon={<Cog size={20} />} accent="brand" />
         <StatCard label="Total Setup Time" value={`${(totalSetupTime / 60).toFixed(1)} hr`} icon={<Cog size={20} />} accent="accent" />
         <StatCard label="Total Cycle Time" value={`${totalCycleTime.toFixed(1)} min`} icon={<Cog size={20} />} accent="navy" />
         <StatCard label="Machines Used" value={uniqueMachines.toString()} icon={<Cog size={20} />} accent="success" />
       </div>
       <Card className="overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold text-slate-800">Operation Sequence</h3>
             {parentPart && <p className="text-xs text-slate-500 mt-0.5">{parentPart.part_name} • {parentPart.material || '—'}</p>}
@@ -783,7 +783,7 @@ export function RoutingPage() {
         </div>
         <div className="divide-y divide-slate-50">
           {routingData.map((op) => (
-            <div key={op.id} className="px-5 py-4 hover:bg-slate-50/50 transition-colors group">
+            <div key={op.id} className="px-4 py-2.5 hover:bg-slate-50/50 transition-colors group">
               <div className="flex items-start gap-4">
                 <div className="w-10 h-10 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center font-bold text-sm flex-shrink-0">{op.opNo}</div>
                 <div className="flex-1 min-w-0">
@@ -973,7 +973,7 @@ export function WorkInstructionsPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Work Instructions" description={parentPart ? `Step-by-step manufacturing instructions for ${parentPart.part_name}` : 'Step-by-step manufacturing instructions — select a part'} actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<ParentPartSelect parts={parentParts} value={parentPartNo} onChange={setParentPartNo} /><Button size="sm" icon={<Plus size={14} />} disabled={!parentPartNo} onClick={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }}>Add Instruction</Button></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total Instructions" value={totalInstructions.toString()} icon={<FileText size={20} />} accent="brand" />
         <StatCard label="Total Steps" value={totalSteps.toString()} icon={<FileText size={20} />} accent="accent" />
         <StatCard label="Avg Steps/Op" value={avgSteps.toString()} icon={<FileText size={20} />} accent="navy" />
@@ -982,7 +982,7 @@ export function WorkInstructionsPage() {
       <div className="space-y-4">
         {instructionsData.map((inst) => (
           <Card key={inst.id}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 group">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 group">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center font-bold text-sm">{inst.opNo}</div>
                 <div>
@@ -1191,7 +1191,7 @@ export function RevisionsPage() {
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Revision Control" description="Track drawing revisions and engineering change orders" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<DateSelector /></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total Revisions" value={totalRevs.toString()} icon={<GitBranch size={20} />} accent="brand" />
         <StatCard label="Released" value={releasedRevs.toString()} icon={<ShieldCheck size={20} />} accent="success" />
         <StatCard label="Pending" value={pendingRevs.toString()} icon={<FileText size={20} />} accent="warning" />

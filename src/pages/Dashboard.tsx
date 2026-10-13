@@ -293,7 +293,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
         <KpiTile tone="slate" title="Inventory Value" value={loading ? '—' : inr(inventoryValue)} note="Stock × unit price · today" hint={`₹${inventoryValue.toLocaleString('en-IN')}`} icon={<Boxes size={20} />} />
       </KpiSection>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         {/* Machine status */}
         <div className="lg:col-span-1 flex flex-col gap-4">
           <div className="flex items-center justify-between">
@@ -302,7 +302,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
           </div>
           <div className="flex flex-col gap-3">
             {!loading && machines.length === 0 && (
-              <Card className="p-6 text-center text-sm text-slate-400">No machines registered yet.</Card>
+              <Card className="p-4 text-center text-sm text-slate-400">No machines registered yet.</Card>
             )}
             {machines.map(m => {
               const job = jobCards.find(j => j.machine === m.code && j.status === 'In Progress');
@@ -339,7 +339,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
         </div>
 
         {/* Production analytics */}
-        <div className="lg:col-span-2 flex flex-col gap-6">
+        <div className="lg:col-span-2 flex flex-col gap-4">
           <ChartCard title="Production vs Rejection Volume" subtitle="Work orders raised in the selected date range, by month">
             {productionTrend.length > 0 ? (
               <LineChart
@@ -358,7 +358,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
             )}
           </ChartCard>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <ChartCard title="Machine Utilization" subtitle="Average across the machine master">
               <div className="flex justify-center items-center h-full pb-4">
                 <div className="relative w-[300px] h-[300px] flex items-center justify-center">
@@ -387,9 +387,9 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         <Card className="lg:col-span-2 overflow-hidden flex flex-col">
-          <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-slate-50/50">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/50">
             <h3 className="text-sm font-bold text-slate-800 tracking-wider uppercase">Active Work Orders</h3>
             <button
               onClick={() => onNavigate('production/planning')}
@@ -402,29 +402,29 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="px-6 py-3.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Work Order</th>
-                  <th className="px-6 py-3.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Part Reference</th>
-                  <th className="px-6 py-3.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Progress</th>
-                  <th className="px-6 py-3.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Status</th>
+                  <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Work Order</th>
+                  <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Part Reference</th>
+                  <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Progress</th>
+                  <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {!loading && stats.openWOs.length === 0 && (
-                  <tr><td colSpan={4} className="px-6 py-8 text-center text-sm text-slate-400">No open work orders.</td></tr>
+                  <tr><td colSpan={4} className="px-4 py-6 text-center text-sm text-slate-400">No open work orders.</td></tr>
                 )}
                 {stats.openWOs.slice(0, 6).map((wo) => (
                   <tr key={wo.id} className="hover:bg-slate-50/50 transition-colors group cursor-pointer" onClick={() => onNavigate('production/planning')}>
-                    <td className="px-6 py-4 font-mono text-xs font-bold text-brand-700">{wo.wo_no}</td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-2 font-mono text-xs font-bold text-brand-700">{wo.wo_no}</td>
+                    <td className="px-4 py-2">
                       <p className="text-sm font-semibold text-slate-800 group-hover:text-brand-600 transition-colors">{wo.part_name}</p>
                     </td>
-                    <td className="px-6 py-4 w-48">
+                    <td className="px-4 py-2 w-48">
                       <div className="flex items-center gap-3">
                         <ProgressBar value={Number(wo.completed) || 0} max={Number(wo.quantity) || 1} color="brand" height="h-1.5" />
                         <span className="text-xs font-bold text-slate-600 whitespace-nowrap">{wo.completed || 0}/{wo.quantity || 0}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-2">
                       <Badge variant={statusToVariant(wo.status)} dot>{wo.status}</Badge>
                     </td>
                   </tr>
@@ -435,17 +435,17 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
         </Card>
 
         <Card className="flex flex-col">
-          <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-slate-50/50">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/50">
             <h3 className="text-sm font-bold text-slate-800 tracking-wider uppercase">System Activity</h3>
           </div>
           <div className="divide-y divide-slate-50 flex-1 overflow-y-auto scrollbar-thin">
             {!loading && activity.length === 0 && (
-              <div className="px-6 py-8 text-center text-sm text-slate-400">No activity yet.</div>
+              <div className="px-4 py-6 text-center text-sm text-slate-400">No activity yet.</div>
             )}
             {activity.map((act) => {
               const Icon = activityIcons[act.type] || Activity;
               return (
-                <div key={act.id} className="px-6 py-4 flex items-start gap-4 hover:bg-slate-50/50 transition-colors">
+                <div key={act.id} className="px-4 py-2 flex items-start gap-4 hover:bg-slate-50/50 transition-colors">
                   <div className="w-8 h-8 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 flex-shrink-0 shadow-sm mt-0.5">
                     <Icon size={14} />
                   </div>

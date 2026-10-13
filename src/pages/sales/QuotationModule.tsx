@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Search, Calendar, List, Kanban as KanbanIcon, ArrowLeft, FileText } from 'lucide-react';
+import { Search, ArrowLeft, FileText } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
@@ -9,7 +9,6 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
   const [quotations, setQuotations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [viewMode, setViewMode] = useState<'list' | 'kanban' | 'calendar'>('list');
   
   const [selectedQuote, setSelectedQuote] = useState<any | null>(null);
   
@@ -125,7 +124,7 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
   const pager = usePager(filteredQuotes, filteredQuotes.length);
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
       {/* One line: back + title on the left, the quotation tool strip and the
           Add / search / view-toggle controls grouped flush right. flex-wrap so the
           row breaks cleanly instead of overflowing on narrow viewports. */}
@@ -134,10 +133,7 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
           <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-600 shrink-0">
             <ArrowLeft className="w-4 h-4" />
           </button>
-          <div className="flex items-baseline gap-2 min-w-0">
-            <h2 className="text-sm font-bold text-slate-800 shrink-0">Quotations</h2>
-            <p className="text-xs text-slate-500 truncate">Manage all sent quotations</p>
-          </div>
+          <h2 className="text-sm font-bold text-slate-800 shrink-0">Quotations</h2>
         </div>
         <div className="flex flex-wrap items-center gap-2 gap-y-2 min-w-0 md:justify-end">
           {toolbar}
@@ -152,16 +148,11 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
                 className="pl-9 pr-4 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-brand-500"
               />
             </div>
-            <div className="flex bg-slate-100 rounded-lg p-1 border border-slate-200">
-              <button onClick={() => setViewMode('kanban')} className={`p-1 rounded-md transition-colors ${viewMode === 'kanban' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}><KanbanIcon className="w-4 h-4" /></button>
-              <button onClick={() => setViewMode('list')} className={`p-1 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}><List className="w-4 h-4" /></button>
-              <button onClick={() => setViewMode('calendar')} className={`p-1 rounded-md transition-colors ${viewMode === 'calendar' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}><Calendar className="w-4 h-4" /></button>
-            </div>
           </div>
         </div>
       </div>
 
-      <div className="overflow-x-auto p-4">
+      <div className="overflow-x-auto">
         {loading ? (
           <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div></div>
         ) : (
