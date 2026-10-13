@@ -85,6 +85,7 @@ import {
   UsersPage, CompaniesPage, SettingsPage, AuditLogsPage, AccessPage
 } from './pages/admin/AdminPages';
 import { RequireModule, moduleForPage } from '@/components/auth/RequireModule';
+import { getPageTheme } from './lib/pageThemes';
 
 // Placeholder Component for unbuilt pages
 function PlaceholderPage({ title }: { title: string }) {
@@ -150,7 +151,7 @@ function MainLayout() {
           onMenuClick={() => setMobileMenuOpen(true)}
         />
         {/* Keyed by company so every page refetches when the Super Admin switches company */}
-        <main ref={mainRef} key={company?.id ?? 'all-companies'} className="flex-1 overflow-y-auto scrollbar-dark">
+        <main ref={mainRef} key={company?.id ?? 'all-companies'} className="flex-1 overflow-y-auto scrollbar-dark transition-[background] duration-500" style={{ background: getPageTheme(location.pathname).gradient }}>
           <RequireModule module={moduleForPage(currentPage)}>
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />

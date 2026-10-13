@@ -37,7 +37,7 @@ export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
   const pager = usePager(filteredRecords, filteredRecords.length);
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+    <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-white/40 overflow-hidden flex flex-col">
       <div className="px-3 py-1.5 border-b border-slate-200 flex flex-wrap justify-between items-center gap-2 gap-y-1 bg-slate-50">
         <div className="flex items-center gap-2 min-w-0">
           <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-600 shrink-0">

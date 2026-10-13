@@ -124,7 +124,7 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
   const pager = usePager(filteredQuotes, filteredQuotes.length);
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+    <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-white/40 overflow-hidden flex flex-col">
       {/* One line: back + title on the left, the quotation tool strip and the
           Add / search / view-toggle controls grouped flush right. flex-wrap so the
           row breaks cleanly instead of overflowing on narrow viewports. */}

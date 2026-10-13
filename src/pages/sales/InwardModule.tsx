@@ -142,7 +142,7 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
       {renderedEntry ? (
         renderedEntry
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 px-3 py-2 flex flex-wrap justify-between items-center gap-2">
+        <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-white/40 px-3 py-2 flex flex-wrap justify-between items-center gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-600 shrink-0">
               <ArrowLeft className="w-4 h-4" />
@@ -153,7 +153,7 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
         </div>
       )}
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+      <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-white/40 overflow-hidden flex flex-col">
       <div className="overflow-x-auto">
         {loading ? (
           <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div></div>

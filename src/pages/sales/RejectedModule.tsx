@@ -292,7 +292,7 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
   return (
     <div className="flex flex-col gap-2.5" data-testid="rejected-list">
       {dlg?.mode !== 'add' && (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 px-3 py-2 flex flex-wrap justify-between items-center gap-2">
+        <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-white/40 px-3 py-2 flex flex-wrap justify-between items-center gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-600 shrink-0"><ArrowLeft className="w-4 h-4" /></button>
             <h2 className="text-sm font-bold text-slate-800 shrink-0">Rejected</h2>
@@ -319,7 +319,7 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
           </div>
         </section>
       )}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+      <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-white/40 overflow-hidden flex flex-col">
       <div className="overflow-x-auto">
         {missing && <p className="mb-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Rejections are stored with production batches. Apply the production-batches migration (20260929010000_production_batches.sql) to use this list.</p>}
         {loading ? (

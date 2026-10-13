@@ -153,3 +153,12 @@ main table:not(.no-stripe) > tbody > tr:nth-child(5n + 5):hover { background-col
 main table:not(.no-stripe) > tbody > tr > td { color: #0f172a; }
 main table:not(.no-stripe) > tbody > tr > td .text-slate-500,
 main table:not(.no-stripe) > tbody > tr > td .text-slate-400 { color: #334155; }
+
+/* Global readability bump: every standard text step renders ~2px larger across
+   the whole ERP. Only font sizes change — rem-based layout spacing is untouched.
+   (Unlayered rules win over the utilities layer, so no !important is needed.) */
+body { font-size: 15px; }
+.text-xs { font-size: 13px; }
+.text-sm { font-size: 15px; }
+.text-base { font-size: 17px; }
+.text-lg { font-size: 19px; }
