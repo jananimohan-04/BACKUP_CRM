@@ -7,9 +7,38 @@ import { addDays, fmtTime24, parseYmd, ymd } from '@/lib/operationPlans';
 // inside a day (planned | actual), a current-time line, and the same navigation as the Planned timeline.
 
 export const HOUR_PX = 44;
-export const PALETTE = ['bg-blue-100 border-blue-400 text-blue-900', 'bg-emerald-100 border-emerald-400 text-emerald-900', 'bg-amber-100 border-amber-400 text-amber-900',
-  'bg-violet-100 border-violet-400 text-violet-900', 'bg-rose-100 border-rose-400 text-rose-900', 'bg-cyan-100 border-cyan-400 text-cyan-900'];
-export const colorFor = (key: string) => PALETTE[[...key].reduce((n, c) => n + c.charCodeAt(0), 0) % PALETTE.length];
+export const MACHINE_PALETTE = [
+  'bg-blue-100 border-blue-500 text-blue-950 hover:bg-blue-200/80',
+  'bg-emerald-100 border-emerald-500 text-emerald-950 hover:bg-emerald-200/80',
+  'bg-amber-100 border-amber-500 text-amber-950 hover:bg-amber-200/80',
+  'bg-purple-100 border-purple-500 text-purple-950 hover:bg-purple-200/80',
+  'bg-rose-100 border-rose-500 text-rose-950 hover:bg-rose-200/80',
+  'bg-cyan-100 border-cyan-500 text-cyan-950 hover:bg-cyan-200/80',
+  'bg-orange-100 border-orange-500 text-orange-950 hover:bg-orange-200/80',
+  'bg-indigo-100 border-indigo-500 text-indigo-950 hover:bg-indigo-200/80',
+  'bg-teal-100 border-teal-500 text-teal-950 hover:bg-teal-200/80',
+  'bg-fuchsia-100 border-fuchsia-500 text-fuchsia-950 hover:bg-fuchsia-200/80',
+  'bg-lime-100 border-lime-600 text-lime-950 hover:bg-lime-200/80',
+  'bg-pink-100 border-pink-500 text-pink-950 hover:bg-pink-200/80',
+  'bg-sky-100 border-sky-500 text-sky-950 hover:bg-sky-200/80',
+  'bg-violet-100 border-violet-500 text-violet-950 hover:bg-violet-200/80',
+];
+
+export const colorForMachine = (machine: string, machineList: string[] = []) => {
+  const clean = (machine || '').trim().toUpperCase();
+  if (!clean) return 'bg-slate-100 border-slate-400 text-slate-800';
+  const idx = machineList.findIndex(m => m.trim().toUpperCase() === clean);
+  if (idx >= 0) return MACHINE_PALETTE[idx % MACHINE_PALETTE.length];
+  let hash = 0;
+  for (let i = 0; i < clean.length; i++) {
+    hash = (hash << 5) - hash + clean.charCodeAt(i);
+    hash |= 0;
+  }
+  return MACHINE_PALETTE[Math.abs(hash) % MACHINE_PALETTE.length];
+};
+
+export const PALETTE = MACHINE_PALETTE;
+export const colorFor = (key: string) => colorForMachine(key);
 export const dayLabel = (s: string) => parseYmd(s).toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' });
 export const minToHhmm = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 

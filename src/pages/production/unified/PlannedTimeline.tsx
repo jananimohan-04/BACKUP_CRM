@@ -13,9 +13,36 @@ import {
 // Plan an operation over a date range with several time slots a day; slots of one machine that overlap are flagged.
 
 const HOUR_PX = 44;
-const PALETTE = ['bg-blue-100 border-blue-400 text-blue-900', 'bg-emerald-100 border-emerald-400 text-emerald-900', 'bg-amber-100 border-amber-400 text-amber-900',
-  'bg-violet-100 border-violet-400 text-violet-900', 'bg-rose-100 border-rose-400 text-rose-900', 'bg-cyan-100 border-cyan-400 text-cyan-900'];
-const colorFor = (key: string) => PALETTE[[...key].reduce((n, c) => n + c.charCodeAt(0), 0) % PALETTE.length];
+const MACHINE_PALETTE = [
+  'bg-blue-100 border-blue-500 text-blue-950 hover:bg-blue-200/80',
+  'bg-emerald-100 border-emerald-500 text-emerald-950 hover:bg-emerald-200/80',
+  'bg-amber-100 border-amber-500 text-amber-950 hover:bg-amber-200/80',
+  'bg-purple-100 border-purple-500 text-purple-950 hover:bg-purple-200/80',
+  'bg-rose-100 border-rose-500 text-rose-950 hover:bg-rose-200/80',
+  'bg-cyan-100 border-cyan-500 text-cyan-950 hover:bg-cyan-200/80',
+  'bg-orange-100 border-orange-500 text-orange-950 hover:bg-orange-200/80',
+  'bg-indigo-100 border-indigo-500 text-indigo-950 hover:bg-indigo-200/80',
+  'bg-teal-100 border-teal-500 text-teal-950 hover:bg-teal-200/80',
+  'bg-fuchsia-100 border-fuchsia-500 text-fuchsia-950 hover:bg-fuchsia-200/80',
+  'bg-lime-100 border-lime-600 text-lime-950 hover:bg-lime-200/80',
+  'bg-pink-100 border-pink-500 text-pink-950 hover:bg-pink-200/80',
+  'bg-sky-100 border-sky-500 text-sky-950 hover:bg-sky-200/80',
+  'bg-violet-100 border-violet-500 text-violet-950 hover:bg-violet-200/80',
+];
+
+const colorForMachine = (machine: string, machineList: string[] = []) => {
+  const clean = (machine || '').trim().toUpperCase();
+  if (!clean) return 'bg-slate-100 border-slate-400 text-slate-800';
+  const idx = machineList.findIndex(m => m.trim().toUpperCase() === clean);
+  if (idx >= 0) return MACHINE_PALETTE[idx % MACHINE_PALETTE.length];
+  let hash = 0;
+  for (let i = 0; i < clean.length; i++) {
+    hash = (hash << 5) - hash + clean.charCodeAt(i);
+    hash |= 0;
+  }
+  return MACHINE_PALETTE[Math.abs(hash) % MACHINE_PALETTE.length];
+};
+const colorFor = (key: string) => colorForMachine(key);
 const hh = (t: unknown) => String(t ?? '').slice(0, 5);
 const SNAP = 30; // minutes
 const snap = (min: number) => Math.max(0, Math.min(24 * 60, Math.round(min / SNAP) * SNAP));
@@ -24,7 +51,7 @@ const dayLabel = (s: string) => parseYmd(s).toLocaleDateString('en-GB', { weekda
 
 interface PlanRow {
   id: string; work_order_id: string; operation_sequence: number; process_name: string; machine: string; operator?: string;
-  plan_date: string; start_time: string; end_time: string;
+  plan_date: string; start_time: string; end_time: string; quantity?: number | null;
 }
 
 export function PlannedTimeline() {
@@ -49,7 +76,7 @@ export function PlannedTimeline() {
 
   const [showPlan, setShowPlan] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState<{ woId: string; seq: string; process: string; machine: string; operator: string; plan: PlanDraft }>({ woId: '', seq: '', process: '', machine: '', operator: '', plan: emptyPlan() });
+  const [form, setForm] = useState<{ woId: string; seq: string; process: string; machine: string; operator: string; qty: string; plan: PlanDraft }>({ woId: '', seq: '', process: '', machine: '', operator: '', qty: '', plan: emptyPlan() });
 
   const [editForm, setEditForm] = useState<{
     woId: string;
@@ -152,7 +179,7 @@ export function PlannedTimeline() {
 
   const openPlan = (pre?: { date: string; start: string; end: string }) => {
     setForm({
-      woId: '', seq: '', process: '', machine: '', operator: '',
+      woId: '', seq: '', process: '', machine: '', operator: '', qty: '',
       plan: pre ? { from: pre.date, to: pre.date, slots: [{ start: pre.start, end: pre.end }] } : { ...emptyPlan(), from: anchor, to: anchor },
     });
     setShowPlan(true);
@@ -175,7 +202,8 @@ export function PlannedTimeline() {
   const pickWo = (id: string) => {
     const list = ops.filter(o => String(o.work_order_id) === id).sort((a, b) => (a.operation_sequence ?? 0) - (b.operation_sequence ?? 0));
     const first = list.length === 1 ? list[0] : null;
-    setForm(f => ({ ...f, woId: id, seq: first ? String(first.operation_sequence) : '', process: first ? (first.process_name || first.process_code || '') : '', machine: first?.machine || '', operator: first?.operator || '' }));
+    const wo = wos.find(w => String(w.id) === String(id));
+    setForm(f => ({ ...f, woId: id, seq: first ? String(first.operation_sequence) : '', process: first ? (first.process_name || first.process_code || '') : '', machine: first?.machine || '', operator: first?.operator || '', qty: f.qty || (wo?.quantity != null ? String(wo.quantity) : '') }));
   };
   const pickOp = (seq: string) => {
     const op = opsForWo.find(o => String(o.operation_sequence) === seq);
@@ -191,16 +219,25 @@ export function PlannedTimeline() {
     if (conflicts.length > 0 && !window.confirm(`${form.machine}${form.operator.trim() ? ' / ' + form.operator.trim() : ''} is already planned at the same time on ${conflicts.length} slot(s). Plan anyway?`)) return;
     setSaving(true);
     try {
+      const qtyNum = form.qty.trim() === '' ? null : Number(form.qty);
       const out = expandPlan(form.plan).map(s => ({
         id: crypto.randomUUID(), work_order_id: form.woId,
         operation_id: opsForWo.find(o => String(o.operation_sequence) === form.seq)?.id ?? null,
         operation_sequence: Number(form.seq) || 0, process_name: form.process, machine: form.machine.trim(), operator: form.operator.trim(),
-        plan_date: s.date, start_time: s.start, end_time: s.end,
+        plan_date: s.date, start_time: s.start, end_time: s.end, quantity: qtyNum,
       }));
-      let r = await supabase.from('cnc_operation_plans').insert(out);
+      let rows: any[] = out;
+      let r = await supabase.from('cnc_operation_plans').insert(rows);
+      // Databases missing the quantity column save the plan without it.
+      if (r.error && /'quantity' column/.test(String(r.error.message))) {
+        rows = rows.map(({ quantity: _q, ...rest }: any) => rest);
+        r = await supabase.from('cnc_operation_plans').insert(rows);
+        if (!r.error && qtyNum != null) alert('Saved without the quantity: run migration 20261016000000_operation_plans_qty.sql in Supabase to keep quantities on plans.');
+      }
       // Databases that have not run the operator migration yet save the plan without the man.
       if (r.error && /'operator' column/.test(String(r.error.message))) {
-        r = await supabase.from('cnc_operation_plans').insert(out.map(({ operator: _o, ...rest }) => rest));
+        rows = rows.map(({ operator: _o, ...rest }: any) => rest);
+        r = await supabase.from('cnc_operation_plans').insert(rows);
         if (!r.error && form.operator.trim()) alert('Saved without the operator: run migration 20261009010000_operation_plans_operator.sql in Supabase to keep the man on plans.');
       }
       if (r.error) throw r.error;
@@ -358,6 +395,10 @@ export function PlannedTimeline() {
   const step = (n: number) => setAnchor(a => addDays(a, view === 'Week' ? n * 7 : n));
   const title = view === 'Day' ? dayLabel(days[0]) : `${dayLabel(days[0])} – ${dayLabel(days[6])}`;
   const today = ymd(new Date());
+  // Slots happening right now (recomputed every render; nowMin ticks each minute).
+  const runningNow = rows.filter(r =>
+    String(r.plan_date).slice(0, 10) === today
+    && toMinutes(hh(r.start_time)) <= nowMin && nowMin < toMinutes(hh(r.end_time)));
   const totalHours = shown.filter(r => days.includes(String(r.plan_date).slice(0, 10))).reduce((n, r) => n + segmentHours({ start: hh(r.start_time), end: hh(r.end_time) }), 0);
 
   return (
@@ -384,6 +425,7 @@ export function PlannedTimeline() {
         </select>
         <input aria-label="Search plans" placeholder="Search work order, product, company…" value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-64 rounded-lg border border-slate-200 bg-white px-3 text-sm" />
         <Badge variant="neutral">{Math.round(totalHours * 10) / 10} h planned in view</Badge>
+        <Badge variant={runningNow.length > 0 ? 'success' : 'neutral'} dot={runningNow.length > 0}>{runningNow.length} running now</Badge>
         {loading && <Badge variant="neutral">Loading…</Badge>}
         <span className="flex-1" />
         <Button variant="primary" className="bg-brand-500 hover:bg-brand-600 text-white border-0 shadow-sm" onClick={() => openPlan()}><Plus size={16} /> Plan Operation</Button>
@@ -426,10 +468,10 @@ export function PlannedTimeline() {
                   const height = Math.max(18, segmentHours({ start: hh(r.start_time), end: hh(r.end_time) }) * HOUR_PX - 2);
                   return (
                     <button key={r.id} type="button" data-testid="plan-block" onClick={() => setPicked(r)} title={`${wo?.wo_no ?? ''} · ${r.process_name} · ${r.machine}`}
-                      className={`absolute left-0.5 right-0.5 overflow-hidden rounded-md border-l-4 px-1.5 py-0.5 text-left text-[10px] leading-tight shadow-sm hover:brightness-95 ${colorFor(String(r.work_order_id))} ${clash.has(r.id) ? 'ring-2 ring-red-500' : ''}`}
+                      className={`absolute left-0.5 right-0.5 overflow-hidden rounded-md border-l-4 px-1.5 py-0.5 text-left text-[10px] leading-tight shadow-sm transition-all ${colorForMachine(r.machine, machines)} ${clash.has(r.id) ? 'ring-2 ring-red-500' : ''}`}
                       style={{ top, height }}>
                       <div className="font-bold truncate">{wo?.wo_no ?? 'Work order'}{r.process_name ? ` · ${r.process_name}` : ''}</div>
-                      <div className="truncate">{r.machine}{r.operator ? ` · ${r.operator}` : ''} · {fmtTime24(hh(r.start_time))}–{fmtTime24(hh(r.end_time))}</div>
+                      <div className="truncate"><span className="font-bold">{r.machine || '—'}</span>{r.operator ? ` · ${r.operator}` : ''} · {fmtTime24(hh(r.start_time))}–{fmtTime24(hh(r.end_time))}{r.quantity != null ? ` · Qty ${r.quantity}` : ''}</div>
                     </button>
                   );
                 })}
@@ -464,6 +506,9 @@ export function PlannedTimeline() {
           <FormField label="Operator (man)">
             <input className={inputClass} list="plan-operators" value={form.operator} onChange={e => setForm(f => ({ ...f, operator: e.target.value }))} placeholder="Select or type the operator" />
             <datalist id="plan-operators">{operators.map(m => <option key={m} value={m} />)}</datalist>
+          </FormField>
+          <FormField label="Quantity (pcs)">
+            <input type="number" min={0} className={inputClass} value={form.qty} onChange={e => setForm(f => ({ ...f, qty: e.target.value }))} placeholder="e.g. 100" />
           </FormField>
           <PlanEditor value={form.plan} onChange={plan => setForm(f => ({ ...f, plan }))} />
           {conflicts.length > 0 && (

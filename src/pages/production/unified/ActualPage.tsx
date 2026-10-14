@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { insertTolerant } from '@/lib/partRouting';
 import { generateJobNo } from '@/lib/jobCards';
 import { fmtTime24, ymd } from '@/lib/operationPlans';
-import { CalendarNav, TimelineGrid, colorFor, minToHhmm, useCalendarNav, type GridBlock } from './TimelineGrid';
+import { CalendarNav, TimelineGrid, colorForMachine, minToHhmm, useCalendarNav, type GridBlock } from './TimelineGrid';
 import { dt, dur, jobSpan, splitByDay, useTimelineData } from './ComparisonPage';
 
 // Actual timeline: when each job card really ran (actual start to actual end), on the same calendar as the plan,
@@ -101,7 +101,7 @@ Then save the run again.`
       const span = jobSpan(j, now); if (!span) continue;
       splitByDay(span.start, span.end).forEach((s, i) => out.push({
         id: `${j.id}-${i}`, date: s.date, startMin: s.startMin, endMin: s.endMin,
-        className: colorFor(String(j.work_order)), ring: span.running,
+        className: colorForMachine(j.machine ?? '', data.machines), ring: span.running,
         title: `${j.work_order} · ${j.operation ?? ''} · ${j.machine ?? ''}${man(j) ? ` · ${man(j)}` : ''}`,
         lines: [
           `${j.work_order}${j.operation ? ` · ${j.operation}` : ''}`,
