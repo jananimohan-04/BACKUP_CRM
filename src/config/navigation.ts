@@ -64,19 +64,11 @@ export const navSections: NavSection[] = [
       { label: 'Scheduling', icon: ClipboardList, page: 'production/scheduling', iconClass: 'text-violet-400', module: 'scheduling' },
       { label: 'Machine Log', icon: Cog, page: 'production/tracking', iconClass: 'text-teal-300', module: 'machine-log' },
       { label: 'Process Master', icon: Factory, page: 'production/process-master', iconClass: 'text-rose-400', module: 'process-master' },
-      { label: 'Finished Goods', icon: Package, page: 'production/finished-goods', iconClass: 'text-lime-400', module: 'finished-goods' },
-    ],
-  },
-  {
-    label: 'Logistics',
-    items: [
-      { label: 'Delivery Challan', icon: FileText, page: 'operations/delivery', iconClass: 'text-indigo-300', module: 'delivery' },
     ],
   },
   {
     label: 'Finance',
     items: [
-      { label: 'Invoices', icon: FileText, page: 'finance/invoices', iconClass: 'text-yellow-300', module: 'invoices' },
       { label: 'Bank Entry', icon: Landmark, page: 'finance/bank-entry', iconClass: 'text-lime-400', module: 'bank-entry' },
       { label: 'Petty Cash', icon: Wallet, page: 'finance/petty-cash', iconClass: 'text-amber-400', module: 'petty-cash' },
       { label: 'Project Costing', icon: Calculator, page: 'costing/job-costing', iconClass: 'text-fuchsia-400', module: 'project-costing' },

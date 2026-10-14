@@ -1085,8 +1085,14 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
           {hasCostView && (
           <Button variant="secondary" icon={<Printer size={14} />} onClick={handlePrint}>Print</Button>
           )}
+          {mode === 'add' && (canApproveCosting || fgEdit) && !canApprove && (
+            <p className="mr-auto min-w-0 truncate text-xs text-amber-800" title={`Before approval — fix ${blockReasons.length === 1 ? 'this' : 'these'}:\n- ${blockReasons.join('\n- ')}`}>
+              <b className="text-[10px] uppercase tracking-wider">Before approval — fix this: </b>
+              {blockReasons[0]}{blockReasons.length > 1 ? ` (+${blockReasons.length - 1} more)` : ''}
+            </p>
+          )}
           <span className="flex-1" />
-          <Button variant="secondary" icon={<X size={14} />} onClick={onClose}>{mode === 'view' ? 'Close' : 'Cancel'}</Button>
+          <Button variant="secondary" size={inline ? 'sm' : undefined} icon={<X size={14} />} onClick={onClose}>{mode === 'view' ? 'Close' : 'Cancel'}</Button>
           {mode !== 'view' && (canCreateCosting || canEditCosting) && (
             <Button variant={mode === 'edit' ? undefined : 'secondary'} icon={<Save size={14} />} disabled={saving || loading} onClick={saveDraft}>
               {saving ? 'Saving...' : mode === 'edit' ? 'Save Changes' : 'Save Draft'}
@@ -1097,7 +1103,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
             // blocking reasons, and they are also listed inline below.
             // Without costing approval this is a quantity-only move (no sheet
             // is saved); pricing approval still needs an authorized user.
-            <Button icon={<CheckCheck size={14} />} disabled={approving}
+            <Button icon={<CheckCheck size={14} />} disabled={approving} size={inline ? 'sm' : undefined}
               title={canApprove ? (canApproveCosting ? 'Approve pricing and move the card' : 'Move the card to Finished Goods without costing approval') : `Blocked: ${blockReasons[0] ?? 'resolving'}`}
               className="!bg-teal-600 hover:!bg-teal-500 text-white shadow-md shadow-teal-500/25 !border-teal-600"
               onClick={approveAndMove}>
@@ -1129,7 +1135,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
             {fgView && (
             <>
             <div className={inline ? 'grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_11rem] gap-2 text-sm' : 'grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_11rem] gap-4 text-sm'}>
-              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Company</p><p className="font-semibold">{card?.customer ?? '—'}</p></div>
+              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Company</p><p className={inline ? 'font-semibold text-sm' : 'font-semibold'}>{card?.customer ?? '—'}</p></div>
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Product · how many finish ({selectedProds.length} of {prodRows.length} selected)</p>
                 {prodRows.length === 0 ? (
@@ -1143,7 +1149,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                       const doneSoFar = (qtySum?.products ?? []).find((x) => String(x.name).trim().toLowerCase() === String(r.name).trim().toLowerCase())?.good ?? 0;
                       const rem = Math.max(0, r.qty - doneSoFar - (mode === 'add' ? fq : 0));
                       return (
-                        <div key={r.key} className={`flex items-center gap-2 rounded-lg border px-3 ${inline ? 'h-9' : 'h-[42px]'} ${checked ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200'}`}>
+                        <div key={r.key} className={`flex items-center gap-2 rounded-lg border px-3 ${inline ? 'h-8' : 'h-9'} ${checked ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200'}`}>
                           <input
                             type="checkbox"
                             checked={checked}
@@ -1174,7 +1180,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                     })}
                   </div>
                 )}
-                <p className="text-[10px] text-slate-400 mt-1">Each selected product gets its own entry + batch. Costing follows {firstProd ? <b>{firstProd.name}</b> : 'the first selected product'}.</p>
+                {!inline && <p className="text-[10px] text-slate-400 mt-1">Each selected product gets its own entry + batch. Costing follows {firstProd ? <b>{firstProd.name}</b> : 'the first selected product'}.</p>}
               </div>
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Date</p>
@@ -1184,7 +1190,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
             {/* quantity tracking sits right under the product it describes */}
             {qtySum && (
               <div className={inline ? 'mt-2' : 'mt-3'}>
-                <QtyTrackingSection q={qtySum} userName={userName} onSaved={(s) => setQtySum(s)} allowReject={false} />
+                <QtyTrackingSection q={qtySum} userName={userName} onSaved={(s) => setQtySum(s)} allowReject={false} compact={inline} />
               </div>
             )}
             </>
@@ -1473,14 +1479,6 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
             <span className="text-slate-500">Sheet status:</span>
             <Badge variant={statusToVariant(versions[0]?.status ?? 'Draft')} dot>{versions[0] ? `V${versions[0].version} ${versions[0].status}` : 'Unsaved'}</Badge>
           </div>
-          )}
-          {mode === 'add' && (canApproveCosting || fgEdit) && !canApprove && (
-            <div className={inline ? 'rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800' : 'rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800'}>
-              <p className="text-[10px] font-bold uppercase tracking-wider">Before approval — fix {blockReasons.length === 1 ? 'this' : 'these'}</p>
-              <ul className={inline ? 'mt-0.5 list-disc pl-4' : 'mt-1 list-disc space-y-0.5 pl-4'}>
-                {blockReasons.map((r, i) => <li key={i}>{r}</li>)}
-              </ul>
-            </div>
           )}
         </div>
         </fieldset>

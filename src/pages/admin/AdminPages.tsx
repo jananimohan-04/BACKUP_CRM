@@ -573,6 +573,9 @@ function TriCheckbox({ checked, indeterminate, onChange, label, disabled, title,
 function PermissionEditor({ userId, userEmail, userRole, onSaved }: {
   userId: string; userEmail: string; userRole: ErpRole; onSaved?: () => void;
 }) {
+  // These stages live on the Sales Pipeline strip (no sidebar entry): their
+  // matrix rows still control the pipeline column, KPI tile and list access.
+  const PIPELINE_ONLY: Record<string, boolean> = { 'finished-goods': true, delivery: true, invoices: true };
   const { profile, isSuperAdmin, refreshPermissions } = useAuth();
   const [matrix, setMatrix] = useState<PermMatrix>(emptyMatrix);
   const [saved, setSaved] = useState<PermMatrix | null>(null);
@@ -781,6 +784,7 @@ function PermissionEditor({ userId, userEmail, userRole, onSaved }: {
                           </button>
                           <span className="text-xs font-semibold text-slate-800 truncate">{m.label}</span>
                           {locked && <Lock size={12} className="text-slate-400 shrink-0" />}
+                          {PIPELINE_ONLY[m.key] && <span className="text-[10px] text-slate-400 whitespace-nowrap" title="No sidebar entry — this permission controls the Sales Pipeline column, KPI tile and list access">via Sales Pipeline</span>}
                         </label>
                         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                           {m.actions.filter((a) => a !== 'view').map((a) => (

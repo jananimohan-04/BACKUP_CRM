@@ -427,10 +427,12 @@ const ContactsList = ({ form, setForm, readOnly = false }: { form: any, setForm?
 /** Quantity Tracking section (detail view + FG approval): summary +
  *  reconciliation + record-rejected entry. Rejections save as traceable batch
  *  rows (good quantity untouched) and the summary refreshes from live rows. */
-export function QtyTrackingSection({ q, userName, onSaved, allowReject = true }: {
+export function QtyTrackingSection({ q, userName, onSaved, allowReject = true, compact = false }: {
   q: OrderQtySummary; userName: string; onSaved: (q: OrderQtySummary) => void;
   /** Show the Record rejected quantity form (not wanted on the Inward details). */
   allowReject?: boolean;
+  /** Tight paddings for dense pages (Finished Goods entry). */
+  compact?: boolean;
 }) {
   const [rejQty, setRejQty] = useState('');
   const [rejProduct, setRejProduct] = useState('');
@@ -482,11 +484,11 @@ export function QtyTrackingSection({ q, userName, onSaved, allowReject = true }:
   };
 
   return (
-    <div className="w-full rounded-xl border-2 border-violet-200 bg-violet-50/50 px-4 py-3 mb-4">
-      <h4 className="font-bold text-sm text-violet-900 uppercase mb-2">Quantity Tracking</h4>
-      <QtySummaryGrid q={q} />
-      <div className="mt-2"><QtyProgress q={q} /></div>
-      <details className="mt-2">
+    <div className={compact ? 'w-full rounded-xl border-2 border-violet-200 bg-violet-50/50 px-2.5 py-2 mb-2' : 'w-full rounded-xl border-2 border-violet-200 bg-violet-50/50 px-4 py-3 mb-4'}>
+      <h4 className={compact ? 'font-bold text-xs text-violet-900 uppercase mb-1' : 'font-bold text-sm text-violet-900 uppercase mb-2'}>Quantity Tracking</h4>
+      <QtySummaryGrid q={q} compact={compact} />
+      <div className={compact ? 'mt-1' : 'mt-2'}><QtyProgress q={q} /></div>
+      <details className={compact ? 'mt-1' : 'mt-2'}>
         <summary className="text-xs font-semibold text-violet-700 cursor-pointer">Full reconciliation (batches · delivery · invoice)</summary>
         <div className="mt-2"><QtyBreakdown q={q} /></div>
       </details>

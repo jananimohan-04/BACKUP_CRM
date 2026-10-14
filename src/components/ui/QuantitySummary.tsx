@@ -16,26 +16,26 @@ const tones: Record<string, string> = {
   violet: 'border-violet-200 bg-violet-50 text-violet-800',
 };
 
-export function QtyBadge({ label, value, tone = 'slate' }: { label: string; value: string | number; tone?: keyof typeof tones }) {
+export function QtyBadge({ label, value, tone = 'slate', compact = false }: { label: string; value: string | number; tone?: keyof typeof tones; compact?: boolean }) {
   return (
-    <div className={`rounded-lg border px-2 py-1 ${(tones as any)[tone] ?? tones.slate}`}>
+    <div className={compact ? `rounded-lg border px-1.5 py-0.5 ${(tones as any)[tone] ?? tones.slate}` : `rounded-lg border px-2 py-1 ${(tones as any)[tone] ?? tones.slate}`}>
       <p className="text-[9px] font-bold uppercase tracking-widest opacity-70">{label}</p>
-      <p className="text-sm font-extrabold tabular-nums leading-tight">{value}</p>
+      <p className={compact ? 'text-xs font-extrabold tabular-nums leading-tight' : 'text-sm font-extrabold tabular-nums leading-tight'}>{value}</p>
     </div>
   );
 }
 
 /** ORDERED / GOOD / REJECTED / REMAINING / FG AVAILABLE / DELIVERED / INVOICED. */
-export function QtySummaryGrid({ q }: { q: OrderQtySummary }) {
+export function QtySummaryGrid({ q, compact = false }: { q: OrderQtySummary; compact?: boolean }) {
   return (
-    <div className="grid grid-cols-4 md:grid-cols-7 gap-2">
-      <QtyBadge label="Ordered" value={`${fmt(q.ordered)}`} tone="blue" />
-      <QtyBadge label="Finished" value={`${fmt(q.good)}`} tone="emerald" />
-      <QtyBadge label="Rejected" value={`${fmt(q.rejected)}`} tone="rose" />
-      <QtyBadge label="Remaining" value={`${fmt(q.remaining)}`} tone="amber" />
-      <QtyBadge label="FG Available" value={`${fmt(q.fgAvailable)}`} tone="violet" />
-      <QtyBadge label="Delivered" value={`${fmt(q.delivered)}`} tone="slate" />
-      <QtyBadge label="Invoiced" value={`${fmt(q.invoiced)}`} tone="slate" />
+    <div className={compact ? 'grid grid-cols-4 md:grid-cols-7 gap-1' : 'grid grid-cols-4 md:grid-cols-7 gap-2'}>
+      <QtyBadge label="Ordered" value={`${fmt(q.ordered)}`} tone="blue" compact={compact} />
+      <QtyBadge label="Finished" value={`${fmt(q.good)}`} tone="emerald" compact={compact} />
+      <QtyBadge label="Rejected" value={`${fmt(q.rejected)}`} tone="rose" compact={compact} />
+      <QtyBadge label="Remaining" value={`${fmt(q.remaining)}`} tone="amber" compact={compact} />
+      <QtyBadge label="FG Available" value={`${fmt(q.fgAvailable)}`} tone="violet" compact={compact} />
+      <QtyBadge label="Delivered" value={`${fmt(q.delivered)}`} tone="slate" compact={compact} />
+      <QtyBadge label="Invoiced" value={`${fmt(q.invoiced)}`} tone="slate" compact={compact} />
     </div>
   );
 }
