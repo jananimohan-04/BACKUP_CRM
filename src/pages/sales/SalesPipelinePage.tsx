@@ -6488,7 +6488,10 @@ export function SalesPipelinePage() {
           </>
         }
       >
-        <div className="max-h-[62vh] overflow-y-auto overflow-x-auto scrollbar-thin pr-1">
+        {/* No scroll container here on purpose: every popup form wraps fluidly,
+            so clipping ancestors would only cut off the autocomplete dropdowns.
+            Tall content scrolls once, on the dialog body itself. */}
+        <div className="overflow-visible pr-1">
           {addPopup === 'Enquiry' && renderEnquiryEntryForm({ popup: true })}
           {addPopup === 'Sales Order' && renderSalesOrderEntryForm({ popup: true })}
           {addPopup === 'Inward' && renderInwardEntryForm({ popup: true })}
