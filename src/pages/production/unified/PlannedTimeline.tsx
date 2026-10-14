@@ -14,25 +14,25 @@ import {
 
 const HOUR_PX = 44;
 const MACHINE_PALETTE = [
-  'bg-blue-100 border-blue-500 text-blue-950 hover:bg-blue-200/80',
-  'bg-emerald-100 border-emerald-500 text-emerald-950 hover:bg-emerald-200/80',
-  'bg-amber-100 border-amber-500 text-amber-950 hover:bg-amber-200/80',
-  'bg-purple-100 border-purple-500 text-purple-950 hover:bg-purple-200/80',
-  'bg-rose-100 border-rose-500 text-rose-950 hover:bg-rose-200/80',
-  'bg-cyan-100 border-cyan-500 text-cyan-950 hover:bg-cyan-200/80',
-  'bg-orange-100 border-orange-500 text-orange-950 hover:bg-orange-200/80',
-  'bg-indigo-100 border-indigo-500 text-indigo-950 hover:bg-indigo-200/80',
-  'bg-teal-100 border-teal-500 text-teal-950 hover:bg-teal-200/80',
-  'bg-fuchsia-100 border-fuchsia-500 text-fuchsia-950 hover:bg-fuchsia-200/80',
-  'bg-lime-100 border-lime-600 text-lime-950 hover:bg-lime-200/80',
-  'bg-pink-100 border-pink-500 text-pink-950 hover:bg-pink-200/80',
-  'bg-sky-100 border-sky-500 text-sky-950 hover:bg-sky-200/80',
-  'bg-violet-100 border-violet-500 text-violet-950 hover:bg-violet-200/80',
+  'bg-blue-600 border-blue-800 text-white shadow-sm hover:bg-blue-700',
+  'bg-emerald-600 border-emerald-800 text-white shadow-sm hover:bg-emerald-700',
+  'bg-purple-600 border-purple-800 text-white shadow-sm hover:bg-purple-700',
+  'bg-amber-600 border-amber-800 text-white shadow-sm hover:bg-amber-700',
+  'bg-rose-600 border-rose-800 text-white shadow-sm hover:bg-rose-700',
+  'bg-cyan-700 border-cyan-900 text-white shadow-sm hover:bg-cyan-800',
+  'bg-orange-600 border-orange-800 text-white shadow-sm hover:bg-orange-700',
+  'bg-indigo-600 border-indigo-800 text-white shadow-sm hover:bg-indigo-700',
+  'bg-teal-700 border-teal-900 text-white shadow-sm hover:bg-teal-800',
+  'bg-fuchsia-600 border-fuchsia-800 text-white shadow-sm hover:bg-fuchsia-700',
+  'bg-lime-700 border-lime-900 text-white shadow-sm hover:bg-lime-800',
+  'bg-pink-600 border-pink-800 text-white shadow-sm hover:bg-pink-700',
+  'bg-sky-700 border-sky-900 text-white shadow-sm hover:bg-sky-800',
+  'bg-violet-700 border-violet-900 text-white shadow-sm hover:bg-violet-800',
 ];
 
 const colorForMachine = (machine: string, machineList: string[] = []) => {
   const clean = (machine || '').trim().toUpperCase();
-  if (!clean) return 'bg-slate-100 border-slate-400 text-slate-800';
+  if (!clean) return 'bg-slate-700 border-slate-900 text-white';
   const idx = machineList.findIndex(m => m.trim().toUpperCase() === clean);
   if (idx >= 0) return MACHINE_PALETTE[idx % MACHINE_PALETTE.length];
   let hash = 0;
@@ -43,6 +43,86 @@ const colorForMachine = (machine: string, machineList: string[] = []) => {
   return MACHINE_PALETTE[Math.abs(hash) % MACHINE_PALETTE.length];
 };
 const colorFor = (key: string) => colorForMachine(key);
+
+interface PositionedRow {
+  row: PlanRow;
+  lane: number;
+  lanes: number;
+  top: number;
+  height: number;
+}
+
+function layoutDayRows(dayRows: PlanRow[]): PositionedRow[] {
+  if (dayRows.length === 0) return [];
+
+  // Sort by start_time ascending, then by duration descending
+  const sorted = [...dayRows].map(r => {
+    const start = toMinutes(hh(r.start_time));
+    let end = toMinutes(hh(r.end_time));
+    if (end <= start) end = Math.min(24 * 60, start + 30);
+    return { r, start, end };
+  }).sort((a, b) => a.start - b.start || (b.end - b.start) - (a.end - a.start));
+
+  const clusters: (typeof sorted)[] = [];
+  let currentCluster: typeof sorted = [];
+  let clusterEnd = -1;
+
+  for (const item of sorted) {
+    if (currentCluster.length === 0) {
+      currentCluster.push(item);
+      clusterEnd = item.end;
+    } else if (item.start < clusterEnd) {
+      currentCluster.push(item);
+      clusterEnd = Math.max(clusterEnd, item.end);
+    } else {
+      clusters.push(currentCluster);
+      currentCluster = [item];
+      clusterEnd = item.end;
+    }
+  }
+  if (currentCluster.length > 0) {
+    clusters.push(currentCluster);
+  }
+
+  const result: PositionedRow[] = [];
+
+  for (const cluster of clusters) {
+    const laneEnds: number[] = [];
+    const itemAssignments: { item: typeof sorted[0]; lane: number }[] = [];
+
+    for (const item of cluster) {
+      let placedLane = -1;
+      for (let l = 0; l < laneEnds.length; l++) {
+        if (laneEnds[l] <= item.start) {
+          placedLane = l;
+          laneEnds[l] = item.end;
+          break;
+        }
+      }
+      if (placedLane === -1) {
+        placedLane = laneEnds.length;
+        laneEnds.push(item.end);
+      }
+      itemAssignments.push({ item, lane: placedLane });
+    }
+
+    const totalLanes = Math.max(1, laneEnds.length);
+
+    for (const { item, lane } of itemAssignments) {
+      const top = (item.start / 60) * HOUR_PX;
+      const height = Math.max(22, ((item.end - item.start) / 60) * HOUR_PX - 2);
+      result.push({
+        row: item.r,
+        lane,
+        lanes: totalLanes,
+        top,
+        height,
+      });
+    }
+  }
+
+  return result;
+}
 const hh = (t: unknown) => String(t ?? '').slice(0, 5);
 const SNAP = 30; // minutes
 const snap = (min: number) => Math.max(0, Math.min(24 * 60, Math.round(min / SNAP) * SNAP));
@@ -84,6 +164,7 @@ export function PlannedTimeline() {
     process: string;
     machine: string;
     operator: string;
+    qty: string;
     date: string;
     startTime: string;
     endTime: string;
@@ -94,6 +175,7 @@ export function PlannedTimeline() {
     process: '',
     machine: '',
     operator: '',
+    qty: '',
     date: '',
     startTime: '',
     endTime: '',
@@ -265,6 +347,7 @@ export function PlannedTimeline() {
         process: picked.process_name || '',
         machine: picked.machine || '',
         operator: picked.operator || '',
+        qty: picked.quantity != null ? String(picked.quantity) : '',
         date: String(picked.plan_date).slice(0, 10),
         startTime: hh(picked.start_time),
         endTime: hh(picked.end_time),
@@ -356,7 +439,8 @@ export function PlannedTimeline() {
         }
       }
 
-      let r = await supabase.from('cnc_operation_plans').update({
+      const qtyNum = editForm.qty.trim() === '' ? null : Number(editForm.qty);
+      const payload: any = {
         work_order_id: editForm.woId,
         operation_id: opObj?.id ?? null,
         operation_sequence: Number(editForm.seq) || 0,
@@ -366,19 +450,18 @@ export function PlannedTimeline() {
         plan_date: editForm.date,
         start_time: editForm.startTime,
         end_time: editForm.endTime,
-      }).eq('id', picked.id);
+        quantity: qtyNum,
+      };
+      let r = await supabase.from('cnc_operation_plans').update(payload).eq('id', picked.id);
+
+      if (r.error && /'quantity' column/.test(String(r.error.message))) {
+        delete payload.quantity;
+        r = await supabase.from('cnc_operation_plans').update(payload).eq('id', picked.id);
+      }
 
       if (r.error && /'operator' column/.test(String(r.error.message))) {
-        r = await supabase.from('cnc_operation_plans').update({
-          work_order_id: editForm.woId,
-          operation_id: opObj?.id ?? null,
-          operation_sequence: Number(editForm.seq) || 0,
-          process_name: processName,
-          machine: editForm.machine.trim(),
-          plan_date: editForm.date,
-          start_time: editForm.startTime,
-          end_time: editForm.endTime,
-        }).eq('id', picked.id);
+        delete payload.operator;
+        r = await supabase.from('cnc_operation_plans').update(payload).eq('id', picked.id);
       }
 
       if (r.error) throw r.error;
@@ -462,16 +545,19 @@ export function PlannedTimeline() {
                   </div>
                 )}
                 {d === today && <div className="absolute inset-x-0 z-10 pointer-events-none" style={{ top: (nowMin / 60) * HOUR_PX }}><div className="h-0.5 bg-red-500" /><div className="absolute -left-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500" /></div>}
-                {dayRows.map(r => {
+                {layoutDayRows(dayRows).map(({ row: r, lane, lanes, top, height }) => {
                   const wo = woById.get(String(r.work_order_id));
-                  const top = (toMinutes(hh(r.start_time)) / 60) * HOUR_PX;
-                  const height = Math.max(18, segmentHours({ start: hh(r.start_time), end: hh(r.end_time) }) * HOUR_PX - 2);
+                  const width = `calc(${(1 / lanes) * 100}% - 4px)`;
+                  const left = `calc(${(lane / lanes) * 100}% + 2px)`;
                   return (
-                    <button key={r.id} type="button" data-testid="plan-block" onClick={() => setPicked(r)} title={`${wo?.wo_no ?? ''} · ${r.process_name} · ${r.machine}`}
-                      className={`absolute left-0.5 right-0.5 overflow-hidden rounded-md border-l-4 px-1.5 py-0.5 text-left text-[10px] leading-tight shadow-sm transition-all ${colorForMachine(r.machine, machines)} ${clash.has(r.id) ? 'ring-2 ring-red-500' : ''}`}
-                      style={{ top, height }}>
-                      <div className="font-bold truncate">{wo?.wo_no ?? 'Work order'}{r.process_name ? ` · ${r.process_name}` : ''}</div>
-                      <div className="truncate"><span className="font-bold">{r.machine || '—'}</span>{r.operator ? ` · ${r.operator}` : ''} · {fmtTime24(hh(r.start_time))}–{fmtTime24(hh(r.end_time))}{r.quantity != null ? ` · Qty ${r.quantity}` : ''}</div>
+                    <button key={r.id} type="button" data-testid="plan-block" onClick={() => setPicked(r)} title={`${wo?.wo_no ?? ''} · ${r.process_name} · Machine: ${r.machine} · Operator: ${r.operator || '—'} · ${fmtTime24(hh(r.start_time))}–${fmtTime24(hh(r.end_time))}`}
+                      className={`absolute overflow-hidden rounded-md border-l-[4px] px-2 py-1 text-left shadow-md transition-all z-10 ${colorForMachine(r.machine, machines)} ${clash.has(r.id) ? 'ring-2 ring-red-500' : ''}`}
+                      style={{ top, height, left, width }}>
+                      <div className="font-bold text-xs truncate leading-snug">{wo?.wo_no ?? 'Work order'}{r.process_name ? ` · ${r.process_name}` : ''}</div>
+                      <div className="truncate text-[11px] font-semibold leading-snug opacity-95">
+                        <span className="font-black uppercase bg-black/30 px-1 py-0.5 rounded text-[11px] mr-1 inline-block">{r.machine || '—'}</span>
+                        {r.operator ? `${r.operator} · ` : ''}{fmtTime24(hh(r.start_time))}–{fmtTime24(hh(r.end_time))}{r.quantity != null ? ` · Qty ${r.quantity}` : ''}
+                      </div>
                     </button>
                   );
                 })}
@@ -581,7 +667,7 @@ export function PlannedTimeline() {
                 </FormField>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <FormField label="Machine" required>
                   <input className={inputClass} list="plan-machines-edit" value={editForm.machine} onChange={e => setEditForm(f => ({ ...f, machine: e.target.value }))} placeholder="Select or type a machine" />
                   <datalist id="plan-machines-edit">{machines.map(m => <option key={m} value={m} />)}</datalist>
@@ -590,6 +676,10 @@ export function PlannedTimeline() {
                 <FormField label="Operator (man)">
                   <input className={inputClass} list="plan-operators-edit" value={editForm.operator} onChange={e => setEditForm(f => ({ ...f, operator: e.target.value }))} placeholder="Select or type the operator" />
                   <datalist id="plan-operators-edit">{operators.map(m => <option key={m} value={m} />)}</datalist>
+                </FormField>
+
+                <FormField label="Quantity (pcs)">
+                  <input type="number" min={0} className={inputClass} value={editForm.qty} onChange={e => setEditForm(f => ({ ...f, qty: e.target.value }))} placeholder="e.g. 100" />
                 </FormField>
               </div>
 

@@ -8,20 +8,20 @@ import { addDays, fmtTime24, parseYmd, ymd } from '@/lib/operationPlans';
 
 export const HOUR_PX = 44;
 export const MACHINE_PALETTE = [
-  'bg-blue-100 border-blue-500 text-blue-950 hover:bg-blue-200/80',
-  'bg-emerald-100 border-emerald-500 text-emerald-950 hover:bg-emerald-200/80',
-  'bg-amber-100 border-amber-500 text-amber-950 hover:bg-amber-200/80',
-  'bg-purple-100 border-purple-500 text-purple-950 hover:bg-purple-200/80',
-  'bg-rose-100 border-rose-500 text-rose-950 hover:bg-rose-200/80',
-  'bg-cyan-100 border-cyan-500 text-cyan-950 hover:bg-cyan-200/80',
-  'bg-orange-100 border-orange-500 text-orange-950 hover:bg-orange-200/80',
-  'bg-indigo-100 border-indigo-500 text-indigo-950 hover:bg-indigo-200/80',
-  'bg-teal-100 border-teal-500 text-teal-950 hover:bg-teal-200/80',
-  'bg-fuchsia-100 border-fuchsia-500 text-fuchsia-950 hover:bg-fuchsia-200/80',
-  'bg-lime-100 border-lime-600 text-lime-950 hover:bg-lime-200/80',
-  'bg-pink-100 border-pink-500 text-pink-950 hover:bg-pink-200/80',
-  'bg-sky-100 border-sky-500 text-sky-950 hover:bg-sky-200/80',
-  'bg-violet-100 border-violet-500 text-violet-950 hover:bg-violet-200/80',
+  'bg-blue-600 border-blue-800 text-white shadow-sm hover:bg-blue-700',
+  'bg-emerald-600 border-emerald-800 text-white shadow-sm hover:bg-emerald-700',
+  'bg-purple-600 border-purple-800 text-white shadow-sm hover:bg-purple-700',
+  'bg-amber-600 border-amber-800 text-white shadow-sm hover:bg-amber-700',
+  'bg-rose-600 border-rose-800 text-white shadow-sm hover:bg-rose-700',
+  'bg-cyan-700 border-cyan-900 text-white shadow-sm hover:bg-cyan-800',
+  'bg-orange-600 border-orange-800 text-white shadow-sm hover:bg-orange-700',
+  'bg-indigo-600 border-indigo-800 text-white shadow-sm hover:bg-indigo-700',
+  'bg-teal-700 border-teal-900 text-white shadow-sm hover:bg-teal-800',
+  'bg-fuchsia-600 border-fuchsia-800 text-white shadow-sm hover:bg-fuchsia-700',
+  'bg-lime-700 border-lime-900 text-white shadow-sm hover:bg-lime-800',
+  'bg-pink-600 border-pink-800 text-white shadow-sm hover:bg-pink-700',
+  'bg-sky-700 border-sky-900 text-white shadow-sm hover:bg-sky-800',
+  'bg-violet-700 border-violet-900 text-white shadow-sm hover:bg-violet-800',
 ];
 
 export const colorForMachine = (machine: string, machineList: string[] = []) => {
