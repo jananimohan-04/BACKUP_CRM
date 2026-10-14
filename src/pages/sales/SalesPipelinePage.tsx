@@ -2913,8 +2913,21 @@ export function SalesPipelinePage() {
       }
     });
 
+    // 4. Fallback: products on this user's visible Inward cards (same table),
+    // so the list is never just the current value when masters are empty or
+    // permission-gated. Only stages the user may see contribute names.
+    (cards || []).filter((c: any) => c.stage === 'Inward' && canView(STAGE_MODULE[c.stage] ?? 'sales-pipeline')).forEach((c: any) => {
+      [c.part, c.raw?.product_name, c.raw?.part_name].forEach((n: any) => {
+        const name = String(n || '').trim();
+        if (name && !seen.has(name.toLowerCase())) {
+          seen.add(name.toLowerCase());
+          list.push({ name, group: 'pipeline' });
+        }
+      });
+    });
+
     return list;
-  }, [eligibleCatalogue, rawLeadsList, salesOrdersList, existingProductNames]);
+  }, [eligibleCatalogue, rawLeadsList, salesOrdersList, existingProductNames, cards, canView]);
 
   const fetchPipeline = async () => {
     setLoading(true);
@@ -6771,8 +6784,60 @@ export function SalesPipelinePage() {
                       </h4>
                       <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
                         <div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-4 mb-3">
-                          {inwardCellFor(g[0], 'category', 'Category')}
-                          {inwardCellFor(g[0], 'party_name', 'Company')}
+                          {viewEditMode ? (
+                            <div>
+                              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Category</span>
+                              <select
+                                className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500 cursor-pointer"
+                                value={g[0].category || ''}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val !== String(g[0].category || '')) {
+                                    g.forEach((r: any) => { void handleInlineEdit('Inward', String(r.id), { category: val }); });
+                                  }
+                                }}
+                              >
+                                <option value="">Select category…</option>
+                                {g[0].category && !['EXPENSES', 'CUSTOMER DC', 'NEW PART', 'NO DC', 'GOODS PURCHASE', 'SERVICE PURCHASE'].includes(String(g[0].category)) && (
+                                  <option value={g[0].category}>{g[0].category}</option>
+                                )}
+                                {['EXPENSES', 'CUSTOMER DC', 'NEW PART', 'NO DC', 'GOODS PURCHASE', 'SERVICE PURCHASE'].map((c) => (
+                                  <option key={c} value={c}>{c}</option>
+                                ))}
+                              </select>
+                            </div>
+                          ) : (inwardCellFor(g[0], 'category', 'Category'))}
+                          {viewEditMode ? (
+                            <div>
+                              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Company</span>
+                              <select
+                                className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500 cursor-pointer"
+                                value={g[0].party_name || ''}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val === '__custom__') {
+                                    const custom = window.prompt('Enter company name:', String(g[0].party_name || ''));
+                                    if (custom && custom.trim() && custom.trim() !== String(g[0].party_name || '')) {
+                                      g.forEach((r: any) => { void handleInlineEdit('Inward', String(r.id), { party_name: custom.trim() }); });
+                                    }
+                                    return;
+                                  }
+                                  if (val !== String(g[0].party_name || '')) {
+                                    g.forEach((r: any) => { void handleInlineEdit('Inward', String(r.id), { party_name: val }); });
+                                  }
+                                }}
+                              >
+                                <option value="">Select company…</option>
+                                <option value="__custom__">+ Enter custom company…</option>
+                                {g[0].party_name && !allKnownCompanies.some((c: any) => String(c.company).toLowerCase() === String(g[0].party_name).toLowerCase()) && (
+                                  <option value={g[0].party_name}>{g[0].party_name}</option>
+                                )}
+                                {(allKnownCompanies || []).map((c: any) => (
+                                  <option key={c.company} value={c.company}>{c.company}</option>
+                                ))}
+                              </select>
+                            </div>
+                          ) : (inwardCellFor(g[0], 'party_name', 'Company'))}
                           {inwardCellFor(g[0], 'inward_date', 'Inward Date')}
                           {inwardCellFor(g[0], 'reference_no', 'Reference No.')}
                           <div>
