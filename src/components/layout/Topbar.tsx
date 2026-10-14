@@ -153,7 +153,7 @@ export function Topbar({
                     value={company?.id ?? ''}
                     onChange={(e) => setActiveCompany(e.target.value || null)}
                     className="min-w-0 flex-1 text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded-md px-2 py-1.5 focus:outline-none focus:border-brand-500"
-                    title="Company whose data is shown"
+                    aria-label="Company whose data is shown"
                   >
                     <option value="">All companies</option>
                     {companies.map(c => (

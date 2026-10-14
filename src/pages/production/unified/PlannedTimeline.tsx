@@ -238,10 +238,10 @@ export function PlannedTimeline() {
     return `${wo?.wo_no ?? ''} ${wo?.part_name ?? ''} ${wo?.customer ?? ''} ${r.process_name} ${r.machine} ${r.operator ?? ''}`.toLowerCase().includes(q);
   }), [rows, machineFilter, operatorFilter, q, woById]);
 
-  // Same machine, same day, overlapping times.
-  // Same machine or same man, same day, overlapping times.
+  // Same machine, same day, overlapping times. One operator may run several
+  // machines at once, so the man is deliberately ignored here.
   const overlaps = (cand: { machine: string; operator?: string; date: string; start: string; end: string }, ignoreWo?: string, ignoreSeq?: number) =>
-    rows.filter(r => ((r.machine && r.machine === cand.machine) || (!!cand.operator && !!r.operator && r.operator === cand.operator)) && String(r.plan_date).slice(0, 10) === cand.date
+    rows.filter(r => (r.machine && r.machine === cand.machine) && String(r.plan_date).slice(0, 10) === cand.date
       && !(ignoreWo && String(r.work_order_id) === ignoreWo && Number(r.operation_sequence) === ignoreSeq)
       && toMinutes(hh(r.start_time)) < toMinutes(cand.end) && toMinutes(cand.start) < toMinutes(hh(r.end_time)));
 

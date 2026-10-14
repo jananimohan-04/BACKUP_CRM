@@ -631,7 +631,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   const blockReasons: string[] = [];
   if (loading) blockReasons.push('Costing data is still loading.');
   if (loadError) blockReasons.push('Costing data failed to load.');
-  if (sheetsMissing) blockReasons.push('Costing storage is not provisioned (apply migration 20260930000000_costing_sheets.sql).');
+  if (sheetsMissing && hasCostView) blockReasons.push('Costing storage is not provisioned (apply migration 20260930000000_costing_sheets.sql).');
   if (!(baseQty > 0)) blockReasons.push('Enter a finished quantity greater than 0 for at least one product.');
   if (selectedProds.length === 0) blockReasons.push('Select at least one product.');
   for (const r of selectedProds) {
@@ -769,8 +769,11 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
 
   const approveAndMove = async () => {
     if (approving) return;
-    if (!canApproveCosting) {
-      alert('Approving costing needs the Project Costing approve permission (plus Finished Goods edit).');
+    // Move-only users (Finished Goods edit without costing approval) skip the
+    // sheet persist below and only move the goods; pricing approval happens
+    // later through an authorized costing user.
+    if (!canApproveCosting && !fgEdit) {
+      alert('Moving to Finished Goods needs Finished Goods edit access (approving pricing additionally needs the Project Costing approve permission).');
       return;
     }
     if (!canApprove) {
@@ -791,8 +794,12 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
         }
       }
       // 1) Save the Approved costing version (same payload shape as the costing page).
-      // A quotation is optional: a direct order is costed and approved against its sales order instead.
-      await persistVersion('Approved', effectiveApproved);
+      // Move-only users skip this: without the approve permission the database
+      // trigger would reject an Approved version anyway, and they never saw the
+      // pricing. A quotation is optional: a direct order is costed and approved against its sales order instead.
+      if (canApproveCosting) {
+        await persistVersion('Approved', effectiveApproved);
+      }
       // 2) One work-order row + batch per selected product. Good quantity
       // becomes FG stock (via the stock trigger on `completed`); rejected
       // quantity is recorded on the first product only, for traceability, and
@@ -1072,14 +1079,16 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
               {saving ? 'Saving...' : mode === 'edit' ? 'Save Changes' : 'Save Draft'}
             </Button>
           )}
-          {mode === 'add' && canApproveCosting && (
+          {mode === 'add' && (canApproveCosting || fgEdit) && (
             // Stays clickable when blocked: approveAndMove alerts the exact
             // blocking reasons, and they are also listed inline below.
+            // Without costing approval this is a quantity-only move (no sheet
+            // is saved); pricing approval still needs an authorized user.
             <Button icon={<CheckCheck size={14} />} disabled={approving}
-              title={canApprove ? 'Approve pricing and move the card' : `Blocked: ${blockReasons[0] ?? 'resolving'}`}
+              title={canApprove ? (canApproveCosting ? 'Approve pricing and move the card' : 'Move the card to Finished Goods without costing approval') : `Blocked: ${blockReasons[0] ?? 'resolving'}`}
               className="!bg-teal-600 hover:!bg-teal-500 text-white shadow-md shadow-teal-500/25 !border-teal-600"
               onClick={approveAndMove}>
-              {approving ? 'Moving...' : 'Approve & Move to Finished Goods'}
+              {approving ? 'Moving...' : (canApproveCosting ? 'Approve & Move to Finished Goods' : 'Move to Finished Goods')}
             </Button>
           )}
         </>
@@ -1173,6 +1182,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
           {!hasCostView ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
               Costing details are hidden — you have Finished Goods access without Project Costing access. Quotation pricing, process and material costs, the cost summary and the final price need the Project Costing view permission.
+              {fgEdit ? ' You can still move the goods with the button below; pricing approval must be completed later by an authorized costing user before invoicing.' : ''}
             </div>
           ) : (
           <>
@@ -1449,7 +1459,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
             <Badge variant={statusToVariant(versions[0]?.status ?? 'Draft')} dot>{versions[0] ? `V${versions[0].version} ${versions[0].status}` : 'Unsaved'}</Badge>
           </div>
           )}
-          {mode === 'add' && canApproveCosting && !canApprove && (
+          {mode === 'add' && (canApproveCosting || fgEdit) && !canApprove && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
               <p className="text-[10px] font-bold uppercase tracking-wider">Before approval — fix {blockReasons.length === 1 ? 'this' : 'these'}</p>
               <ul className="mt-1 list-disc space-y-0.5 pl-4">
