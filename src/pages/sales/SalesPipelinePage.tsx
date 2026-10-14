@@ -3986,10 +3986,11 @@ export function SalesPipelinePage() {
       setDcItems(dcInitItems);
       setDcSnapshot({ form: { ...dcInitForm }, items: dcInitItems.map((l: any) => ({ ...l })) });
       setDcModalTarget(card);
-      // The DC form is inline on the DC list, so bringing a finished good forward
-      // takes the user there with the pre-filled challan ready to confirm.
+      // The DC form opens as a popup right on the Kanban board (same
+      // renderDeliveryChallanEntryForm + saveDeliveryChallan as the board's Add
+      // button) — the board never navigates away, and the list page is untouched.
       setDcSaveNotice(null);
-      setActiveView('dc_list');
+      setAddPopup('DC');
 
 
     } else if (card.type === 'dc' && toStage === 'Invoice') {
