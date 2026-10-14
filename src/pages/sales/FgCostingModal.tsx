@@ -931,6 +931,17 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
     const filteredCompanies = companies.filter((c) => !queryComp || c.toLowerCase().includes(queryComp));
     const filteredProducts = products.filter((p) => !pickProduct.trim() || p.toLowerCase().includes(key(pickProduct)));
 
+    // Product → company: when the picked product belongs to exactly one
+    // company, fill it in (unless the current company already offers it).
+    const autoCompanyForProduct = (p: string) => {
+      const found = Array.from(new Set(
+        pickOptions.filter((o) => key(o.product) === key(p)).map((o) => String(o.company || '').trim()).filter(Boolean)
+      ));
+      if (found.length !== 1) return;
+      const cur = queryComp;
+      if (!cur || !found.some((c) => key(c) === cur)) setPickCompany(found[0]);
+    };
+
     return (
       <Modal open inline={inline} onClose={onClose} title="Finished Goods + Costing" subtitle="Add Finished Goods" size="3xl" width={960} accent={tint('Finished Goods')}>
         <div className={`w-fit rounded-xl border p-2.5 ${tint('Finished Goods').panel}`}>
@@ -995,11 +1006,12 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                 <input
                   className={`${compactInput} w-[15rem] pr-6`}
                   list="fg-pick-products"
-                  placeholder={pickCompany.trim() ? "Type or select product" : "Select company first"}
+                  placeholder="Type or select product"
                   value={pickProduct}
                   onFocus={() => setProdDropdownOpen(true)}
                   onChange={(e) => {
                     setPickProduct(e.target.value);
+                    autoCompanyForProduct(e.target.value);
                     setProdDropdownOpen(true);
                   }}
                 />
@@ -1021,6 +1033,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                           onMouseDown={(e) => {
                             e.preventDefault();
                             setPickProduct(p);
+                            autoCompanyForProduct(p);
                             setProdDropdownOpen(false);
                           }}
                         >
