@@ -51,6 +51,29 @@ export function PlannedTimeline() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<{ woId: string; seq: string; process: string; machine: string; operator: string; plan: PlanDraft }>({ woId: '', seq: '', process: '', machine: '', operator: '', plan: emptyPlan() });
 
+  const [editForm, setEditForm] = useState<{
+    woId: string;
+    seq: string;
+    process: string;
+    machine: string;
+    operator: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    applyToAll: boolean;
+  }>({
+    woId: '',
+    seq: '',
+    process: '',
+    machine: '',
+    operator: '',
+    date: '',
+    startTime: '',
+    endTime: '',
+    applyToAll: false,
+  });
+  const [updatingSlot, setUpdatingSlot] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     const [p, w, o, m, pr, jc] = await Promise.all([
@@ -197,6 +220,141 @@ export function PlannedTimeline() {
     await load();
   };
 
+  useEffect(() => {
+    if (picked) {
+      setEditForm({
+        woId: String(picked.work_order_id ?? ''),
+        seq: picked.operation_sequence != null ? String(picked.operation_sequence) : '',
+        process: picked.process_name || '',
+        machine: picked.machine || '',
+        operator: picked.operator || '',
+        date: String(picked.plan_date).slice(0, 10),
+        startTime: hh(picked.start_time),
+        endTime: hh(picked.end_time),
+        applyToAll: false,
+      });
+    }
+  }, [picked]);
+
+  const editOpsForWo = useMemo(() => {
+    const curWo = editForm.woId || String(picked?.work_order_id || '');
+    return ops.filter(o => String(o.work_order_id) === curWo).sort((a, b) => (a.operation_sequence ?? 0) - (b.operation_sequence ?? 0));
+  }, [ops, editForm.woId, picked?.work_order_id]);
+
+  const pickEditWo = (id: string) => {
+    const list = ops.filter(o => String(o.work_order_id) === id).sort((a, b) => (a.operation_sequence ?? 0) - (b.operation_sequence ?? 0));
+    const first = list.length === 1 ? list[0] : null;
+    setEditForm(f => ({
+      ...f,
+      woId: id,
+      seq: first ? String(first.operation_sequence) : '',
+      process: first ? (first.process_name || first.process_code || '') : '',
+      machine: first?.machine || f.machine,
+      operator: first?.operator || f.operator,
+    }));
+  };
+
+  const pickEditOp = (seq: string) => {
+    const op = editOpsForWo.find(o => String(o.operation_sequence) === seq);
+    setEditForm(f => ({
+      ...f,
+      seq,
+      process: op ? (op.process_name || op.process_code || '') : '',
+      machine: op?.machine || f.machine,
+      operator: op?.operator || f.operator,
+    }));
+  };
+
+  const editConflicts = useMemo(() => {
+    if (!picked || (!editForm.machine && !editForm.operator) || !editForm.date || !editForm.startTime || !editForm.endTime) return [];
+    if (toMinutes(editForm.endTime) <= toMinutes(editForm.startTime)) return [];
+    return overlaps({
+      machine: editForm.machine.trim(),
+      operator: editForm.operator.trim(),
+      date: editForm.date,
+      start: editForm.startTime,
+      end: editForm.endTime,
+    }).filter(o => o.id !== picked.id);
+  }, [picked, editForm.machine, editForm.operator, editForm.date, editForm.startTime, editForm.endTime, rows]);
+
+  const slotDurationHours = useMemo(() => {
+    if (!editForm.startTime || !editForm.endTime) return 0;
+    const start = toMinutes(editForm.startTime);
+    const end = toMinutes(editForm.endTime);
+    if (end <= start) return 0;
+    return Math.round(((end - start) / 60) * 10) / 10;
+  }, [editForm.startTime, editForm.endTime]);
+
+  const saveEditedSlot = async () => {
+    if (!picked) return;
+    if (!editForm.woId) return alert('Select a work order.');
+    if (editOpsForWo.length > 0 && !editForm.seq) return alert('Select the operation.');
+    if (!editForm.machine.trim()) return alert('Select or type the machine.');
+    if (!editForm.date) return alert('Select the plan date.');
+    if (!editForm.startTime || !editForm.endTime) return alert('Select start and end time.');
+    if (toMinutes(editForm.endTime) <= toMinutes(editForm.startTime)) {
+      return alert('End time must be after start time.');
+    }
+    if (editConflicts.length > 0 && !window.confirm(`${editForm.machine}${editForm.operator.trim() ? ' / ' + editForm.operator.trim() : ''} is already planned at this time on another operation. Save anyway?`)) {
+      return;
+    }
+
+    setUpdatingSlot(true);
+    try {
+      const opObj = ops.find(o => String(o.work_order_id) === editForm.woId && String(o.operation_sequence) === editForm.seq);
+      const processName = opObj?.process_name || opObj?.process_code || editForm.process || picked.process_name;
+
+      if (editForm.applyToAll && picked.work_order_id && picked.operation_sequence != null) {
+        let res = await supabase.from('cnc_operation_plans').update({
+          machine: editForm.machine.trim(),
+          operator: editForm.operator.trim(),
+          process_name: processName,
+        }).eq('work_order_id', picked.work_order_id).eq('operation_sequence', picked.operation_sequence);
+
+        if (res.error && /'operator' column/.test(String(res.error.message))) {
+          await supabase.from('cnc_operation_plans').update({
+            machine: editForm.machine.trim(),
+            process_name: processName,
+          }).eq('work_order_id', picked.work_order_id).eq('operation_sequence', picked.operation_sequence);
+        }
+      }
+
+      let r = await supabase.from('cnc_operation_plans').update({
+        work_order_id: editForm.woId,
+        operation_id: opObj?.id ?? null,
+        operation_sequence: Number(editForm.seq) || 0,
+        process_name: processName,
+        machine: editForm.machine.trim(),
+        operator: editForm.operator.trim(),
+        plan_date: editForm.date,
+        start_time: editForm.startTime,
+        end_time: editForm.endTime,
+      }).eq('id', picked.id);
+
+      if (r.error && /'operator' column/.test(String(r.error.message))) {
+        r = await supabase.from('cnc_operation_plans').update({
+          work_order_id: editForm.woId,
+          operation_id: opObj?.id ?? null,
+          operation_sequence: Number(editForm.seq) || 0,
+          process_name: processName,
+          machine: editForm.machine.trim(),
+          plan_date: editForm.date,
+          start_time: editForm.startTime,
+          end_time: editForm.endTime,
+        }).eq('id', picked.id);
+      }
+
+      if (r.error) throw r.error;
+
+      setPicked(null);
+      await load();
+    } catch (e: any) {
+      alert(`Could not update slot: ${e?.message ?? e}`);
+    } finally {
+      setUpdatingSlot(false);
+    }
+  };
+
   const step = (n: number) => setAnchor(a => addDays(a, view === 'Week' ? n * 7 : n));
   const title = view === 'Day' ? dayLabel(days[0]) : `${dayLabel(days[0])} – ${dayLabel(days[6])}`;
   const today = ymd(new Date());
@@ -316,22 +474,122 @@ export function PlannedTimeline() {
         </div>
       </Modal>
 
-      <Modal open={!!picked} onClose={() => setPicked(null)} title="Planned slot" size="sm"
-        footer={picked ? <><Button variant="secondary" onClick={() => setPicked(null)}>Close</Button>
-          <Button variant="secondary" icon={<Trash2 size={14} />} onClick={() => removeSlot(picked, false)}>Remove slot</Button>
-          <Button variant="secondary" icon={<Trash2 size={14} />} onClick={() => removeSlot(picked, true)}>Remove whole plan</Button></> : undefined}>
-        {picked && (() => {
+      <Modal open={!!picked} onClose={() => setPicked(null)} title="Edit Planned Slot" size="md"
+        subtitle={picked ? (() => {
           const wo = woById.get(String(picked.work_order_id));
+          return `${wo?.wo_no ?? 'Work order'} · ${wo?.part_name ?? ''} ${wo?.customer ? `(${wo.customer})` : ''}`;
+        })() : undefined}
+        footer={picked ? (
+          <div className="flex flex-wrap items-center justify-between w-full gap-2">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                icon={<Trash2 size={14} />}
+                onClick={() => removeSlot(picked, false)}
+                disabled={updatingSlot}
+              >
+                Remove slot
+              </Button>
+              <Button
+                variant="secondary"
+                className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                icon={<Trash2 size={14} />}
+                onClick={() => removeSlot(picked, true)}
+                disabled={updatingSlot}
+              >
+                Remove whole plan
+              </Button>
+            </div>
+            <div className="flex items-center gap-2 ml-auto">
+              <Button variant="secondary" onClick={() => setPicked(null)} disabled={updatingSlot}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                className="bg-brand-500 hover:bg-brand-600 text-white"
+                onClick={saveEditedSlot}
+                disabled={updatingSlot}
+              >
+                {updatingSlot ? 'Saving…' : 'Save Changes'}
+              </Button>
+            </div>
+          </div>
+        ) : undefined}>
+        {picked && (() => {
           const same = rows.filter(r => r.work_order_id === picked.work_order_id && r.operation_sequence === picked.operation_sequence);
           return (
-            <div className="space-y-1.5 text-sm">
-              <p><b>{wo?.wo_no ?? 'Work order'}</b> — {wo?.part_name} {wo?.customer ? `(${wo.customer})` : ''}</p>
-              <p>Operation: {picked.process_name || '—'}{picked.operation_sequence ? ` (Seq ${picked.operation_sequence})` : ''}</p>
-              <p>Machine: {picked.machine || '—'}</p>
-              <p>Operator: {picked.operator || '—'}</p>
-              <p>{dayLabel(String(picked.plan_date).slice(0, 10))}, {fmtTime24(hh(picked.start_time))} – {fmtTime24(hh(picked.end_time))}</p>
-              <p className="text-xs text-slate-500">This operation has {same.length} planned slot{same.length === 1 ? '' : 's'} in all.</p>
-              {clash.has(picked.id) && <p className="text-xs text-red-600">Another plan uses this machine at the same time.</p>}
+            <div className="space-y-4">
+              <FormField label="Work Order" required>
+                <select className={inputClass} value={editForm.woId} onChange={e => pickEditWo(e.target.value)}>
+                  <option value="">-- Select work order --</option>
+                  {wos.map(w => <option key={w.id} value={w.id}>{w.wo_no} - {w.part_name} - {w.customer} - Qty {w.quantity}</option>)}
+                </select>
+              </FormField>
+
+              {editOpsForWo.length > 0 && (
+                <FormField label="Operation" required>
+                  <select className={inputClass} value={editForm.seq} onChange={e => pickEditOp(e.target.value)}>
+                    <option value="">-- Select operation --</option>
+                    {editOpsForWo.map(o => <option key={o.id} value={o.operation_sequence}>Seq {o.operation_sequence} - {o.process_name || o.process_code}</option>)}
+                  </select>
+                </FormField>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Machine" required>
+                  <input className={inputClass} list="plan-machines-edit" value={editForm.machine} onChange={e => setEditForm(f => ({ ...f, machine: e.target.value }))} placeholder="Select or type a machine" />
+                  <datalist id="plan-machines-edit">{machines.map(m => <option key={m} value={m} />)}</datalist>
+                </FormField>
+
+                <FormField label="Operator (man)">
+                  <input className={inputClass} list="plan-operators-edit" value={editForm.operator} onChange={e => setEditForm(f => ({ ...f, operator: e.target.value }))} placeholder="Select or type the operator" />
+                  <datalist id="plan-operators-edit">{operators.map(m => <option key={m} value={m} />)}</datalist>
+                </FormField>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <FormField label="Date" required>
+                  <input type="date" className={inputClass} value={editForm.date} onChange={e => setEditForm(f => ({ ...f, date: e.target.value }))} />
+                </FormField>
+
+                <FormField label="Start Time" required>
+                  <input type="time" className={inputClass} value={editForm.startTime} onChange={e => setEditForm(f => ({ ...f, startTime: e.target.value }))} />
+                </FormField>
+
+                <FormField label="End Time" required>
+                  <input type="time" className={inputClass} value={editForm.endTime} onChange={e => setEditForm(f => ({ ...f, endTime: e.target.value }))} />
+                </FormField>
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-slate-500 pt-1 border-t border-slate-100">
+                <span>Duration: <b className="text-slate-700">{slotDurationHours > 0 ? `${slotDurationHours} hrs` : '—'}</b></span>
+                <span>Operation has <b className="text-slate-700">{same.length}</b> planned slot{same.length === 1 ? '' : 's'} in total</span>
+              </div>
+
+              {same.length > 1 && (
+                <label className="flex items-center gap-2 text-xs text-slate-700 bg-slate-50 p-2.5 rounded-lg border border-slate-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
+                    checked={editForm.applyToAll}
+                    onChange={e => setEditForm(f => ({ ...f, applyToAll: e.target.checked }))}
+                  />
+                  <span>Apply updated machine ({editForm.machine || '—'}) and operator ({editForm.operator || '—'}) to all {same.length} slots of this operation</span>
+                </label>
+              )}
+
+              {clash.has(picked.id) && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  ⚠️ Another scheduled plan uses this machine at the same time.
+                </p>
+              )}
+
+              {editConflicts.length > 0 && (
+                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2" data-testid="plan-edit-conflict">
+                  ⚠️ Conflict: {editForm.machine}{editForm.operator.trim() ? ' / ' + editForm.operator.trim() : ''} is already planned at this time on {editConflicts.slice(0, 2).map(c => `${woById.get(String(c.work_order_id))?.wo_no ?? 'another order'} (${fmtTime24(hh(c.start_time))}–${fmtTime24(hh(c.end_time))})`).join('; ')}{editConflicts.length > 2 ? ` and ${editConflicts.length - 2} more` : ''}.
+                </p>
+              )}
             </div>
           );
         })()}
