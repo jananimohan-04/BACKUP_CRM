@@ -1113,7 +1113,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
         <p className="text-sm text-red-600 py-8 text-center">Failed to load costing data: {loadError}</p>
       ) : (
         <fieldset disabled={mode === 'view'} className="min-w-0 border-0 p-0 m-0">
-        <div className="space-y-4">
+        <div className={inline ? 'space-y-2' : 'space-y-4'}>
           {(titleSlot || searchSlot) && (
             <div className="flex flex-wrap items-center gap-2">
               {titleSlot}
@@ -1121,14 +1121,14 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
             </div>
           )}
           {/* 1 — transaction details, with the products to finish (and how many) right next to the product */}
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-3 border-b border-brand-100 pb-2">Section 1 — Transaction Details</h3>
+          <div className={inline ? 'bg-white rounded-xl border border-slate-200 p-2.5' : 'bg-white rounded-xl border border-slate-200 p-4'}>
+            <h3 className={inline ? 'text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-2 border-b border-brand-100 pb-1.5' : 'text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-3 border-b border-brand-100 pb-2'}>Section 1 — Transaction Details</h3>
             {!fgView && (
               <p className="text-xs text-slate-500">Transaction details need the Finished Goods view permission.</p>
             )}
             {fgView && (
             <>
-            <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_11rem] gap-4 text-sm">
+            <div className={inline ? 'grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_11rem] gap-2 text-sm' : 'grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_11rem] gap-4 text-sm'}>
               <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Company</p><p className="font-semibold">{card?.customer ?? '—'}</p></div>
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Product · how many finish ({selectedProds.length} of {prodRows.length} selected)</p>
@@ -1143,7 +1143,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                       const doneSoFar = (qtySum?.products ?? []).find((x) => String(x.name).trim().toLowerCase() === String(r.name).trim().toLowerCase())?.good ?? 0;
                       const rem = Math.max(0, r.qty - doneSoFar - (mode === 'add' ? fq : 0));
                       return (
-                        <div key={r.key} className={`flex items-center gap-2 rounded-lg border px-3 h-[42px] ${checked ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200'}`}>
+                        <div key={r.key} className={`flex items-center gap-2 rounded-lg border px-3 ${inline ? 'h-9' : 'h-[42px]'} ${checked ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200'}`}>
                           <input
                             type="checkbox"
                             checked={checked}
@@ -1183,7 +1183,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
             </div>
             {/* quantity tracking sits right under the product it describes */}
             {qtySum && (
-              <div className="mt-3">
+              <div className={inline ? 'mt-2' : 'mt-3'}>
                 <QtyTrackingSection q={qtySum} userName={userName} onSaved={(s) => setQtySum(s)} allowReject={false} />
               </div>
             )}
@@ -1193,10 +1193,12 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
 
           {/* Rejection capture removed — batches record good quantity only. */}
           {!hasCostView ? (
+            inline ? null : (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
               Costing details are hidden — you have Finished Goods access without Project Costing access. Quotation pricing, process and material costs, the cost summary and the final price need the Project Costing view permission.
               {fgEdit ? ' You can still move the goods with the button below; pricing approval must be completed later by an authorized costing user before invoicing.' : ''}
             </div>
+            )
           ) : (
           <>
           {(!canEditCosting && mode !== 'view') && (
@@ -1473,9 +1475,9 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
           </div>
           )}
           {mode === 'add' && (canApproveCosting || fgEdit) && !canApprove && (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <div className={inline ? 'rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800' : 'rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800'}>
               <p className="text-[10px] font-bold uppercase tracking-wider">Before approval — fix {blockReasons.length === 1 ? 'this' : 'these'}</p>
-              <ul className="mt-1 list-disc space-y-0.5 pl-4">
+              <ul className={inline ? 'mt-0.5 list-disc pl-4' : 'mt-1 list-disc space-y-0.5 pl-4'}>
                 {blockReasons.map((r, i) => <li key={i}>{r}</li>)}
               </ul>
             </div>
