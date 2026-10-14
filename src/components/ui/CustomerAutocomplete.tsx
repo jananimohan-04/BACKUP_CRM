@@ -82,7 +82,7 @@ export function CustomerAutocomplete({
           autoComplete="off"
         />
         {!disabled && isOpen && companies.length > 0 && (
-          <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-56 overflow-y-auto">
+          <div className="absolute z-50 left-0 min-w-full w-max max-w-[20rem] top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-56 overflow-y-auto">
             {filtered.length > 0 ? (
               filtered.map((c, i) => (
                 <div
@@ -100,7 +100,7 @@ export function CustomerAutocomplete({
                     {c.city && <span className="text-xs text-slate-400 ml-1.5">• {c.city}</span>}
                   </div>
                   {c.contact_person && (
-                    <span className="text-xs text-slate-500 ml-2 shrink-0 truncate max-w-[140px]">
+                    <span className="text-xs text-slate-500 ml-2 shrink-0 truncate max-w-[96px]">
                       {c.contact_person}
                     </span>
                   )}

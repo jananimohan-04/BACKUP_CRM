@@ -4942,7 +4942,7 @@ export function SalesPipelinePage() {
   // Company, the multi-row products, the file uploads and saveEnquiry are
   // untouched — only the modal chrome (backdrop, positioning, close button and
   // footer) has been replaced by a card with Save Enquiry / Clear Reset buttons.
-  const renderEnquiryEntryForm = (opts?: { onBack?: () => void; searchSlot?: ReactNode }) => {
+  const renderEnquiryEntryForm = (opts?: { onBack?: () => void; searchSlot?: ReactNode; popup?: boolean }) => {
     // One product line's fields. The first product renders inline in the main
     // row; every added product renders on its own full-width line below, so
     // the form never needs sideways scrolling.
@@ -5092,8 +5092,12 @@ export function SalesPipelinePage() {
           <datalist id="enquiry-product-list">{existingProductNames.map(n => <option key={n} value={n} />)}</datalist>
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
+            {!opts?.popup && (
+              <>
             <Button variant="secondary" size="sm" onClick={() => { setEnquiryForm(resetEnquiryForm()); setDuplicateSource(null); setEnquirySaveNotice(null); }}>Clear / Reset</Button>
             <Button size="sm" onClick={saveEnquiry} disabled={savingEnquiry} className={MODULE_THEMES.Enquiry.btnPrimary}>{savingEnquiry ? 'Saving...' : 'Save Enquiry'}</Button>
+              </>
+            )}
             {opts?.searchSlot && (
               <>
                 <span className="h-6 w-px shrink-0 bg-slate-300 mx-0.5" aria-hidden="true" />
@@ -5182,8 +5186,12 @@ export function SalesPipelinePage() {
           </button>
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
+            {!opts?.popup && (
+              <>
             <Button variant="secondary" size="sm" onClick={() => { setSoForm(resetSoForm()); setSoSaveNotice(null); }}>Clear / Reset</Button>
             <Button size="sm" onClick={saveStandaloneSalesOrder} disabled={savingSo} className={MODULE_THEMES['Sales Order'].btnPrimary}>{savingSo ? 'Saving...' : 'Save Order'}</Button>
+              </>
+            )}
             {opts?.searchSlot && (
               <>
                 <span className="h-6 w-px shrink-0 bg-slate-300 mx-0.5" aria-hidden="true" />
@@ -5304,7 +5312,7 @@ export function SalesPipelinePage() {
     }
     setDcSaveNotice(null);
   };
-  const renderDeliveryChallanEntryForm = (opts?: { onBack?: () => void; searchSlot?: ReactNode }) => (
+  const renderDeliveryChallanEntryForm = (opts?: { onBack?: () => void; searchSlot?: ReactNode; popup?: boolean }) => (
     <section className={`rounded-xl border shadow-sm ${tint('DC').panel}`} data-testid="dc-entry-form">
       <div className="space-y-2.5 p-3">
         {dcSaveNotice && (
@@ -5477,8 +5485,12 @@ export function SalesPipelinePage() {
               {opts.searchSlot}
             </div>
           )}
+          {!opts?.popup && (
+            <>
           <Button variant="secondary" size="sm" onClick={clearDcForm}>Clear / Reset</Button>
           <Button size="sm" onClick={saveDeliveryChallan} disabled={dcSaving} className={MODULE_THEMES.DC.btnPrimary}>{dcSaving ? 'Saving...' : 'Save'}</Button>
+            </>
+          )}
         </div>
       </div>
     </section>
@@ -5491,7 +5503,7 @@ export function SalesPipelinePage() {
   // Inward" flow and the saved-count badge are all unchanged - only the modal wrapper is
   // gone. Done/Cancel became Clear / Reset, because there is no popup to close.
   const clearInwardForm = () => { setInwardSavedCount(0); openDummyInward(); };
-  const renderInwardEntryForm = (opts?: { onBack?: () => void; searchSlot?: ReactNode }) => (
+  const renderInwardEntryForm = (opts?: { onBack?: () => void; searchSlot?: ReactNode; popup?: boolean }) => (
     <section className={`rounded-xl border shadow-sm ${tint('Inward').panel}`} data-testid="inward-entry-form">
       <div className="space-y-2.5 p-3">
         <div className="flex flex-col gap-4">
@@ -5595,12 +5607,12 @@ export function SalesPipelinePage() {
                   {inwardForm.parts.length > 1 && <button type="button" onClick={() => setInwardForm({...inwardForm, parts: inwardForm.parts.filter((_: any, i: number) => i !== index)})} className="ml-auto shrink-0 text-xs font-medium text-rose-600 hover:text-rose-800">Remove</button>}
                 </div>
                 {(group.items || []).map((item: any, ii: number) => (
-                  <div key={ii} className="mt-1.5 flex flex-nowrap items-center gap-1.5 border-t border-slate-200 pt-1.5 overflow-x-auto py-1">
-                    <span className="w-4 shrink-0 text-center text-[11px] font-bold text-slate-400">{ii + 1}</span>
-                    <div className="flex shrink-0 min-w-0 items-center">
+                  <div key={ii} className={opts?.popup ? 'mt-1.5 grid grid-cols-2 xl:grid-cols-4 items-center gap-x-2 gap-y-1.5 border-t border-slate-200 pt-1.5 pb-1' : 'mt-1.5 flex flex-nowrap items-center gap-1.5 border-t border-slate-200 pt-1.5 overflow-x-auto py-1'}>
+                    <span className={opts?.popup ? 'hidden' : 'w-4 shrink-0 text-center text-[11px] font-bold text-slate-400'}>{ii + 1}</span>
+                    <div className={opts?.popup ? 'flex min-w-0 items-center' : 'flex shrink-0 min-w-0 items-center'}>
                       {(group.category || 'GOODS PURCHASE') === 'EXPENSES' ? (
                         <>
-                          <input className={`${compactInput} w-[12.5rem]`} list={`expense-products-${index}-${ii}`} placeholder="Search & select product / project" title="Product" value={item.productName || ''}
+                          <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[12.5rem]`} list={`expense-products-${index}-${ii}`} placeholder="Search & select product / project" title="Product" value={item.productName || ''}
                             onChange={e => onInwardProductInput(index, ii, e.target.value, { allowFreeText: true })} />
                           <datalist id={`expense-products-${index}-${ii}`}>
                             {eligibleCatalogue.map((m: any) => <option key={m.key} value={m.name}>{[m.code, m.unit ? `per ${m.unit}` : '', m.unitPrice ? `₹${m.unitPrice}` : ''].filter(Boolean).join(' · ')}</option>)}
@@ -5609,7 +5621,7 @@ export function SalesPipelinePage() {
                         </>
                       ) : (
                         <>
-                          <input className={`${compactInput} w-[12.5rem]`} list={`inward-products-${index}-${ii}`} placeholder="Search & select product" title="Product" value={item.productName || ''}
+                          <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[12.5rem]`} list={`inward-products-${index}-${ii}`} placeholder="Search & select product" title="Product" value={item.productName || ''}
                             onChange={e => onInwardProductInput(index, ii, e.target.value)} />
                           <datalist id={`inward-products-${index}-${ii}`}>
                             {eligibleCatalogue.map((m: any) => <option key={m.key} value={m.name}>{[m.code, m.unit ? `per ${m.unit}` : '', m.unitPrice ? `₹${m.unitPrice}` : ''].filter(Boolean).join(' · ')}</option>)}
@@ -5618,19 +5630,19 @@ export function SalesPipelinePage() {
                         </>
                       )}
                     </div>
-                    <input className={`${compactInput} w-[9.5rem] shrink-0`} placeholder="Part Name *" title="Part Name" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} />
-                    <input className={`${compactInput} w-[8.5rem] shrink-0`} placeholder="Remarks..." title="Remarks" value={item.remarks ?? ''} onChange={e=>setItem(ii, { remarks: e.target.value })} />
-                    <div className="flex shrink-0 items-center gap-1"><span className={inlineLbl}>Qty *</span>
-                      <input type="number" min="0" className={`${compactInput} w-[4.25rem]`} placeholder="Qty" value={item.quantity || ''} onChange={e=>setItem(ii, { quantity: e.target.value })} /></div>
-                    <div className="flex shrink-0 items-center gap-1"><span className={inlineLbl}>Price *</span>
-                      <input type="number" min="0" className={`${compactInput} w-[5.5rem]`} placeholder="Price" value={item.price || ''} onChange={e=>setItem(ii, { price: e.target.value })} /></div>
-                    <div className="flex shrink-0 items-center gap-1"><span className={inlineLbl}>Disc %</span>
-                      <input type="number" min="0" className={`${compactInput} w-[3.75rem]`} placeholder="%" value={item.discount || ''} onChange={e=>setItem(ii, { discount: e.target.value })} /></div>
-                    <div className="flex shrink-0 items-center gap-1"><span className={inlineLbl}>GST %</span>
-                      <input type="number" min="0" className={`${compactInput} w-[3.75rem]`} placeholder="%" value={item.gst || ''} onChange={e=>setItem(ii, { gst: e.target.value })} /></div>
-                    <div className="flex shrink-0 items-center gap-1"><span className={inlineLbl}>Total</span>
-                      <input className={`${compactInput} w-[5.5rem] bg-white font-bold`} value={lineTotal(item) || 0} title="Total" disabled /></div>
-                    <div className="flex shrink-0 items-center gap-1">
+                    <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[9.5rem] shrink-0`} placeholder="Part Name *" title="Part Name" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} />
+                    <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[8.5rem] shrink-0`} placeholder="Remarks..." title="Remarks" value={item.remarks ?? ''} onChange={e=>setItem(ii, { remarks: e.target.value })} />
+                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-1'}><span className={inlineLbl}>Qty *</span>
+                      <input type="number" min="0" className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[4.25rem]`} placeholder="Qty" value={item.quantity || ''} onChange={e=>setItem(ii, { quantity: e.target.value })} /></div>
+                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-1'}><span className={inlineLbl}>Price *</span>
+                      <input type="number" min="0" className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[5.5rem]`} placeholder="Price" value={item.price || ''} onChange={e=>setItem(ii, { price: e.target.value })} /></div>
+                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-1'}><span className={inlineLbl}>Disc %</span>
+                      <input type="number" min="0" className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[3.75rem]`} placeholder="%" value={item.discount || ''} onChange={e=>setItem(ii, { discount: e.target.value })} /></div>
+                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-1'}><span className={inlineLbl}>GST %</span>
+                      <input type="number" min="0" className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[3.75rem]`} placeholder="%" value={item.gst || ''} onChange={e=>setItem(ii, { gst: e.target.value })} /></div>
+                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-1'}><span className={inlineLbl}>Total</span>
+                      <input className={opts?.popup ? `${compactInput} w-full min-w-0 bg-white font-bold` : `${compactInput} w-[5.5rem] bg-white font-bold`} value={lineTotal(item) || 0} title="Total" disabled /></div>
+                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1 col-span-2' : 'flex shrink-0 items-center gap-1'}>
                       <label className="inline-flex h-7 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach drawing or spec for this product">
                         <UploadCloud size={13} />{(item.files || []).length ? `${item.files.length} file${item.files.length === 1 ? '' : 's'}` : 'Attach Drawing'}
                         <input type="file" multiple accept="*/*" className="hidden" onChange={e => {
@@ -5688,9 +5700,13 @@ export function SalesPipelinePage() {
               {opts.searchSlot}
             </div>
           )}
+          {!opts?.popup && (
+            <>
           <Button variant="secondary" size="sm" onClick={clearInwardForm}>Clear / Reset</Button>
           <Button variant="secondary" size="sm" disabled={savingInward} onClick={() => void saveInward(true)}>{savingInward ? 'Saving...' : 'Save & Add Another Inward'}</Button>
           <Button size="sm" disabled={savingInward} onClick={() => void saveInward(false)} className={MODULE_THEMES.Inward.btnPrimary}>{savingInward ? 'Saving...' : 'Submit'}</Button>
+            </>
+          )}
         </div>
       </div>
     </section>
@@ -6473,10 +6489,10 @@ export function SalesPipelinePage() {
         }
       >
         <div className="max-h-[62vh] overflow-y-auto overflow-x-auto scrollbar-thin pr-1">
-          {addPopup === 'Enquiry' && renderEnquiryEntryForm()}
+          {addPopup === 'Enquiry' && renderEnquiryEntryForm({ popup: true })}
           {addPopup === 'Sales Order' && renderSalesOrderEntryForm({ popup: true })}
-          {addPopup === 'Inward' && renderInwardEntryForm()}
-          {addPopup === 'DC' && renderDeliveryChallanEntryForm()}
+          {addPopup === 'Inward' && renderInwardEntryForm({ popup: true })}
+          {addPopup === 'DC' && renderDeliveryChallanEntryForm({ popup: true })}
         </div>
       </Modal>
 
