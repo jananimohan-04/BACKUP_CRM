@@ -1,4 +1,5 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { FormField } from './Modal';
 
 export interface CustomerOption {
@@ -39,50 +40,110 @@ export function CustomerAutocomplete({
   inlineLabel = false,
 }: CustomerAutocompleteProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; left: number; minWidth: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
+  // Prefix match on what the user typed: typing "a" offers companies
+  // starting with "a", not random substring hits.
   const filtered = useMemo(() => {
     const q = (value || '').toLowerCase().trim();
     if (!q) return companies.slice(0, 50);
     return companies
-      .filter(c => c.company.toLowerCase().includes(q))
+      .filter(c => (c.company || '').toLowerCase().startsWith(q))
       .slice(0, 50);
   }, [value, companies]);
 
+  // The menu is portalled to the body with viewport coordinates, so no
+  // ancestor scroll container (table rows, modal bodies, page mains) can
+  // clip it the way an in-place absolute menu gets cut off.
+  const openMenu = useCallback(() => {
+    const el = inputRef.current;
+    if (!el || disabled) return;
+    const r = el.getBoundingClientRect();
+    const estH = 232;
+    const below = window.innerHeight - r.bottom;
+    if (below < 140 && r.top > estH + 8) {
+      setMenuPos({ bottom: Math.max(8, window.innerHeight - r.top + 4), left: Math.max(8, Math.min(r.left, window.innerWidth - 328)), minWidth: r.width });
+    } else {
+      setMenuPos({ top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 328)), minWidth: r.width });
+    }
+    setIsOpen(true);
+  }, [disabled]);
+
+  const closeMenu = useCallback(() => {
+    setIsOpen(false);
+    setMenuPos(null);
+  }, []);
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
+      const t = e.target as Node;
+      if (containerRef.current && !containerRef.current.contains(t)
+        && !(menuRef.current && menuRef.current.contains(t))) {
+        closeMenu();
       }
     };
+    const handleScroll = (e: Event) => {
+      // Scrolling inside the menu itself must not close it.
+      if (menuRef.current && e.target instanceof Node && menuRef.current.contains(e.target)) return;
+      closeMenu();
+    };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    window.addEventListener('resize', closeMenu);
+    window.addEventListener('scroll', handleScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('resize', closeMenu);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [closeMenu]);
+
+  const pick = (c: CustomerOption) => {
+    onChange(c.company);
+    if (onSelectCustomer) onSelectCustomer(c);
+    closeMenu();
+    inputRef.current?.focus({ preventScroll: true });
+  };
 
   return (
     <FormField label={label} required={required} hint={hint} inline={inlineLabel}>
       <div className="relative" ref={containerRef}>
         <input
+          ref={inputRef}
           className={inputClass}
           value={value || ''}
           disabled={disabled}
           onChange={(e) => {
             onChange(e.target.value);
-            if (!disabled) setIsOpen(true);
+            if (!disabled) openMenu();
           }}
           onFocus={() => {
-            if (!disabled) setIsOpen(true);
+            if (!disabled) openMenu();
           }}
           onKeyDown={(e) => {
             if (e.key === 'Escape') {
-              setIsOpen(false);
+              closeMenu();
             }
           }}
           placeholder={placeholder}
           autoComplete="off"
         />
-        {!disabled && isOpen && companies.length > 0 && (
-          <div className="absolute z-50 left-0 min-w-full w-max max-w-[20rem] top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-56 overflow-y-auto">
+        {!disabled && isOpen && menuPos && companies.length > 0 && createPortal(
+          <div
+            ref={menuRef}
+            className="bg-white border border-slate-200 rounded-lg shadow-xl overflow-y-auto"
+            style={{
+              position: 'fixed',
+              zIndex: 9999,
+              left: menuPos.left,
+              minWidth: Math.max(menuPos.minWidth, 200),
+              maxWidth: 320,
+              maxHeight: 224,
+              ...(menuPos.top != null ? { top: menuPos.top } : { bottom: menuPos.bottom }),
+            }}
+          >
             {filtered.length > 0 ? (
               filtered.map((c, i) => (
                 <div
@@ -90,9 +151,7 @@ export function CustomerAutocomplete({
                   className="px-3.5 py-2.5 text-sm text-slate-700 hover:bg-brand-50 hover:text-brand-800 cursor-pointer border-b border-slate-50 last:border-0 flex justify-between items-center transition-colors"
                   onMouseDown={(e) => {
                     e.preventDefault();
-                    onChange(c.company);
-                    if (onSelectCustomer) onSelectCustomer(c);
-                    setIsOpen(false);
+                    pick(c);
                   }}
                 >
                   <div className="truncate">
@@ -108,10 +167,11 @@ export function CustomerAutocomplete({
               ))
             ) : (
               <div className="px-3.5 py-2.5 text-xs text-slate-500 italic">
-                No matching company found (continue typing custom name)
+                No company starts with that — keep typing to add “{value.trim()}” as new
               </div>
             )}
-          </div>
+          </div>,
+          document.body
         )}
       </div>
     </FormField>

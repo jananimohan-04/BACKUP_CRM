@@ -11,14 +11,12 @@ import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 
 const orderValue = (r: any) => r.total_value ?? r.value;
 
-const ORDER_STATUSES = ['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'];
 
 export function SalesOrderModule({ onBack, onDelete, refreshSignal, onView, onEdit, entryForm }: { onBack: () => void; onDelete?: (record: any) => void; refreshSignal?: number; onView?: (record: any) => void; onEdit?: (record: any) => void; entryForm?: ReactNode | ((props: { onBack: () => void; searchSlot: ReactNode }) => ReactNode) }) {
   const { companyFilter, setCompanyFilter, companyOptions } = useHeaderKpis();
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All Status');
 
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -56,16 +54,6 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onView, onEd
     } catch { /* progress stays hidden */ }
   };
 
-  const updateStatus = async (record: any, value: string) => {
-    if (!value || value === record.status) return;
-    const { error } = await supabase.from('cnc_sales_orders').update({ status: value }).eq('id', record.id);
-    if (error) {
-      alert('Failed to update status: ' + error.message);
-      return;
-    }
-    setRecords((prev) => prev.map((r) => (r.id === record.id ? { ...r, status: value } : r)));
-    setSelectedRecord((prev: any) => (prev && prev.id === record.id ? { ...prev, status: value } : prev));
-  };
 
   const openRecord = async (record: any, edit: boolean) => {
     setSelectedRecord(record);
@@ -128,28 +116,16 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onView, onEd
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [records, companyOptions]);
 
-  const statuses = useMemo(() => {
-    const set = new Set<string>();
-    records.forEach(r => {
-      const s = (r.status || '').trim();
-      if (s) set.add(s);
-    });
-    ORDER_STATUSES.forEach(s => set.add(s));
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [records]);
-
   const filteredRecords = records.filter(r => {
     const matchesSearch = (r.order_no || '').toLowerCase().includes(search.toLowerCase()) ||
       (r.customer || '').toLowerCase().includes(search.toLowerCase()) ||
       (r.part_name || '').toLowerCase().includes(search.toLowerCase());
     const matchesCompany = !companyFilter || companyFilter === 'All Companies' ||
       (r.customer || '').trim().toLowerCase() === companyFilter.trim().toLowerCase();
-    const matchesStatus = !statusFilter || statusFilter === 'All Status' ||
-      (r.status || '').trim().toLowerCase() === statusFilter.trim().toLowerCase();
-    return matchesSearch && matchesCompany && matchesStatus;
+    return matchesSearch && matchesCompany;
   });
 
-  const pager = usePager(filteredRecords, `${search}||${companyFilter}||${statusFilter}`);
+  const pager = usePager(filteredRecords, `${search}||${companyFilter}`);
 
   const searchInput = (
     <div className="relative shrink-0">
@@ -212,23 +188,6 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onView, onEd
                 <th className="p-3 font-semibold">Quantity</th>
                 <th className="p-3 font-semibold">Total Value</th>
                 <th className="p-3 font-semibold">Delivery Date</th>
-                <th className="p-3 font-semibold">
-                  <div className="flex items-center gap-1.5 flex-nowrap">
-                    <span className="whitespace-nowrap">Status</span>
-                    <select
-                      aria-label="Filter by Status"
-                      title="Filter by Status"
-                      value={statusFilter}
-                      onChange={e => setStatusFilter(e.target.value)}
-                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[110px] truncate shadow-xs"
-                    >
-                      <option value="All Status">All</option>
-                      {statuses.map(s => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                  </div>
-                </th>
                 <th className="p-3 font-semibold">Actions</th>
               </tr>
             </thead>
@@ -241,18 +200,6 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onView, onEd
                   <td className="p-3 text-sm text-slate-700">{record.quantity ?? '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{orderValue(record) ?? '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{record.delivery_date || '-'}</td>
-                  <td className="p-3">
-                    <select
-                      value={record.status || ''}
-                      onChange={(e) => void updateStatus(record, e.target.value)}
-                      className="text-sm text-slate-700 border border-slate-300 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-brand-500"
-                      title="Change status"
-                    >
-                      {Array.from(new Set([...ORDER_STATUSES, record.status].filter(Boolean))).map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                  </td>
                   <td className="p-3">
                     <div className="flex items-center gap-2">
                       <Button variant="secondary" size="sm" onClick={() => (onView ? onView(record) : void openRecord(record, false))}>View Details</Button>
