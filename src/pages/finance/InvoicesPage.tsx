@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Download, Eye, FileText, Plus, Printer, CreditCard, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { Badge, Button, Card, statusToVariant } from '@/components/ui/Card';
 import { FormField, inputClass, Modal } from '@/components/ui/Modal';
-import { PageHeader } from '@/components/ui/PageHeader';
 import { financeApi, type InvoiceDetail, type InvoiceRow, type InvoiceSummary } from '@/lib/finance';
 import { exportCsv, escapeHtml, printHtml } from '@/lib/reportExport';
 import { formatDate, formatINR, todayISO } from '@/lib/format';
@@ -11,6 +10,7 @@ import { tint } from '@/lib/entryTints';
 import { compactInput } from '@/lib/compactFields';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { downloadSalesInvoice, fetchCompanyPrintDetails } from '@/lib/brandedDocument';
 
 const PAGE = 10;
@@ -18,7 +18,11 @@ const cash = (v: string | number | null | undefined) => formatINR(v, { decimals:
 const emptySummary: InvoiceSummary = { total_invoices: 0, total_value: '0', total_received: '0', outstanding: '0', overdue_count: 0, overdue_amount: '0', by_status: {}, ageing: { current: '0', d31_60: '0', d61_90: '0', d90_plus: '0' }, top_customers: [], monthly: [] };
 
 export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
-  const { company } = useAuth();
+  const { company, canDo } = useAuth();
+  const canCreateInv: boolean = typeof canDo === 'function' ? !!canDo('invoices', 'create') : true;
+  const canEditInv: boolean = typeof canDo === 'function' ? !!canDo('invoices', 'edit') : true;
+  const canExportInv: boolean = typeof canDo === 'function' ? !!canDo('invoices', 'export') : true;
+  const { companyFilter, setCompanyFilter, companyOptions } = useHeaderKpis();
   const [searchParams] = useSearchParams();
   const linkedInvoiceId = searchParams.get('invoice') || '';
   const deliveryId = searchParams.get('delivery') || '';
@@ -258,6 +262,35 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
   };
   const pageCount = Math.max(1, Math.ceil(total / PAGE));
 
+  const [tableStatusFilter, setTableStatusFilter] = useState('All');
+
+  const allCompanies = useMemo(() => {
+    const set = new Set<string>();
+    rows.forEach(r => {
+      const c = (r.customer_name || '').trim();
+      if (c) set.add(c);
+    });
+    customers.forEach(c => {
+      if (c?.name) set.add(String(c.name).trim());
+    });
+    companyOptions.forEach(c => {
+      if (c && c !== 'All Companies') set.add(c);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [rows, customers, companyOptions]);
+
+  const allStatuses = ['Paid', 'Partially Paid', 'Overdue', 'Pending', 'Proforma', 'Credit Note', 'Cancelled'];
+
+  const displayedRows = useMemo(() => {
+    return rows.filter(r => {
+      const matchesCompany = !companyFilter || companyFilter === 'All Companies' ||
+        (r.customer_name || '').trim().toLowerCase() === companyFilter.trim().toLowerCase();
+      const matchesStatus = !tableStatusFilter || tableStatusFilter === 'All' ||
+        (r.status || '').trim().toLowerCase() === tableStatusFilter.trim().toLowerCase();
+      return matchesCompany && matchesStatus;
+    });
+  }, [rows, companyFilter, tableStatusFilter]);
+
   // The invoice fields live in exactly one place: rendered by the always-visible
   // New Invoice card above the table, and by the popup used when editing a record.
   const invoiceFormBody = (<>
@@ -293,8 +326,11 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
   </>);
  
   return <div className="p-4 lg:p-6 space-y-4 bg-slate-50 min-h-full">
-    {onBack&&<div><Button variant="secondary" size="sm" icon={<ArrowLeft size={14}/>} onClick={onBack}>Back</Button></div>}
-    <PageHeader title="Invoices" description="Create, manage and track sales invoices, taxes, payment terms and outstanding amounts." actions={<><Button variant="secondary" size="sm" icon={<Download size={14}/>} onClick={() => void exportRows()} disabled={busy}>Export</Button><Button variant="secondary" size="sm" icon={<Printer size={14}/>} onClick={printInvoice}>Print</Button></>}/>
+    <div className="flex flex-wrap items-center gap-2">
+      {onBack&&<Button variant="secondary" size="sm" icon={<ArrowLeft size={14}/>} onClick={onBack}>Back</Button>}
+      <h1 className="text-xl font-bold text-slate-800">Invoices</h1>
+      <div className="ml-auto flex items-center gap-2"><Button variant="secondary" size="sm" icon={<Download size={14}/>} onClick={() => void exportRows()} disabled={busy || !canExportInv} title={!canExportInv ? 'Invoice export permission is required' : undefined}>Export</Button><Button variant="secondary" size="sm" icon={<Printer size={14}/>} onClick={printInvoice}>Print</Button></div>
+    </div>
     {error && <div className="rounded border border-rose-200 bg-rose-50 p-2 text-sm text-rose-700">{error}</div>}
     <div className="flex overflow-auto border-b">{[['','All Invoices'],['Sales Invoice','Sales Invoice'],['Proforma Invoice','Proforma Invoice'],['Credit Note','Credit Note'],['Cancelled','Cancelled']].map(([v,l])=><button key={v} onClick={()=>{setTab(v);setPage(1)}} className={'px-4 py-2 text-xs font-semibold border-b-2 whitespace-nowrap '+(tab===v?'border-brand-600 text-brand-700':'border-transparent text-slate-500')}>{l}</button>)}</div>
     <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
@@ -323,28 +359,106 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
           {invoiceFormBody}
           <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-2.5">
             <Button variant="secondary" size="sm" onClick={() => { startNew(); setSavedNote(''); }}>Clear / Reset</Button>
-            <Button size="sm" onClick={() => void save()} disabled={busy}>{busy ? 'Saving...' : 'Save Invoice'}</Button>
+            <Button size="sm" onClick={() => void save()} disabled={busy || (!editId && !canCreateInv) || (!!editId && !canEditInv)} title={(!editId && !canCreateInv) ? 'Invoice create permission is required' : (!!editId && !canEditInv) ? 'Invoice edit permission is required' : undefined}>{busy ? 'Saving...' : 'Save Invoice'}</Button>
           </div>
         </div>
       </section>
     )}
  
     <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_330px] gap-4 items-start">
-      <Card className="overflow-hidden"><div className="overflow-auto"><table className="w-full min-w-[1000px] text-left"><thead><tr className="bg-slate-50 border-b text-[10px] uppercase text-slate-500">{['#','Invoice No','Date','Company','PO No','Basic','CGST','SGST','IGST','Total','Received','Balance','Status',''].map(x=><th key={x} className="px-2 py-2">{x}</th>)}</tr></thead><tbody>
-        {loading?<tr><td colSpan={14} className="p-10 text-center">Loading invoices...</td></tr>:rows.map((r,i)=><tr key={r.id} onClick={()=>void view(r)} className="border-b hover:bg-blue-50/50 cursor-pointer text-xs"><td className="px-2 py-2">{(page-1)*PAGE+i+1}</td><td className="px-2 py-2 font-semibold text-blue-700">{r.invoice_no}</td><td className="px-2 py-2">{formatDate(r.invoice_date)}</td><td className="px-2 py-2">{r.customer_name||'-'}</td><td className="px-2 py-2">{r.po_no||'-'}</td><td className="px-2 py-2 text-right">{cash(r.basic_value)}</td><td className="px-2 py-2 text-right">{cash(r.cgst)}</td><td className="px-2 py-2 text-right">{cash(r.sgst)}</td><td className="px-2 py-2 text-right">{cash(r.igst)}</td><td className="px-2 py-2 text-right font-semibold">{cash(r.total)}</td><td className="px-2 py-2 text-right">{cash(r.received)}</td><td className="px-2 py-2 text-right">{cash(r.balance)}</td><td className="px-2 py-2"><Badge variant={statusToVariant(r.status)}>{r.status}</Badge></td><td className="px-2 py-2"><Eye size={14}/></td></tr>)}
-        {!loading&&!rows.length&&<tr><td colSpan={14} className="p-6 text-center text-slate-500">No invoices found.</td></tr>}
-      </tbody></table></div><div className="flex justify-between p-2 border-t text-xs text-slate-500"><span>{total?((page-1)*PAGE+1):0}-{Math.min(page*PAGE,total)} of {total}</span><div className="flex gap-2"><button disabled={page<=1} onClick={()=>void reload(page-1)}><ChevronLeft size={16}/></button>{page}/{pageCount}<button disabled={page>=pageCount} onClick={()=>void reload(page+1)}><ChevronRight size={16}/></button></div></div></Card>
+      <Card className="overflow-hidden">
+        <div className="overflow-auto">
+          <table className="w-full min-w-[1000px] text-left">
+            <thead>
+              <tr className="bg-slate-50 border-b text-[10px] uppercase text-slate-500">
+                <th className="px-2 py-2">#</th>
+                <th className="px-2 py-2">Invoice No</th>
+                <th className="px-2 py-2">Date</th>
+                <th className="px-2 py-2">
+                  <div className="flex items-center gap-1.5 flex-nowrap">
+                    <span className="whitespace-nowrap">Company</span>
+                    <select
+                      aria-label="Filter by Company"
+                      title="Filter by Company"
+                      value={companyFilter || 'All Companies'}
+                      onChange={e => setCompanyFilter(e.target.value)}
+                      className="text-[10px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[120px] truncate shadow-xs"
+                    >
+                      <option value="All Companies">All</option>
+                      {allCompanies.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
+                <th className="px-2 py-2">PO No</th>
+                <th className="px-2 py-2 text-right">Basic</th>
+                <th className="px-2 py-2 text-right">CGST</th>
+                <th className="px-2 py-2 text-right">SGST</th>
+                <th className="px-2 py-2 text-right">IGST</th>
+                <th className="px-2 py-2 text-right">Total</th>
+                <th className="px-2 py-2 text-right">Received</th>
+                <th className="px-2 py-2 text-right">Balance</th>
+                <th className="px-2 py-2">
+                  <div className="flex items-center gap-1.5 flex-nowrap">
+                    <span className="whitespace-nowrap">Status</span>
+                    <select
+                      aria-label="Filter by Status"
+                      title="Filter by Status"
+                      value={tableStatusFilter}
+                      onChange={e => setTableStatusFilter(e.target.value)}
+                      className="text-[10px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[100px] truncate shadow-xs"
+                    >
+                      <option value="All">All</option>
+                      {allStatuses.map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
+                <th className="px-2 py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={14} className="p-10 text-center">Loading invoices...</td></tr>
+              ) : displayedRows.map((r, i) => (
+                <tr key={r.id} onClick={() => void view(r)} className="border-b hover:bg-blue-50/50 cursor-pointer text-xs">
+                  <td className="px-2 py-2">{(page - 1) * PAGE + i + 1}</td>
+                  <td className="px-2 py-2 font-semibold text-blue-700">{r.invoice_no}</td>
+                  <td className="px-2 py-2">{formatDate(r.invoice_date)}</td>
+                  <td className="px-2 py-2">{r.customer_name || '-'}</td>
+                  <td className="px-2 py-2">{r.po_no || '-'}</td>
+                  <td className="px-2 py-2 text-right">{cash(r.basic_value)}</td>
+                  <td className="px-2 py-2 text-right">{cash(r.cgst)}</td>
+                  <td className="px-2 py-2 text-right">{cash(r.sgst)}</td>
+                  <td className="px-2 py-2 text-right">{cash(r.igst)}</td>
+                  <td className="px-2 py-2 text-right font-semibold">{cash(r.total)}</td>
+                  <td className="px-2 py-2 text-right">{cash(r.received)}</td>
+                  <td className="px-2 py-2 text-right">{cash(r.balance)}</td>
+                  <td className="px-2 py-2"><Badge variant={statusToVariant(r.status)}>{r.status}</Badge></td>
+                  <td className="px-2 py-2"><Eye size={14} /></td>
+                </tr>
+              ))}
+              {!loading && !displayedRows.length && (
+                <tr><td colSpan={14} className="p-6 text-center text-slate-500">No invoices found.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex justify-between p-2 border-t text-xs text-slate-500"><span>{total?((page-1)*PAGE+1):0}-{Math.min(page*PAGE,total)} of {total}</span><div className="flex gap-2"><button disabled={page<=1} onClick={()=>void reload(page-1)}><ChevronLeft size={16}/></button>{page}/{pageCount}<button disabled={page>=pageCount} onClick={()=>void reload(page+1)}><ChevronRight size={16}/></button></div></div>
+      </Card>
       <Card className="overflow-hidden"><div className="p-3 border-b bg-slate-50"><h3 className="font-bold text-sm">Invoice Preview</h3><p className="text-[10px] text-slate-500">Selected database record</p></div>{!selected?<div className="p-10 text-center text-sm text-slate-500">Select an invoice.</div>:<div className="p-4 space-y-3 text-xs">
         <div className="flex justify-between"><b className="text-lg">ARGUS CNC</b><Badge variant={statusToVariant(selected.status)}>{selected.status}</Badge></div>
         <div className="grid grid-cols-2 gap-y-1 border-y py-2"><span>Invoice No</span><b>{selected.invoice_no}</b><span>Date</span><b>{formatDate(selected.invoice_date)}</b><span>Company</span><b>{selected.customer_name}</b><span>PO / DC</span><b>{selected.po_no||'-'} / {selected.dc_no||'-'}</b></div>
         <table className="w-full"><thead><tr className="bg-slate-50"><th className="p-1 text-left">Item</th><th className="p-1 text-right">Qty</th><th className="p-1 text-right">Rate</th><th className="p-1 text-right">Amount</th></tr></thead><tbody>{(selected.items||[]).map(i=><tr key={i.id} className="border-t"><td className="p-1">{i.description}</td><td className="p-1 text-right">{i.quantity} {i.unit||''}</td><td className="p-1 text-right">{cash(i.rate)}</td><td className="p-1 text-right">{cash(i.amount)}</td></tr>)}</tbody></table>
         <Total label="Basic Value" value={cash(selected.basic_value)}/><Total label="CGST / SGST / IGST" value={cash(selected.cgst)+' / '+cash(selected.sgst)+' / '+cash(selected.igst)}/><Total label="Received" value={cash(selected.received)}/><Total label="Balance" value={cash(selected.balance)} bold/><Total label="Total" value={cash(selected.total)} bold/>
-        <div className="flex flex-wrap gap-1.5 border-t pt-3"><Button size="sm" variant="secondary" onClick={()=>void downloadInvoice()}><Download size={13}/> Download PDF</Button><Button size="sm" variant="secondary" onClick={printInvoice}><Printer size={13}/> Print</Button><Button size="sm" onClick={()=>void recordReceipt()} disabled={Number(selected.balance)<=0||selected.cancelled}><CreditCard size={13}/> Receipt</Button><Button size="sm" variant="secondary" onClick={startEdit} disabled={Number(selected.received)!==0||selected.cancelled||selected.invoice_type==='Credit Note'}>Edit</Button>{selected.invoice_type==='Sales Invoice'&&!selected.cancelled&&(<><Button size="sm" variant="secondary" onClick={()=>void createCreditNote()}>Credit Note</Button><Button size="sm" variant="danger" onClick={()=>void cancelInvoice()}>Cancel</Button></>)}</div>
+        <div className="flex flex-wrap gap-1.5 border-t pt-3"><Button size="sm" variant="secondary" onClick={()=>void downloadInvoice()} disabled={!canExportInv} title={!canExportInv ? 'Invoice export permission is required' : undefined}><Download size={13}/> Download PDF</Button><Button size="sm" variant="secondary" onClick={printInvoice}><Printer size={13}/> Print</Button><Button size="sm" onClick={()=>void recordReceipt()} disabled={Number(selected.balance)<=0||selected.cancelled}><CreditCard size={13}/> Receipt</Button><Button size="sm" variant="secondary" onClick={startEdit} disabled={Number(selected.received)!==0||selected.cancelled||selected.invoice_type==='Credit Note'||!canEditInv} title={!canEditInv ? 'Invoice edit permission is required' : undefined}>Edit</Button>{selected.invoice_type==='Sales Invoice'&&!selected.cancelled&&(<><Button size="sm" variant="secondary" onClick={()=>void createCreditNote()}>Credit Note</Button><Button size="sm" variant="danger" onClick={()=>void cancelInvoice()}>Cancel</Button></>)}</div>
       </div>}</Card>
     </div>
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4"><Card className="p-4"><h3 className="font-bold text-sm mb-3">Invoice Activity</h3><div className="h-24 flex items-end gap-1 border-b">{stats.monthly.length?stats.monthly.map(x=><div key={x.day} title={formatDate(x.day)+' '+cash(x.invoiced)} className="flex-1 bg-blue-500 rounded-t" style={{height:Math.max(3,Number(x.invoiced)/Math.max(1,...stats.monthly.map(y=>Number(y.invoiced)))*90)}}/>):<span className="w-full text-center text-xs text-slate-400">No invoice activity.</span>}</div><p className="text-[10px] text-slate-500 mt-2">Actual invoice amounts from the selected date range</p></Card><Card className="p-4"><h3 className="font-bold text-sm mb-2">Outstanding by Ageing</h3><Total label="0-30 days" value={cash(stats.ageing.current)}/><Total label="31-60 days" value={cash(stats.ageing.d31_60)}/><Total label="61-90 days" value={cash(stats.ageing.d61_90)}/><Total label="Over 90 days" value={cash(stats.ageing.d90_plus)}/></Card><Card className="p-4"><h3 className="font-bold text-sm mb-2">Invoice Status</h3><div className="grid grid-cols-2 gap-2">{['Paid','Partially Paid','Overdue','Credit Note','Cancelled'].map(x=><div key={x} className="border rounded p-2 flex justify-between text-xs">{x}<b>{stats.by_status?.[x]||0}</b></div>)}</div><h4 className="font-semibold text-xs mt-3">Top Companies</h4>{stats.top_customers?.slice(0,4).map(x=><Total key={x.customer} label={x.customer} value={cash(x.value)}/>)}</Card></div>
 
-    <Modal open={formOpen && !!editId} onClose={()=>!busy&&setFormOpen(false)} title="Edit Invoice" subtitle="Tax totals and ledger postings are calculated by the database." size="2xl" footer={<><Button variant="secondary" onClick={()=>setFormOpen(false)}>Cancel</Button><Button onClick={()=>void save()} disabled={busy}>{busy?'Saving...':'Save Invoice'}</Button></>}>
+    <Modal open={formOpen && !!editId} onClose={()=>!busy&&setFormOpen(false)} title="Edit Invoice" subtitle="Tax totals and ledger postings are calculated by the database." size="2xl" footer={<><Button variant="secondary" onClick={()=>setFormOpen(false)}>Cancel</Button><Button onClick={()=>void save()} disabled={busy || !canEditInv} title={!canEditInv ? 'Invoice edit permission is required' : undefined}>{busy?'Saving...':'Save Invoice'}</Button></>}>
       {invoiceFormBody}
       {invoiceFormBody}
     </Modal>

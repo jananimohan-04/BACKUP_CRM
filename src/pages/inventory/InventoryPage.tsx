@@ -1032,7 +1032,18 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
             {preview
               ? <img src={preview} alt="" className="w-14 h-14 rounded-md object-cover border border-slate-200" />
               : <div className="w-14 h-14 rounded-md bg-slate-100 text-slate-400 flex items-center justify-center"><Package size={20} /></div>}
-            <input type="file" accept="image/*" onChange={e => setFile(e.target.files?.[0] ?? null)} className="text-xs text-slate-600 min-w-0" />
+            <div className="flex items-center gap-2">
+              <input type="file" accept="image/*" onChange={e => setFile(e.target.files?.[0] ?? null)} className="text-xs text-slate-600 min-w-0" />
+              {(file || preview) && (
+                <button
+                  type="button"
+                  onClick={() => { setFile(null); setPreview(null); set('image_url', ''); }}
+                  className="px-2 py-1 text-xs font-semibold text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded border border-rose-200 transition-colors shrink-0"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
           </div>
         </FormField>
         {isNew ? (

@@ -31,12 +31,26 @@ interface HeaderKpiContextValue {
    *  Pages that set it hide their own PageHeader to avoid duplication. */
   header: { title: string; subtitle?: string } | null;
   setHeader: (h: { title: string; subtitle?: string } | null) => void;
+  /** Company-wise filter for the records ('down datas') across the top 8 pages. */
+  companyFilter: string;
+  setCompanyFilter: (company: string) => void;
+  companyOptions: string[];
+  setCompanyOptions: (options: string[]) => void;
 }
 
 const HeaderKpiContext = createContext<HeaderKpiContextValue | null>(null);
 
 export function HeaderKpiProvider({ children }: { children: React.ReactNode }) {
   const [kpis, setKpisState] = useState<HeaderKpi[]>([]);
+  const [companyFilter, setCompanyFilter] = useState<string>('All Companies');
+  const [companyOptions, setCompanyOptionsState] = useState<string[]>([]);
+
+  const setCompanyOptions = useCallback((next: string[]) => {
+    setCompanyOptionsState(prev => {
+      if (prev.length === next.length && prev.every((v, i) => v === next[i])) return prev;
+      return next;
+    });
+  }, []);
 
   // Only rewrite the array when the contents actually changed — SalesPipelinePage
   // recomputes counts on every render and this context sits above the whole app.
@@ -58,14 +72,24 @@ export function HeaderKpiProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <HeaderKpiContext.Provider value={{ kpis, setKpis, header, setHeader }}>
+    <HeaderKpiContext.Provider value={{ kpis, setKpis, header, setHeader, companyFilter, setCompanyFilter, companyOptions, setCompanyOptions }}>
       {children}
     </HeaderKpiContext.Provider>
   );
 }
 
+const defaultHeaderKpiContext: HeaderKpiContextValue = {
+  kpis: [],
+  setKpis: () => {},
+  header: null,
+  setHeader: () => {},
+  companyFilter: 'All Companies',
+  setCompanyFilter: () => {},
+  companyOptions: [],
+  setCompanyOptions: () => {},
+};
+
 export function useHeaderKpis() {
   const ctx = useContext(HeaderKpiContext);
-  if (!ctx) throw new Error('useHeaderKpis must be used within HeaderKpiProvider');
-  return ctx;
+  return ctx || defaultHeaderKpiContext;
 }

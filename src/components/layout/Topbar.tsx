@@ -104,7 +104,7 @@ export function Topbar({
         );
       })()}
 
-      {/* Company: shown read-only for normal users, switchable for the Super Admin (in the profile menu) */}
+      {/* Company: shown read-only for normal users */}
       {company && !isSuperAdmin && (
         <div className="hidden md:flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-200 rounded-md text-xs font-bold text-slate-700">
           <Building2 size={14} className="text-slate-400" />
@@ -112,13 +112,13 @@ export function Topbar({
         </div>
       )}
 
-      {/* Date + profile merged in one box */}
+      {/* Date + profile box */}
       <div className="relative shrink-0" ref={profileRef}>
         <button
           onClick={() => setShowProfile(!showProfile)}
           className="flex items-center gap-1.5 px-2 py-1.5 hover:bg-slate-100 rounded-md transition-colors border border-slate-200 bg-white shadow-sm shrink-0"
         >
-          <div className="hidden 2xl:flex items-center gap-1.5 shrink-0">
+          <div className="hidden sm:flex items-center gap-1.5 shrink-0">
             <div className="w-5 h-5 rounded bg-gradient-to-br from-brand-500 to-brand-800 flex items-center justify-center text-white shrink-0">
               <CalendarDays size={12} />
             </div>
@@ -128,7 +128,7 @@ export function Topbar({
           <div className="w-6 h-6 rounded bg-gradient-to-br from-brand-600 to-brand-800 flex items-center justify-center text-white text-[10px] font-bold shadow-sm shrink-0">
             {initials}
           </div>
-          <div className="hidden 2xl:flex items-center gap-1.5 text-left leading-none min-w-0">
+          <div className="hidden lg:flex items-center gap-1.5 text-left leading-none min-w-0">
             <p className="text-[9px] font-bold text-slate-700 max-w-[120px] truncate">{displayName}</p>
             <span className="text-[8px] text-slate-400 font-medium uppercase tracking-wider whitespace-nowrap">· {ROLE_LABELS[profile?.role ?? ''] ?? ''}</span>
           </div>
@@ -162,27 +162,14 @@ export function Topbar({
                   </select>
                 </div>
               ) : (
-                <p className="text-xs font-bold text-slate-700 truncate">{company?.company_name || '—'}</p>
+                <p className="text-xs font-bold text-slate-700">{company?.company_name ?? '—'}</p>
               )}
             </div>
-            <div className="py-2">
-              <button className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-brand-600 transition-colors font-medium">
-                <UserIcon size={16} /> My Profile
-              </button>
-              <button className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-brand-600 transition-colors font-medium">
-                <Settings size={16} /> Preferences
-              </button>
-              <button className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-brand-600 transition-colors font-medium">
-                <HelpCircle size={16} /> Documentation
-              </button>
-            </div>
-            <div className="border-t border-slate-100 py-2">
-              <button
-                onClick={onLogout}
-                className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors font-medium"
-              >
-                <LogOut size={16} /> Sign Out
-              </button>
+            <div className="p-2">
+              <button onClick={() => { setShowProfile(false); onNavigate('/admin/settings'); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-left cursor-pointer"><Settings size={15} className="text-slate-400" /> Settings</button>
+              <button onClick={() => { setShowProfile(false); onNavigate('/help'); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-left cursor-pointer"><HelpCircle size={15} className="text-slate-400" /> Help & Support</button>
+              <div className="my-1 border-t border-slate-100" />
+              <button onClick={() => { setShowProfile(false); onLogout(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors text-left cursor-pointer"><LogOut size={15} className="text-red-400" /> Sign Out</button>
             </div>
           </div>
         )}

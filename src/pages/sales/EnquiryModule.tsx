@@ -1,14 +1,18 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, type ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Search, ArrowLeft, FileText } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
+
 export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView, entryForm }: { onBack: () => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onView?: (record: any) => void; entryForm?: ReactNode | ((props: { onBack: () => void; searchSlot: ReactNode }) => ReactNode) }) {
+  const { companyFilter, setCompanyFilter, companyOptions } = useHeaderKpis();
   const [enquiries, setEnquiries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All');
   const [selectedEnquiry, setSelectedEnquiry] = useState<any | null>(null);
   const [relatedQuote, setRelatedQuote] = useState<any | null>(null);
 
@@ -39,10 +43,18 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
     setRelatedQuote(quote || null);
   };
 
-  const filteredEnquiries = enquiries.filter(e => 
-    (e.enquiry_no || '').toLowerCase().includes(search.toLowerCase()) || 
-    (e.customer || '').toLowerCase().includes(search.toLowerCase())
-  );
+  const companies = useMemo(() => Array.from(new Set([...companyOptions, ...enquiries.map(e => e.customer)])).filter(Boolean).sort(), [companyOptions, enquiries]);
+  const statuses = useMemo(() => Array.from(new Set(enquiries.map(e => e.status || 'New'))).filter(Boolean).sort(), [enquiries]);
+
+  const filteredEnquiries = enquiries.filter(e => {
+    const matchesSearch = (e.enquiry_no || '').toLowerCase().includes(search.toLowerCase()) || 
+      (e.customer || '').toLowerCase().includes(search.toLowerCase()) ||
+      productNames(e).toLowerCase().includes(search.toLowerCase());
+    const matchesCompany = !companyFilter || companyFilter === 'All Companies' || 
+      (e.customer || '').trim().toLowerCase() === companyFilter.trim().toLowerCase();
+    const matchesStatus = statusFilter === 'All' || (e.status || 'New').toLowerCase() === statusFilter.toLowerCase();
+    return matchesSearch && matchesCompany && matchesStatus;
+  });
 
   const productNames = (enq: any): string => {
     try {
@@ -68,7 +80,7 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
     return '—';
   };
 
-  const pager = usePager(filteredEnquiries, filteredEnquiries.length);
+  const pager = usePager(filteredEnquiries, `${search}||${companyFilter}||${statusFilter}`);
 
   const searchInput = (
     <div className="relative shrink-0">
@@ -78,7 +90,7 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
         placeholder="Search enquiries..." 
         value={search}
         onChange={e => setSearch(e.target.value)}
-        className="pl-8 pr-2.5 py-1 text-xs border border-slate-300 rounded-md focus:outline-none focus:border-brand-500 bg-white shadow-sm w-32 sm:w-36"
+        className="pl-8 pr-2.5 py-1 text-xs border border-slate-300 rounded-md focus:outline-none focus:border-brand-500 bg-white shadow-sm w-36 sm:w-44"
       />
     </div>
   );
@@ -111,11 +123,43 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
               <tr className="bg-slate-100 text-slate-700 text-xs uppercase tracking-wider border-b border-slate-300">
                 <th className="p-3 font-semibold">Enquiry No</th>
                 <th className="p-3 font-semibold">Date</th>
-                <th className="p-3 font-semibold">Company</th>
+                <th className="p-3 font-semibold">
+                  <div className="flex items-center gap-1.5 flex-nowrap">
+                    <span className="whitespace-nowrap">Company</span>
+                    <select
+                      aria-label="Filter by Company"
+                      title="Filter by Company"
+                      value={companyFilter || 'All Companies'}
+                      onChange={e => setCompanyFilter(e.target.value)}
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[125px] truncate shadow-xs"
+                    >
+                      <option value="All Companies">All</option>
+                      {companies.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
                 <th className="p-3 font-semibold">Products</th>
                 <th className="p-3 font-semibold">Remarks</th>
                 <th className="p-3 font-semibold">Quantity</th>
-                <th className="p-3 font-semibold">Status</th>
+                <th className="p-3 font-semibold">
+                  <div className="flex items-center gap-1.5 flex-nowrap">
+                    <span className="whitespace-nowrap">Status</span>
+                    <select
+                      aria-label="Filter by Status"
+                      title="Filter by Status"
+                      value={statusFilter}
+                      onChange={e => setStatusFilter(e.target.value)}
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[95px] truncate shadow-xs"
+                    >
+                      <option value="All">All</option>
+                      {statuses.map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
                 <th className="p-3 font-semibold">Actions</th>
               </tr>
             </thead>

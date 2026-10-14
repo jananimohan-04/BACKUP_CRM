@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Search, Download, Eye, Edit2, Trash2 } from 'lucide-react';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 import { KanbanCard } from './SalesPipelinePage';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 
 interface PipelineListViewProps {
   cards: KanbanCard[];
@@ -12,11 +13,21 @@ interface PipelineListViewProps {
 
 
 export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineListViewProps) {
+  const { companyFilter, setCompanyFilter, companyOptions } = useHeaderKpis();
   const [search, setSearch] = useState('');
-  const [customerFilter, setCustomerFilter] = useState('All');
   const [stageFilter, setStageFilter] = useState('All');
 
-  const customers = Array.from(new Set(cards.map(c => c.customer))).filter(Boolean).sort();
+  const customers = useMemo(() => {
+    const set = new Set<string>();
+    cards.forEach(c => {
+      const cust = (c.customer || '').trim();
+      if (cust) set.add(cust);
+    });
+    companyOptions.forEach(c => {
+      if (c && c !== 'All Companies') set.add(c);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [cards, companyOptions]);
 
   // Pipeline stages, labelled exactly like the summary cards above the list.
   const STAGE_LABELS: Record<string, string> = {
@@ -38,13 +49,14 @@ export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineLi
       (c.customer || '').toLowerCase().includes(search.toLowerCase()) ||
       (c.part || '').toLowerCase().includes(search.toLowerCase());
 
-    const matchesCustomer = customerFilter === 'All' || c.customer === customerFilter;
+    const matchesCustomer = !companyFilter || companyFilter === 'All Companies' ||
+      (c.customer || '').trim().toLowerCase() === companyFilter.trim().toLowerCase();
     const matchesStage = stageFilter === 'All' || stageOf(c) === stageFilter;
 
     return matchesSearch && matchesCustomer && matchesStage;
   });
 
-  const pager = usePager(filteredCards, `${search}|${customerFilter}|${stageFilter}`);
+  const pager = usePager(filteredCards, `${search}|${companyFilter}|${stageFilter}`);
   const { pageCards, start } = { pageCards: pager.pageItems, start: pager.start };
 
   return (
@@ -60,13 +72,7 @@ export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineLi
             className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-brand-500"
           />
         </div>
-        
-        <select value={customerFilter} onChange={e => setCustomerFilter(e.target.value)} className="border border-slate-300 rounded-lg text-sm px-3 py-1 focus:outline-none focus:border-brand-500">
-          <option value="All">All Companies</option>
-          {customers.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
-
-        <select value={stageFilter} onChange={e => setStageFilter(e.target.value)} className="border border-slate-300 rounded-lg text-sm px-3 py-1 focus:outline-none focus:border-brand-500">
+        <select value={stageFilter} onChange={e => setStageFilter(e.target.value)} className="border border-slate-300 rounded-lg text-sm px-3 py-1.5 focus:outline-none focus:border-brand-500 bg-white">
           <option value="All">All Stages</option>
           {stageOptions.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
@@ -83,9 +89,41 @@ export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineLi
               <th className="bg-slate-800 px-4 py-3.5 w-12">#</th>
               <th className="bg-slate-800 px-4 py-3.5">Enquiry No</th>
               <th className="bg-slate-800 px-4 py-3.5">Date</th>
-              <th className="bg-slate-800 px-4 py-3.5">Company</th>
+              <th className="bg-slate-800 px-4 py-3.5">
+                <div className="flex items-center gap-1.5 flex-nowrap">
+                  <span className="whitespace-nowrap">Company</span>
+                  <select
+                    aria-label="Filter by Company"
+                    title="Filter by Company"
+                    value={companyFilter || 'All Companies'}
+                    onChange={e => setCompanyFilter(e.target.value)}
+                    className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[125px] truncate shadow-xs"
+                  >
+                    <option value="All Companies">All</option>
+                    {customers.map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+              </th>
               <th className="bg-slate-800 px-4 py-3.5">Products</th>
-              <th className="bg-slate-800 px-4 py-3.5">Stage</th>
+              <th className="bg-slate-800 px-4 py-3.5">
+                <div className="flex items-center gap-1.5 flex-nowrap">
+                  <span className="whitespace-nowrap">Stage</span>
+                  <select
+                    aria-label="Filter by Stage"
+                    title="Filter by Stage"
+                    value={stageFilter}
+                    onChange={e => setStageFilter(e.target.value)}
+                    className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[110px] truncate shadow-xs"
+                  >
+                    <option value="All">All</option>
+                    {stageOptions.map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+              </th>
               <th className="bg-slate-800 px-4 py-3.5 text-right">Qty</th>
               <th className="bg-slate-800 px-4 py-3.5">Remarks</th>
               <th className="bg-slate-800 px-4 py-3.5 text-center">Actions</th>

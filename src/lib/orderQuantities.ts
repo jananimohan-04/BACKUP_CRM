@@ -171,11 +171,19 @@ export function summarizeSalesOrder(
     }
     return prev[b.length];
   };
+  const stripTime = (s: string) => s
+    .replace(/\s*-\s*\d{2}[-/.]\d{2}[-/.]\d{2,4}\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?/i, '')
+    .replace(/\s*-\s*\d{2}[A-Za-z]{3}\d{2}[-,]\s*\d{1,2}:\d{2}(?:\s*[AP]M)?/i, '')
+    .trim();
   const resolve = (k: string): string => {
     if (!k || orderedBy.has(k)) return k;
-    const f = flat(k); const digits = f.replace(/[^0-9]/g, ''); const letters = f.replace(/[0-9]/g, '');
+    const baseK = stripTime(k);
     for (const o of orderedBy.keys()) {
-      const of = flat(o);
+      if (stripTime(o) === baseK) return o;
+    }
+    const f = flat(baseK); const digits = f.replace(/[^0-9]/g, ''); const letters = f.replace(/[0-9]/g, '');
+    for (const o of orderedBy.keys()) {
+      const of = flat(stripTime(o));
       if (of === f) return o;
       if (of.replace(/[^0-9]/g, '') === digits) {
         const ol = of.replace(/[0-9]/g, '');

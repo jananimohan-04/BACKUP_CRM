@@ -1,15 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Search, ArrowLeft, FileText } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { InvoicesPage } from '@/pages/finance/InvoicesPage';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 
 export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
+  const { companyFilter, setCompanyFilter, companyOptions } = useHeaderKpis();
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All Status');
 
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
 
@@ -29,12 +32,39 @@ export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
     setSelectedRecord(record);
   };
 
-  const filteredRecords = records.filter(r =>
-    (r.invoice_no || '').toLowerCase().includes(search.toLowerCase()) ||
-    (r.customer_name || '').toLowerCase().includes(search.toLowerCase())
-  );
+  const companies = useMemo(() => {
+    const set = new Set<string>();
+    records.forEach(r => {
+      const c = (r.customer_name || '').trim();
+      if (c) set.add(c);
+    });
+    companyOptions.forEach(c => {
+      if (c && c !== 'All Companies') set.add(c);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [records, companyOptions]);
 
-  const pager = usePager(filteredRecords, filteredRecords.length);
+  const statuses = useMemo(() => {
+    const set = new Set<string>();
+    records.forEach(r => {
+      const s = (r.status || '').trim();
+      if (s) set.add(s);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [records]);
+
+  const filteredRecords = records.filter(r => {
+    const matchesSearch = (r.invoice_no || '').toLowerCase().includes(search.toLowerCase()) ||
+      (r.customer_name || '').toLowerCase().includes(search.toLowerCase()) ||
+      (r.part_name || '').toLowerCase().includes(search.toLowerCase());
+    const matchesCompany = !companyFilter || companyFilter === 'All Companies' ||
+      (r.customer_name || '').trim().toLowerCase() === companyFilter.trim().toLowerCase();
+    const matchesStatus = !statusFilter || statusFilter === 'All Status' ||
+      (r.status || '').trim().toLowerCase() === statusFilter.trim().toLowerCase();
+    return matchesSearch && matchesCompany && matchesStatus;
+  });
+
+  const pager = usePager(filteredRecords, `${search}||${companyFilter}||${statusFilter}`);
 
   return (
     <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-indigo-400/30 overflow-hidden flex flex-col">
@@ -70,11 +100,43 @@ export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="p-3 font-semibold">Invoice No</th>
-                <th className="p-3 font-semibold">Company</th>
+                <th className="p-3 font-semibold">
+                  <div className="flex items-center gap-1.5 flex-nowrap">
+                    <span className="whitespace-nowrap">Company</span>
+                    <select
+                      aria-label="Filter by Company"
+                      title="Filter by Company"
+                      value={companyFilter || 'All Companies'}
+                      onChange={e => setCompanyFilter(e.target.value)}
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[125px] truncate shadow-xs"
+                    >
+                      <option value="All Companies">All</option>
+                      {companies.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
                 <th className="p-3 font-semibold">Product Name</th>
                 <th className="p-3 font-semibold">Quantity</th>
                 <th className="p-3 font-semibold">Amount</th>
-                <th className="p-3 font-semibold">Status</th>
+                <th className="p-3 font-semibold">
+                  <div className="flex items-center gap-1.5 flex-nowrap">
+                    <span className="whitespace-nowrap">Status</span>
+                    <select
+                      aria-label="Filter by Status"
+                      title="Filter by Status"
+                      value={statusFilter}
+                      onChange={e => setStatusFilter(e.target.value)}
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[110px] truncate shadow-xs"
+                    >
+                      <option value="All Status">All</option>
+                      {statuses.map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
                 <th className="p-3 font-semibold">Actions</th>
               </tr>
             </thead>

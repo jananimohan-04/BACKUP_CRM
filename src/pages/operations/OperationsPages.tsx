@@ -33,6 +33,7 @@ const statusFor = (d: Delivery, records: Delivery[] = [], order?: SalesOrder) =>
   const delivered = orderDelivered(records, d.sales_order_id);
   if (order && delivered >= Number(order.quantity || 0)) return 'Delivered';
   if (order && delivered > 0) return 'Partially Delivered';
+  if (d.status === 'Ready for Invoice') return 'Ready for Invoice';
   return d.status === 'Delivered' || d.status === 'Billed' ? 'Delivered' : 'Pending';
 };
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type ReactNode } from 'react';
+import { useState, useEffect, useRef, useMemo, type ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import { fetchOrderQty, summarizeSalesOrder } from '@/lib/orderQuantities';
 import { Search, ArrowLeft } from 'lucide-react';
@@ -6,15 +6,19 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { SalesOrderSection } from './SalesOrderSection';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
+import { formatLeadProductDisplay } from './SalesPipelinePage';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 
 const orderValue = (r: any) => r.total_value ?? r.value;
 
 const ORDER_STATUSES = ['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'];
 
 export function SalesOrderModule({ onBack, onDelete, refreshSignal, onView, onEdit, entryForm }: { onBack: () => void; onDelete?: (record: any) => void; refreshSignal?: number; onView?: (record: any) => void; onEdit?: (record: any) => void; entryForm?: ReactNode | ((props: { onBack: () => void; searchSlot: ReactNode }) => ReactNode) }) {
+  const { companyFilter, setCompanyFilter, companyOptions } = useHeaderKpis();
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All Status');
 
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -112,12 +116,40 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onView, onEd
     setEditMode(!editMode);
   };
 
-  const filteredRecords = records.filter(r =>
-    (r.order_no || '').toLowerCase().includes(search.toLowerCase()) ||
-    (r.customer || '').toLowerCase().includes(search.toLowerCase())
-  );
+  const companies = useMemo(() => {
+    const set = new Set<string>();
+    records.forEach(r => {
+      const c = (r.customer || '').trim();
+      if (c) set.add(c);
+    });
+    companyOptions.forEach(c => {
+      if (c && c !== 'All Companies') set.add(c);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [records, companyOptions]);
 
-  const pager = usePager(filteredRecords, filteredRecords.length);
+  const statuses = useMemo(() => {
+    const set = new Set<string>();
+    records.forEach(r => {
+      const s = (r.status || '').trim();
+      if (s) set.add(s);
+    });
+    ORDER_STATUSES.forEach(s => set.add(s));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [records]);
+
+  const filteredRecords = records.filter(r => {
+    const matchesSearch = (r.order_no || '').toLowerCase().includes(search.toLowerCase()) ||
+      (r.customer || '').toLowerCase().includes(search.toLowerCase()) ||
+      (r.part_name || '').toLowerCase().includes(search.toLowerCase());
+    const matchesCompany = !companyFilter || companyFilter === 'All Companies' ||
+      (r.customer || '').trim().toLowerCase() === companyFilter.trim().toLowerCase();
+    const matchesStatus = !statusFilter || statusFilter === 'All Status' ||
+      (r.status || '').trim().toLowerCase() === statusFilter.trim().toLowerCase();
+    return matchesSearch && matchesCompany && matchesStatus;
+  });
+
+  const pager = usePager(filteredRecords, `${search}||${companyFilter}||${statusFilter}`);
 
   const searchInput = (
     <div className="relative shrink-0">
@@ -159,12 +191,44 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onView, onEd
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="p-3 font-semibold">Order No</th>
-                <th className="p-3 font-semibold">Company</th>
+                <th className="p-3 font-semibold">
+                  <div className="flex items-center gap-1.5 flex-nowrap">
+                    <span className="whitespace-nowrap">Company</span>
+                    <select
+                      aria-label="Filter by Company"
+                      title="Filter by Company"
+                      value={companyFilter || 'All Companies'}
+                      onChange={e => setCompanyFilter(e.target.value)}
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[125px] truncate shadow-xs"
+                    >
+                      <option value="All Companies">All</option>
+                      {companies.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
                 <th className="p-3 font-semibold">Part Name</th>
                 <th className="p-3 font-semibold">Quantity</th>
                 <th className="p-3 font-semibold">Total Value</th>
                 <th className="p-3 font-semibold">Delivery Date</th>
-                <th className="p-3 font-semibold">Status</th>
+                <th className="p-3 font-semibold">
+                  <div className="flex items-center gap-1.5 flex-nowrap">
+                    <span className="whitespace-nowrap">Status</span>
+                    <select
+                      aria-label="Filter by Status"
+                      title="Filter by Status"
+                      value={statusFilter}
+                      onChange={e => setStatusFilter(e.target.value)}
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[110px] truncate shadow-xs"
+                    >
+                      <option value="All Status">All</option>
+                      {statuses.map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
                 <th className="p-3 font-semibold">Actions</th>
               </tr>
             </thead>
@@ -173,7 +237,7 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onView, onEd
                 <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                   <td className="p-3 text-sm font-mono font-medium text-slate-800">{record.order_no || '-'}</td>
                   <td className="p-3 text-sm font-semibold text-brand-700">{record.customer || '-'}</td>
-                  <td className="p-3 text-sm text-slate-700">{record.part_name || '-'}</td>
+                  <td className="p-3 text-sm text-slate-700">{formatLeadProductDisplay(record)}</td>
                   <td className="p-3 text-sm text-slate-700">{record.quantity ?? '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{orderValue(record) ?? '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{record.delivery_date || '-'}</td>

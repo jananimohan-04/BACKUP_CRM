@@ -1,18 +1,60 @@
-import { useState, useEffect, Fragment, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, Fragment, type ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Search, ArrowLeft, FileText, Download } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { useAuth } from '@/contexts/AuthContext';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { downloadBrandedDocument, viewBrandedDocument } from '@/lib/brandedDocument';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 
 export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, entryForm }: { onBack: () => void; refreshSignal?: number; onEdit?: (record: any) => void; onDelete?: (record: any) => void; onView?: (record: any) => void; entryForm?: ReactNode | ((props: { onBack: () => void; searchSlot: ReactNode }) => ReactNode) }) {
   const { company } = useAuth();
+  const { companyFilter, setCompanyFilter, companyOptions } = useHeaderKpis();
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('All Status');
   const isExpense = (r: any) => String(r.category || '').trim().toUpperCase() === 'EXPENSES';
+
+  // Distinct categories present in the data, so the filter always matches reality.
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    records.forEach(r => {
+      const c = String(r.category || 'GOODS PURCHASE').trim();
+      if (c) set.add(c.toUpperCase());
+    });
+    return [...set].sort();
+  }, [records]);
+
+  // Distinct companies/parties present in the data
+  const companies = useMemo(() => {
+    const set = new Set<string>();
+    records.forEach(r => {
+      const p = (r.party_name || r.customer || '').trim();
+      if (p) set.add(p);
+    });
+    companyOptions.forEach(c => {
+      if (c && c !== 'All Companies') set.add(c);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [records, companyOptions]);
+
+  // Distinct statuses present in the data
+  const statuses = useMemo(() => {
+    const set = new Set<string>();
+    records.forEach(r => {
+      const s = (r.status || '').trim();
+      if (s) set.add(s);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [records]);
+
+  // If the selected category disappears from the data, fall back to All.
+  useEffect(() => {
+    if (categoryFilter !== 'All' && !categories.includes(categoryFilter)) setCategoryFilter('All');
+  }, [categories, categoryFilter]);
 
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
 
@@ -99,17 +141,25 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
     catch (error) { alert(error instanceof Error ? error.message : 'Unable to download the bill.'); }
   };
 
-  const filteredRecords = records.filter(r => r.status !== 'Deleted').filter(r =>
-    (r.inward_no || '').toLowerCase().includes(search.toLowerCase()) ||
-    (r.party_name || '').toLowerCase().includes(search.toLowerCase()) ||
-    (r.product_name || '').toLowerCase().includes(search.toLowerCase()) ||
-    (r.part_name || '').toLowerCase().includes(search.toLowerCase()) ||
-    (r.category || '').toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredRecords = records.filter(r => r.status !== 'Deleted').filter(r => {
+    const matchesSearch = (r.inward_no || '').toLowerCase().includes(search.toLowerCase()) ||
+      (r.party_name || '').toLowerCase().includes(search.toLowerCase()) ||
+      (r.product_name || '').toLowerCase().includes(search.toLowerCase()) ||
+      (r.part_name || '').toLowerCase().includes(search.toLowerCase()) ||
+      (r.category || '').toLowerCase().includes(search.toLowerCase());
+    const matchesCompany = !companyFilter || companyFilter === 'All Companies' ||
+      (r.party_name || '').trim().toLowerCase() === companyFilter.trim().toLowerCase() ||
+      (r.customer || '').trim().toLowerCase() === companyFilter.trim().toLowerCase();
+    const matchesCategory = categoryFilter === 'All' ||
+      String(r.category || 'GOODS PURCHASE').trim().toUpperCase() === categoryFilter;
+    const matchesStatus = !statusFilter || statusFilter === 'All Status' ||
+      (r.status || '').trim().toLowerCase() === statusFilter.trim().toLowerCase();
+    return matchesSearch && matchesCompany && matchesCategory && matchesStatus;
+  });
 
   const colCount = 8;
 
-  const pager = usePager(filteredRecords, search);
+  const pager = usePager(filteredRecords, `${search}||${companyFilter}||${categoryFilter}||${statusFilter}`);
 
   // Shared so the two row templates cannot drift apart.
   const actionCell = (record: any) => (
@@ -123,15 +173,27 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
   );
 
   const searchInput = (
-    <div className="relative shrink-0">
-      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-      <input
-        type="text"
-        placeholder="Search inwards..."
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        className="pl-8 pr-2.5 py-1 text-xs border border-slate-300 rounded-md focus:outline-none focus:border-brand-500 bg-white shadow-sm w-36 sm:w-44"
-      />
+    <div className="flex shrink-0 items-center gap-2">
+      <div className="relative shrink-0">
+        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+        <input
+          type="text"
+          placeholder="Search inwards..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="pl-8 pr-2.5 py-1 text-xs border border-slate-300 rounded-md focus:outline-none focus:border-brand-500 bg-white shadow-sm w-36 sm:w-44"
+        />
+      </div>
+      <select
+        aria-label="Filter by category"
+        title="Filter by category"
+        value={categoryFilter}
+        onChange={e => setCategoryFilter(e.target.value)}
+        className="py-1 px-2 text-xs font-medium border border-slate-300 rounded-md focus:outline-none focus:border-brand-500 bg-white shadow-sm max-w-[11rem] text-slate-600"
+      >
+        <option value="All">All Categories</option>
+        {categories.map(c => <option key={c} value={c}>{c}</option>)}
+      </select>
     </div>
   );
 
@@ -162,12 +224,60 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="py-2 px-3 font-semibold">Inward No</th>
-                <th className="py-2 px-3 font-semibold">Party</th>
-                <th className="py-2 px-3 font-semibold">Category</th>
+                <th className="py-2 px-3 font-semibold">
+                  <div className="flex items-center gap-1.5 flex-nowrap">
+                    <span className="whitespace-nowrap">Party</span>
+                    <select
+                      aria-label="Filter by Party/Company"
+                      title="Filter by Party/Company"
+                      value={companyFilter || 'All Companies'}
+                      onChange={e => setCompanyFilter(e.target.value)}
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[125px] truncate shadow-xs"
+                    >
+                      <option value="All Companies">All</option>
+                      {companies.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
+                <th className="py-2 px-3 font-semibold">
+                  <div className="flex items-center gap-1.5 flex-nowrap">
+                    <span className="whitespace-nowrap">Category</span>
+                    <select
+                      aria-label="Filter by Category"
+                      title="Filter by Category"
+                      value={categoryFilter}
+                      onChange={e => setCategoryFilter(e.target.value)}
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[110px] truncate shadow-xs"
+                    >
+                      <option value="All">All</option>
+                      {categories.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
                 <th className="py-2 px-3 font-semibold">Part Name</th>
                 <th className="py-2 px-3 font-semibold">Quantity</th>
                 <th className="py-2 px-3 font-semibold">Total Amount</th>
-                <th className="py-2 px-3 font-semibold">Status</th>
+                <th className="py-2 px-3 font-semibold">
+                  <div className="flex items-center gap-1.5 flex-nowrap">
+                    <span className="whitespace-nowrap">Status</span>
+                    <select
+                      aria-label="Filter by Status"
+                      title="Filter by Status"
+                      value={statusFilter}
+                      onChange={e => setStatusFilter(e.target.value)}
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[110px] truncate shadow-xs"
+                    >
+                      <option value="All Status">All</option>
+                      {statuses.map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
                 <th className="py-2 px-3 font-semibold">Actions</th>
               </tr>
             </thead>

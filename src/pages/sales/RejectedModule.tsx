@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { REJECTION_TYPES, recordProductionBatch, summarizeSalesOrder, type OrderQtySummary } from '@/lib/orderQuantities';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 import { tint } from '@/lib/entryTints';
@@ -61,6 +62,7 @@ function Summary({ q }: { q: OrderQtySummary | null }) {
 
 export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: () => void; refreshSignal?: number; onChanged?: () => void }) {
   const { profile } = useAuth() as any;
+  const { companyFilter, setCompanyFilter, companyOptions } = useHeaderKpis();
   const [batches, setBatches] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
   const [wos, setWos] = useState<any[]>([]);
@@ -112,10 +114,25 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
   }, [rejected, orderByNo, summaryOf]);
 
   const q = search.trim().toLowerCase();
-  const shown = groups.filter(g => !q || `${g.company} ${g.ref} ${g.orderNo} ${g.rows.map(r => `${r.product_name} ${r.rejection_type} ${r.rejection_reason}`).join(' ')}`.toLowerCase().includes(q));
+  const shown = groups.filter(g => {
+    const matchesSearch = !q || `${g.company} ${g.ref} ${g.orderNo} ${g.rows.map(r => `${r.product_name} ${r.rejection_type} ${r.rejection_reason}`).join(' ')}`.toLowerCase().includes(q);
+    const matchesCompany = !companyFilter || companyFilter === 'All Companies' ||
+      g.company.trim().toLowerCase() === companyFilter.trim().toLowerCase();
+    return matchesSearch && matchesCompany;
+  });
   const grand = shown.reduce((n, g) => n + g.total, 0);
 
-  const companies = useMemo(() => [...new Set(orders.map(o => String(o.customer || o.customer_name || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [orders]);
+  const companies = useMemo(() => {
+    const set = new Set<string>();
+    orders.forEach(o => {
+      const c = String(o.customer || o.customer_name || '').trim();
+      if (c) set.add(c);
+    });
+    companyOptions.forEach(c => {
+      if (c && c !== 'All Companies') set.add(c);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [orders, companyOptions]);
 
   const openAdd = () => setDlg({ mode: 'add', company: '', orderNo: '', lines: [emptyLine()], origIds: [] });
   const openGroup = (g: (typeof groups)[number], mode: 'view' | 'edit') => setDlg({ mode, company: g.company, orderNo: g.orderNo, lines: g.rows.map(lineOf), origIds: g.rows.map(r => String(r.id)) });
@@ -187,7 +204,7 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
 
   const view = dlg?.mode === 'view';
 
-  const pager = usePager(shown, shown.length);
+  const pager = usePager(shown, `${search}||${companyFilter}`);
 
   const searchInput = (
     <div className="relative shrink-0">
@@ -328,7 +345,23 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
           <table className="erp-table erp-table-rose w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
-                <th className="p-3 font-semibold">Company (Order)</th>
+                <th className="p-3 font-semibold">
+                  <div className="flex items-center gap-1.5 flex-nowrap">
+                    <span className="whitespace-nowrap">Company (Order)</span>
+                    <select
+                      aria-label="Filter by Company"
+                      title="Filter by Company"
+                      value={companyFilter || 'All Companies'}
+                      onChange={e => setCompanyFilter(e.target.value)}
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[125px] truncate shadow-xs"
+                    >
+                      <option value="All Companies">All</option>
+                      {companies.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
                 <th className="p-3 font-semibold text-right">Ordered</th><th className="p-3 font-semibold text-right">Finished</th>
                 <th className="p-3 font-semibold text-right">Rejected</th><th className="p-3 font-semibold text-right">Remaining</th>
                 <th className="p-3 font-semibold text-right">Entries</th><th className="p-3 font-semibold">Actions</th>

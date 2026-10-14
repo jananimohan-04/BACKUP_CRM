@@ -14,7 +14,7 @@ import { tint } from '@/lib/entryTints';
 import { compactInput, inlineLbl } from '@/lib/compactFields';
 import { Badge, Button, statusToVariant } from '@/components/ui/Card';
 import { Modal, inputClass } from '@/components/ui/Modal';
-import { QtyTrackingSection } from './SalesPipelinePage';
+import { QtyTrackingSection, attachDateTimeToProduct, getProductBaseName } from './SalesPipelinePage';
 import { fetchOrderQty, recordProductionBatch, type OrderQtySummary } from '@/lib/orderQuantities';
 import { insertTolerant } from '@/lib/partRouting';
 import { downloadCostingDocument, viewCostingDocument } from '@/lib/brandedDocument';
@@ -95,9 +95,28 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   /** Optional list-page header pieces merged into the picker row (one line). */
   titleSlot?: ReactNode;
   searchSlot?: ReactNode;
-}) {  const { company, profile } = useAuth() as any;
+}) {
+  const { company, profile, canView, canDo } = useAuth() as any;
   const companyName: string = company?.company_name ?? 'ARGUS CNC';
   const userName: string = profile?.email ?? '';
+  // ---- Access control (User Access Matrix) ----
+  // Finished Goods permission governs the transaction; every costing section
+  // and action additionally requires the Project Costing module
+  // (product-costing accepted as its sibling module, mirroring RLS).
+  const fgView: boolean = typeof canView === 'function' ? !!canView('finished-goods') : true;
+  const fgEdit: boolean = typeof canDo === 'function' ? !!canDo('finished-goods', 'edit') : true;
+  const hasCostView: boolean = typeof canView === 'function'
+    ? (!!canView('project-costing') || !!canView('product-costing')) : true;
+  const costPerm = (a: 'create' | 'edit' | 'approve' | 'export'): boolean =>
+    typeof canDo === 'function'
+      ? (!!canDo('project-costing', a) || !!canDo('product-costing', a)) : true;
+  const canCreateCosting = costPerm('create');
+  const canEditCosting = costPerm('edit');
+  // Approval saves an Approved sheet AND moves the card, so it needs the
+  // costing approve permission plus the Finished Goods edit permission that
+  // already gates the Inward → Finished Goods move.
+  const canApproveCosting = costPerm('approve') && fgEdit;
+  const canExportCosting = costPerm('export');
 
   const inward = card?.raw ?? {};
   const maxQ = num(card?.qty) || 0;
@@ -206,7 +225,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
     } catch { /* fall back to inward lines */ }
     const soProds = items
       .map((it: any) => ({
-        name: String(it.partName || it.productName || it.part_name || it.description || '').trim(),
+        name: attachDateTimeToProduct(String(it.partName || it.productName || it.part_name || it.description || '').trim(), so),
         qty: Number(it.quantity ?? it.qty) || 0,
         partNumber: String(it.partNumber || it.part_number || '').trim(),
       }))
@@ -226,7 +245,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
       return [...merged.values()];
     }
     return soProds.map((p, i) => {
-      const matched = inRows.filter((r) => norm(r.name) === norm(p.name));
+      const matched = inRows.filter((r) => norm(r.name) === norm(p.name) || norm(getProductBaseName(r.name)) === norm(getProductBaseName(p.name)));
       return {
         key: `so-${i}`,
         ids: matched.map((r) => r.id).filter(Boolean),
@@ -272,14 +291,17 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
         }
         if (cancelled) return;
         setSo(soRow);
+        // Quotation pricing is restricted: only fetch it for Project Costing viewers.
         let qRow: any = null;
-        if (soRow?.quotation_id) {
-          const r = await supabase.from('cnc_quotations').select('*').eq('id', soRow.quotation_id).limit(1);
-          if (!r.error && (r.data ?? []).length > 0) qRow = r.data![0];
-        }
-        if (!qRow && soRow?.quote_no) {
-          const r = await supabase.from('cnc_quotations').select('*').eq('quote_no', soRow.quote_no).limit(1);
-          if (!r.error && (r.data ?? []).length > 0) qRow = r.data![0];
+        if (hasCostView) {
+          if (soRow?.quotation_id) {
+            const r = await supabase.from('cnc_quotations').select('*').eq('id', soRow.quotation_id).limit(1);
+            if (!r.error && (r.data ?? []).length > 0) qRow = r.data![0];
+          }
+          if (!qRow && soRow?.quote_no) {
+            const r = await supabase.from('cnc_quotations').select('*').eq('quote_no', soRow.quote_no).limit(1);
+            if (!r.error && (r.data ?? []).length > 0) qRow = r.data![0];
+          }
         }
         if (cancelled) return;
         setQuote(qRow);
@@ -293,13 +315,14 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
         if (cancelled) return;
         setWos(woRows);
         // Self-heal for the stock trigger (runs on open AND on approve).
-        if (soRow?.order_no) void healWorkOrderPartNos(String(soRow.order_no));
+        // Gated on costing view: only approvers reach the approval path.
+        if (hasCostView && soRow?.order_no) void healWorkOrderPartNos(String(soRow.order_no));
         // Linked purchase actuals for reference (same source as the Project
         // Costing material/service tabs): service → reference block, goods →
         // one-click material lines. Matched by UNIQUE NUMBER: the inward
         // card's and the order's base numbers (stamp suffixes stripped, so
         // 1010 matches 1010-28Sep26-0994PM) plus the exact sales order number.
-        if (soRow?.order_no || inwardGroupIds.length > 0) {
+        if (hasCostView && (soRow?.order_no || inwardGroupIds.length > 0)) {
           try {
             const base = (s: any) => String(s || '').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, '').trim().toLowerCase();
             const r = await supabase.from('cnc_inwards').select('*');
@@ -338,17 +361,25 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
             if (!cancelled && summary) setQtySum(summary);
           } catch { /* summary stays null; local work-order fallback below */ }
         }
-        const [rmRes, supRes, jcRes, wooRes, procRes] = await Promise.all([
-          supabase.from('cnc_raw_materials').select('*'),
-          supabase.from('cnc_suppliers').select('id,name'),
-          woRows.length > 0
-            ? supabase.from('cnc_job_cards').select('*').in('work_order', woRows.map((w) => w.wo_no))
-            : Promise.resolve({ data: [], error: null } as any),
-          woRows.length > 0
-            ? supabase.from('cnc_work_order_operations').select('*').in('work_order_id', woRows.map((w) => w.id)).order('operation_sequence')
-            : Promise.resolve({ data: [], error: null } as any),
-          supabase.from('cnc_processes').select('*').order('process_code'),
-        ]);
+        // Masters feed costing only: skip them without Project Costing view.
+        let rmRes: any = { data: [], error: null };
+        let supRes: any = { data: [], error: null };
+        let jcRes: any = { data: [], error: null };
+        let wooRes: any = { data: [], error: null };
+        let procRes: any = { data: [], error: null };
+        if (hasCostView) {
+          ([rmRes, supRes, jcRes, wooRes, procRes] = await Promise.all([
+            supabase.from('cnc_raw_materials').select('*'),
+            supabase.from('cnc_suppliers').select('id,name'),
+            woRows.length > 0
+              ? supabase.from('cnc_job_cards').select('*').in('work_order', woRows.map((w) => w.wo_no))
+              : Promise.resolve({ data: [], error: null } as any),
+            woRows.length > 0
+              ? supabase.from('cnc_work_order_operations').select('*').in('work_order_id', woRows.map((w) => w.id)).order('operation_sequence')
+              : Promise.resolve({ data: [], error: null } as any),
+            supabase.from('cnc_processes').select('*').order('process_code'),
+          ]));
+        }
         if (cancelled) return;
         if (!rmRes.error) setRawMats(rmRes.data ?? []);
         if (!supRes.error) {
@@ -377,6 +408,8 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // BOM + routing are costing inputs: skip them without Project Costing view.
+      if (!hasCostView) { setBom([]); setRouting([]); return; }
       if (!code.trim()) { setBom([]); setRouting([]); return; }
       const b = await supabase.from('cnc_bom').select('*').eq('parent_part_no', code.trim()).order('level').order('created_at');
       if (cancelled) return;
@@ -420,7 +453,8 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!sheetKey) return;
+      // Saved sheets hold restricted pricing: never load them without Project Costing view.
+      if (!sheetKey || !hasCostView) return;
       const v = await sheetsFor(sheetKey);
       if (cancelled) return;
       if (!v.error) {
@@ -700,6 +734,10 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   };
 
   const saveDraft = async () => {
+    if (!(canCreateCosting || canEditCosting)) {
+      alert('Saving costing needs the Project Costing create or edit permission.');
+      return;
+    }
     if (sheetsMissing) {
       alert('Costing storage is not provisioned. Apply supabase/migrations/20260930000000_costing_sheets.sql first.');
       return;
@@ -711,8 +749,10 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
     setSaving(true);
     try {
       if (mode === 'edit') {
-        // Editing a finished-goods entry: save the costing as a new approved version, then refresh the board and lists.
-        await persistVersion('Approved', effectiveApproved);
+        // Editing a finished-goods entry: without the approve permission this
+        // stays a Draft (never an Approved version); approvers keep the
+        // existing save-as-Approved behaviour, then refresh the board/lists.
+        await persistVersion(canApproveCosting ? 'Approved' : 'Draft', effectiveApproved);
         onMoved();
         onClose();
         return;
@@ -729,6 +769,10 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
 
   const approveAndMove = async () => {
     if (approving) return;
+    if (!canApproveCosting) {
+      alert('Approving costing needs the Project Costing approve permission (plus Finished Goods edit).');
+      return;
+    }
     if (!canApprove) {
       alert(`Cannot approve yet:\n- ${blockReasons.join('\n- ')}`);
       return;
@@ -1008,21 +1052,27 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
       width={960}
       footer={
         <>
+          {hasCostView && (
           <Button variant="secondary" icon={<Eye size={14} />} onClick={() => { try { viewCostingDocument(pdfInput()); } catch (e: any) { alert(e?.message ?? e); } }}>
             Preview PDF
           </Button>
+          )}
+          {hasCostView && canExportCosting && (
           <Button variant="secondary" icon={<Download size={14} />} onClick={() => { downloadCostingDocument(pdfInput()).catch((e: any) => alert(e?.message ?? e)); }}>
             Download PDF
           </Button>
+          )}
+          {hasCostView && (
           <Button variant="secondary" icon={<Printer size={14} />} onClick={handlePrint}>Print</Button>
+          )}
           <span className="flex-1" />
           <Button variant="secondary" icon={<X size={14} />} onClick={onClose}>{mode === 'view' ? 'Close' : 'Cancel'}</Button>
-          {mode !== 'view' && (
+          {mode !== 'view' && (canCreateCosting || canEditCosting) && (
             <Button variant={mode === 'edit' ? undefined : 'secondary'} icon={<Save size={14} />} disabled={saving || loading} onClick={saveDraft}>
               {saving ? 'Saving...' : mode === 'edit' ? 'Save Changes' : 'Save Draft'}
             </Button>
           )}
-          {mode === 'add' && (
+          {mode === 'add' && canApproveCosting && (
             // Stays clickable when blocked: approveAndMove alerts the exact
             // blocking reasons, and they are also listed inline below.
             <Button icon={<CheckCheck size={14} />} disabled={approving}
@@ -1051,6 +1101,11 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
           {/* 1 — transaction details, with the products to finish (and how many) right next to the product */}
           <div className="bg-white rounded-xl border border-slate-200 p-4">
             <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-3 border-b border-brand-100 pb-2">Section 1 — Transaction Details</h3>
+            {!fgView && (
+              <p className="text-xs text-slate-500">Transaction details need the Finished Goods view permission.</p>
+            )}
+            {fgView && (
+            <>
             <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_11rem] gap-4 text-sm">
               <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Company</p><p className="font-semibold">{card?.customer ?? '—'}</p></div>
               <div>
@@ -1070,6 +1125,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                           <input
                             type="checkbox"
                             checked={checked}
+                            disabled={!fgEdit}
                             onChange={(e) => setProdSel((prev) => {
                               const next = { ...prev };
                               if (e.target.checked) next[r.key] = String((r as any).inwardQty > 0 ? (r as any).inwardQty : '');
@@ -1086,7 +1142,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                           </span>
                           <input
                             type="number" min={0} aria-label={`How many ${r.name} finished`} placeholder="Qty"
-                            disabled={!checked}
+                            disabled={!checked || !fgEdit}
                             value={checked ? (prodSel[r.key] ?? '') : ''}
                             onChange={(e) => setProdSel((prev) => ({ ...prev, [r.key]: e.target.value }))}
                             className={`${inputClass} !w-20 !py-1 text-right tabular-nums disabled:bg-slate-100`}
@@ -1100,7 +1156,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
               </div>
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Date</p>
-                <input type="date" value={fgDate} onChange={(e) => setFgDate(e.target.value)} className={inputClass} />
+                <input type="date" value={fgDate} disabled={!fgEdit} onChange={(e) => setFgDate(e.target.value)} className={inputClass} />
               </div>
             </div>
             {/* quantity tracking sits right under the product it describes */}
@@ -1109,9 +1165,25 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                 <QtyTrackingSection q={qtySum} userName={userName} onSaved={(s) => setQtySum(s)} allowReject={false} />
               </div>
             )}
+            </>
+            )}
           </div>
 
           {/* Rejection capture removed — batches record good quantity only. */}
+          {!hasCostView ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Costing details are hidden — you have Finished Goods access without Project Costing access. Quotation pricing, process and material costs, the cost summary and the final price need the Project Costing view permission.
+            </div>
+          ) : (
+          <>
+          {(!canEditCosting && mode !== 'view') && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-500">
+              Read-only — you can view costing but cannot change it. Editing needs the Project Costing edit permission.
+            </div>
+          )}
+          {/* Costing edits lock together: view-only users get every costing
+              section read-only through this single fieldset (no layout change). */}
+          <fieldset disabled={!canEditCosting} className="contents">
           {/* comparison workspace: quotation vs project costing */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
           {/* LEFT — quotation (reference only, master never modified) */}
@@ -1365,14 +1437,19 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
               <span>Manual Adjustment: <b className={`tabular-nums ${adjustment >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{adjustment >= 0 ? '+' : ''}{inr(adjustment)}</b></span>
             </div>
           </div>
+          </fieldset>
+          </>
+          )}
 
           {/* TESTING: Section 4 — Warnings hidden for now (BOM / work-order warnings don't block approval). */}
 
+          {hasCostView && (
           <div className="flex items-center gap-2 text-sm">
             <span className="text-slate-500">Sheet status:</span>
             <Badge variant={statusToVariant(versions[0]?.status ?? 'Draft')} dot>{versions[0] ? `V${versions[0].version} ${versions[0].status}` : 'Unsaved'}</Badge>
           </div>
-          {mode === 'add' && !canApprove && (
+          )}
+          {mode === 'add' && canApproveCosting && !canApprove && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
               <p className="text-[10px] font-bold uppercase tracking-wider">Before approval — fix {blockReasons.length === 1 ? 'this' : 'these'}</p>
               <ul className="mt-1 list-disc space-y-0.5 pl-4">

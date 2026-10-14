@@ -49,9 +49,12 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
   onClose: () => void;
   onMoved: () => void;
 }) {
-  const { company } = useAuth() as any;
+  const { company, canView } = useAuth() as any;
   const companyName: string = company?.company_name ?? 'ARGUS CNC';
+  // Invoice pricing is restricted: without the Invoice view permission the
+  // modal shows a notice and never loads pricing (see the load effect below).
 
+  const canSeeInvoices: boolean = typeof canView === 'function' ? !!canView('invoices') : true;
   const raw = card?.raw ?? {};
   const dcId: string | null = raw.id && raw.id !== 'dummy' ? String(raw.id) : null;
   const dcNo: string = raw.delivery_no || raw.dc_no || card?.refNo || '';
@@ -83,6 +86,8 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
   const [dueState, setDueState] = useState<'loading' | 'ok' | 'error'>('loading');
   useEffect(() => {
     let off = false;
+    // Due amounts are invoice/receipt data: never load them without Invoice view.
+    if (!canSeeInvoices) { setDue(null); setDueState('ok'); return; }
     const who = String(customer || '').trim();
     if (!who) { setDue(null); setDueState('ok'); return; }
     setDueState('loading');
@@ -96,6 +101,12 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
     let cancelled = false;
     (async () => {
       setLoading(true);
+      // Restricted pricing (quotations, costing sheets, invoice checks) loads
+      // only for Invoice viewers; everyone else gets the notice below.
+      if (!canSeeInvoices) {
+        if (!cancelled) setLoading(false);
+        return;
+      }
       try {
         // 0) Duplicate / already-billed guards first.
         if (raw.status === 'Billed') {
@@ -379,6 +390,8 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
       width={960}
       footer={
         <>
+          {canSeeInvoices && (
+          <>
           <Button variant="secondary" icon={<Eye size={14} />} onClick={() => { void (async () => { try { await viewSalesInvoice(await buildInvoicePdfInput()); } catch (e: any) { alert(e?.message ?? e); } })(); }}>
             Preview Invoice PDF
           </Button>
@@ -386,8 +399,12 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
             Download PDF
           </Button>
           <Button variant="secondary" icon={<Printer size={14} />} onClick={handlePrint}>Print</Button>
+          </>
+          )}
           <span className="flex-1" />
           <Button variant="secondary" icon={<X size={14} />} onClick={onClose}>Cancel</Button>
+          {canSeeInvoices && (
+          <>
           <Button variant="secondary" icon={<Pencil size={14} />} onClick={() => setEditing((v) => !v)}>
             {editing ? 'Done Editing' : 'Edit'}
           </Button>
@@ -396,6 +413,8 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
             onClick={approve}>
             {saving ? 'Creating...' : docType === 'Sales Invoice' ? 'Approve & Create Invoice' : `Approve & Create ${docType}`}
           </Button>
+          </>
+          )}
         </>
       }
     >
@@ -403,6 +422,11 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
         <p className="text-sm text-slate-500 py-8 text-center">Resolving approved prices...</p>
       ) : loadError ? (
         <p className="text-sm text-red-600 py-8 text-center">Failed to load invoice data: {loadError}</p>
+      ) : !canSeeInvoices ? (
+        <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+          <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5">Not authorized</p>
+          <p>Invoice details need the Invoice view permission. Ask an authorized Invoice user to complete billing for this Delivery Challan.</p>
+        </div>
       ) : (
         <div className="space-y-4">
           {blocked && (

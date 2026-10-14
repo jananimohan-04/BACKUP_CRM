@@ -1,11 +1,11 @@
-import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
+import { useState, useEffect, useMemo, useRef, useLayoutEffect, Fragment } from 'react';
 import { supabase } from '@/lib/supabase';
 import { financeApi } from '@/lib/finance';
 import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
-import { Plus, Trash2, Eye, UploadCloud, Edit2, Download, FileText, RefreshCcw, Copy, Calculator, Users as UsersIcon, Package as PackageIcon, ScrollText, FolderOpen, Building2, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, Eye, UploadCloud, Edit2, Download, FileText, RefreshCcw, Copy, Calculator, Users as UsersIcon, Package as PackageIcon, ScrollText, FolderOpen, Building2, ArrowLeft, ChevronDown } from 'lucide-react';
 import { uploadOrderFile } from '@/lib/orderFiles';
 import { MetalCalculatorPage, ClientLibraryPage, ProductLibraryPage, TermsLibraryPage, QuotationLibraryPage, CompanyProfilePage } from '../quotation/QuotationToolPages';
 import { setMockImage, getMockImage } from '@/lib/mockStorage';
@@ -99,7 +99,69 @@ async function uploadInwardAttachment(companyId: string, inwardId: string, file:
 export const baseUniqueNo = (s: any): string =>
   String(s || '').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, '');
 
+/**
+ * Formats a Date object or order timestamp into a clean "DD-MM-YYYY hh:mm AM/PM".
+ */
+export function formatOrderDateTimeStamp(order?: any, fallbackDate?: Date): string {
+  // 1. From lead_no stamp if present: e.g. 1010-14Oct26-1105AM
+  const stamped = String(order?.lead_no || order?.stamped_lead_no || '');
+  const m = /-(\d{2})([A-Za-z]{3})(\d{2})-(\d{2})(\d{2})(AM|PM)$/.exec(stamped);
+  if (m) {
+    const [, dd, mon, yy, hh, mm, ap] = m;
+    const year = Number(yy) < 50 ? `20${yy}` : `19${yy}`;
+    const monMap: Record<string, string> = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
+    const month = monMap[mon] || '01';
+    return `${dd}-${month}-${year} ${hh}:${mm} ${ap}`;
+  }
+
+  // 2. From created_at or order_date
+  let d: Date | null = null;
+  if (order?.created_at) {
+    const parsed = new Date(order.created_at);
+    if (!isNaN(parsed.getTime())) d = parsed;
+  }
+  if (!d && order?.order_date) {
+    const parsed = new Date(order.order_date);
+    if (!isNaN(parsed.getTime())) d = parsed;
+  }
+  if (!d) d = fallbackDate || new Date();
+
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours() % 12 || 12).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  const ap = d.getHours() >= 12 ? 'PM' : 'AM';
+  return `${dd}-${mm}-${yyyy} ${hh}:${min} ${ap}`;
+}
+
+/**
+ * Strips date/time timestamp suffix from a product name.
+ */
+export function getProductBaseName(name: string): string {
+  return String(name || '')
+    .replace(/\s*-\s*\d{2}[-/.]\d{2}[-/.]\d{2,4}\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?/i, '')
+    .replace(/\s*-\s*\d{2}[A-Za-z]{3}\d{2}[-,]\s*\d{1,2}:\d{2}(?:\s*[AP]M)?/i, '')
+    .trim();
+}
+
+/**
+ * Appends Date + Time to a product name once it reaches Sales Order stage.
+ * If already stamped, avoids duplicate stamping.
+ */
+export function attachDateTimeToProduct(productName: any, order?: any, fallbackDate?: Date): string {
+  const raw = String(productName || '').trim();
+  if (!raw) return '';
+  // Check if it already has date + time attached:
+  if (/\b\d{2}[-/.]\d{2}[-/.]\d{2,4}\s+\d{1,2}:\d{2}/i.test(raw) || /\b\d{2}[A-Za-z]{3}\d{2}[-,]\s*\d{1,2}:\d{2}/i.test(raw)) {
+    return raw;
+  }
+  const stamp = formatOrderDateTimeStamp(order, fallbackDate);
+  return `${raw} - ${stamp}`;
+}
+
 export function formatLeadProductDisplay(raw: any): string {  if (!raw) return 'N/A';
+  const isOrder = Boolean(raw.order_no || (raw.stage === 'Sales Order') || raw.quotation_id !== undefined);
   
   // 1. Check for items array (Quotation, Sales Order, etc.)
   let items: any[] = [];
@@ -113,7 +175,11 @@ export function formatLeadProductDisplay(raw: any): string {  if (!raw) return '
   }
   
   if (items.length > 0) {
-    const names = items.map((i: any) => String(i.partName || i.productName || i.part_name || i.description || '').trim()).filter(Boolean);
+    const names = items.map((i: any) => {
+      let n = String(i.partName || i.productName || i.part_name || i.description || '').trim();
+      if (isOrder && n) n = attachDateTimeToProduct(n, raw);
+      return n;
+    }).filter(Boolean);
     if (names.length === 1) return names[0];
     if (names.length > 1) {
       return names.join(', ');
@@ -137,8 +203,11 @@ export function formatLeadProductDisplay(raw: any): string {  if (!raw) return '
   }
   
   // 3. Fallback to part_name or partName string (strip any stored "(N Products)" summary suffixes)
-  const pName = String(raw.part_name || raw.partName || raw.part || raw.product_name || '').trim().replace(/(\s*\(?\d+\s*products?\)?\s*)+$/i, '').trim();
-  if (pName && !pName.startsWith('Multiple Products')) return pName;
+  let pName = String(raw.part_name || raw.partName || raw.part || raw.product_name || '').trim().replace(/(\s*\(?\d+\s*products?\)?\s*)+$/i, '').trim();
+  if (pName && !pName.startsWith('Multiple Products')) {
+    if (isOrder) pName = attachDateTimeToProduct(pName, raw);
+    return pName;
+  }
   return pName || 'N/A';
 }
 
@@ -227,8 +296,10 @@ function enquiryProductOptions(enquiries: any[], leadNo?: string, orders?: any[]
         return matchedOrders.map((o: any) => {
           const saleLabel = formatSaleOrderDateTime(o);
           const stamped = String(o.lead_no || '').trim();
+          const stampedName = attachDateTimeToProduct(name, o);
           return {
             ...baseOption,
+            name: stampedName,
             key: `${enquiry.id}:${index}:${o.order_no || stamped}`,
             saleLabel,
             saleStamp: stamped,
@@ -258,11 +329,12 @@ function enquiryProductOptions(enquiries: any[], leadNo?: string, orders?: any[]
     items.forEach((item: any, index: number) => {
       const name = String(item.partName || item.productName || item.product_name || item.part_name || '').trim();
       if (!name) return;
+      const stampedName = attachDateTimeToProduct(name, o);
       // Already offered through its enquiry (same product on the same order): do not list it twice.
-      if (fromEnquiries.some((e: any) => e.name.toLowerCase() === name.toLowerCase() && (e.saleOrderRef || '') === orderNo)) return;
+      if (fromEnquiries.some((e: any) => e.name.toLowerCase() === stampedName.toLowerCase() && (e.saleOrderRef || '') === orderNo)) return;
       orderProductOptions.push({
         key: `order:${o.id || orderNo}:${index}`,
-        name,
+        name: stampedName,
         quantity: item.quantity ?? item.qty ?? '',
         enquiryId: '',
         leadNo: ref || orderNo,
@@ -633,18 +705,42 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
                 <div>
                   {editMode && (
                     <label className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
-                      <UploadCloud size={15} />{(item.files || []).length ? `${item.files.length} file(s) selected` : 'Upload image / file / PDF'}
+                      <UploadCloud size={15} />{((item.files || []).length + fileEntries(item.filePaths).length) ? `${(item.files || []).length + fileEntries(item.filePaths).length} file(s) selected` : 'Upload image / file / PDF'}
                       <input type="file" multiple accept="*/*" className="hidden" onChange={(e) => {
                         const selectedFiles = Array.from(e.currentTarget.files || []);
-                        const next = [...items];
-                        next[idx] = { ...next[idx], files: [...(next[idx].files || []), ...selectedFiles] };
-                        setItems(next);
                         e.currentTarget.value = '';
+                        if (selectedFiles.length) {
+                          setItems((prev: any[]) => prev.map((it: any, i: number) => i === idx ? { ...it, files: [...(it.files || []), ...selectedFiles] } : it));
+                        }
                       }} />
                     </label>
                   )}
-                  {(item.files || []).length > 0 && <div className="mt-1 space-y-1">{item.files.map((file: File, fileIdx: number) => <div key={`${file.name}-${fileIdx}`} className="flex items-center justify-between gap-2 text-[11px] text-slate-600"><span className="truncate">{file.name}</span><button type="button" className="text-rose-600 hover:text-rose-800" onClick={() => { const next = [...items]; next[idx] = {...next[idx], files: next[idx].files.filter((_: File, j: number) => j !== fileIdx)}; setItems(next); }}>Remove</button></div>)}</div>}
-                  {fileEntries(item.filePaths).length > 0 && <div className="mt-1 space-y-1">{fileEntries(item.filePaths).map((f: any) => <div key={f.key} className="flex items-center justify-between gap-2 text-[11px] text-slate-600"><span className="truncate">{f.name}</span>{editMode && <button type="button" className="text-rose-600" onClick={() => { const next = [...items]; next[idx] = {...next[idx], filePaths: (next[idx].filePaths || []).filter((p: any) => (typeof p === 'string' ? p : p.path || p.url) !== f.path) }; setItems(next); }}>Remove</button>}</div>)}</div>}
+                  {(item.files || []).length > 0 && (
+                    <div className="mt-1 space-y-1">
+                      {item.files.map((file: File, fileIdx: number) => (
+                        <div key={`${file.name}-${fileIdx}`} className="flex items-center justify-between gap-2 text-[11px] text-slate-600">
+                          <span className="truncate">{file.name}</span>
+                          <button type="button" className="text-rose-600 hover:text-rose-800 font-semibold cursor-pointer" onClick={() => {
+                            setItems((prev: any[]) => prev.map((it: any, i: number) => i === idx ? { ...it, files: (it.files || []).filter((_: File, j: number) => j !== fileIdx) } : it));
+                          }}>Remove</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {fileEntries(item.filePaths).length > 0 && (
+                    <div className="mt-1 space-y-1">
+                      {fileEntries(item.filePaths).map((f: any) => (
+                        <div key={f.key} className="flex items-center justify-between gap-2 text-[11px] text-slate-600">
+                          <span className="truncate">{f.name}</span>
+                          {editMode && (
+                            <button type="button" className="text-rose-600 hover:text-rose-800 font-semibold cursor-pointer" onClick={() => {
+                              setItems((prev: any[]) => prev.map((it: any, i: number) => i === idx ? { ...it, filePaths: (it.filePaths || []).filter((p: any) => (typeof p === 'string' ? p : p.path || p.url) !== f.path) } : it));
+                            }}>Remove</button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div>
                   {editMode ? (
@@ -883,12 +979,32 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved, re
                         e.currentTarget.value = '';
                       }} />
                     </label>
-                    {fileEntries(item.filePaths).length > 0 && (
+                    {((item.files || []).length > 0 || fileEntries(item.filePaths).length > 0) && (
                       <div className="mt-1 space-y-1 text-left">
+                        {(item.files || []).map((f: File, fi: number) => (
+                          <div key={`quote-f-${f.name}-${fi}`} className="flex items-center justify-between gap-1 text-[10px] text-slate-600 bg-slate-50 rounded px-1 py-0.5 border border-slate-200">
+                            <span className="truncate max-w-[110px] font-medium">{f.name}</span>
+                            <button
+                              type="button"
+                              className="ml-0.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-slate-400 hover:bg-rose-100 hover:text-rose-600 transition-colors cursor-pointer text-xs font-bold leading-none"
+                              title={`Remove ${f.name}`}
+                              onClick={() => upd(idx, { files: (item.files || []).filter((_: any, j: number) => j !== fi) })}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
                         {fileEntries(item.filePaths).map((f: any) => (
-                          <div key={f.key} className="flex items-center justify-between gap-1 text-[10px] text-slate-600">
-                            <button type="button" className="truncate text-blue-700 hover:underline" onClick={() => openFile(f.path)}>{f.name}</button>
-                            <button type="button" className="text-rose-600" onClick={() => upd(idx, { filePaths: (item.filePaths || []).filter((p: any) => (typeof p === 'string' ? p : p.path || p.url) !== f.path) })}>x</button>
+                          <div key={f.key} className="flex items-center justify-between gap-1 text-[10px] text-slate-600 bg-slate-50 rounded px-1 py-0.5 border border-slate-200">
+                            <button type="button" className="truncate text-blue-700 hover:underline max-w-[110px]" onClick={() => openFile(f.path)}>{f.name}</button>
+                            <button
+                              type="button"
+                              className="ml-0.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-slate-400 hover:bg-rose-100 hover:text-rose-600 transition-colors cursor-pointer text-xs font-bold leading-none"
+                              title={`Remove ${f.name}`}
+                              onClick={() => upd(idx, { filePaths: (item.filePaths || []).filter((p: any) => (typeof p === 'string' ? p : p.path || p.url) !== f.path) })}
+                            >
+                              ×
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -1367,6 +1483,15 @@ export function SalesPipelinePage() {
 
   const clearCardSelection = () => { setSelectedCards(new Set()); setBulkNotice(null); };
 
+  // Invoice handoff (no pricing): when every ticked card is a Delivery Challan
+  // bound for Invoice and the user cannot see the Invoice module, the toolbar
+  // offers "Send to Invoice" instead of opening the pricing modal. Handoff only
+  // flips DC rows to the "Ready for Invoice" queue state — no invoice, no prices.
+  const showInvoiceHandoff = bulkTarget === 'Invoice'
+    && selectedCardObjects.length > 0
+    && selectedCardObjects.every((c) => c.stage === 'DC' && c.type === 'dc')
+    && !canView(STAGE_MODULE['Invoice'] ?? 'invoices');
+
   const bulkMoveToNextStage = async () => {
     if (!bulkValid || bulkTarget === null || bulkMoving) return;
     const target = bulkTarget;
@@ -1403,6 +1528,64 @@ export function SalesPipelinePage() {
     await fetchPipeline();
     setBulkMoving(false);
   };
+
+  // Queue the ticked Delivery Challans Ready for Invoice. Operational data only:
+  // no pricing is read or written, so Delivery Challan edit access is the only
+  // requirement (checked here and enforced by the deliveries row policy).
+  // Idempotent — re-running only re-marks the same queue state and skips rows
+  // that are already Billed / Cancelled / Ready; it never creates invoices.
+  const sendDcToInvoiceQueue = async () => {
+    const picked = selectedCardObjects.filter((c) => c.stage === 'DC' && c.type === 'dc');
+    if (picked.length === 0 || bulkMoving) return;
+    if (!canDo(STAGE_MODULE['DC'] ?? 'delivery', 'edit')) {
+      alert('Not authorized: sending to invoice needs Delivery Challan edit access.');
+      return;
+    }
+    setBulkMoving(true);
+    setBulkNotice(null);
+    try {
+      const skipped: string[] = [];
+      const ids: string[] = [];
+      for (const card of picked) {
+        const raw: any = card.raw ?? {};
+        const st = String(raw.status ?? '').trim();
+        if (st === 'Billed' || st === 'Cancelled' || st === 'Ready for Invoice') {
+          skipped.push(`${card.refNo || card.id} (${st || 'no status'})`);
+          continue;
+        }
+        const groupIds: string[] = Array.isArray(raw._groupIds) && raw._groupIds.length
+          ? raw._groupIds.map(String)
+          : (raw.id ? [String(raw.id)] : []);
+        if (groupIds.length === 0) {
+          skipped.push(`${card.refNo || card.id} (no delivery rows)`);
+          continue;
+        }
+        for (const id of groupIds) if (!ids.includes(id)) ids.push(id);
+      }
+      if (ids.length === 0) {
+        setBulkNotice({ kind: 'error', text: skipped.length ? `Nothing eligible: ${skipped.join(', ')}.` : 'Nothing eligible to send.' });
+        return;
+      }
+      const { error } = await supabase.from('cnc_deliveries').update({ status: 'Ready for Invoice' }).in('id', ids);
+      if (error) throw error;
+      const done = new Set(picked.filter((card) => {
+        const raw: any = card.raw ?? {};
+        const g: string[] = Array.isArray(raw._groupIds) && raw._groupIds.length
+          ? raw._groupIds.map(String)
+          : (raw.id ? [String(raw.id)] : []);
+        return g.length > 0 && g.every((id) => ids.includes(id));
+      }).map((c) => c.id));
+      setSelectedCards((prev) => { const next = new Set(prev); done.forEach((id) => next.delete(id)); return next; });
+      const n = done.size;
+      setBulkNotice({ kind: 'ok', text: `${n} Delivery Challan${n === 1 ? '' : 's'} queued Ready for Invoice. An authorized Invoice user will complete billing.${skipped.length ? ` Skipped: ${skipped.join(', ')}.` : ''}` });
+      await fetchPipeline();
+    } catch (e: any) {
+      setBulkNotice({ kind: 'error', text: `Send to Invoice failed: ${e?.message ?? e}. Nothing was queued.` });
+    } finally {
+      setBulkMoving(false);
+    }
+  };
+
   const [, setLoading] = useState(true);
   const [pipelineViewMode, setPipelineViewMode] = useState<'kanban' | 'list' | 'companies' | 'calendar'>('kanban');
   // Per-column kanban search: term typed in each column's own search box.
@@ -1420,7 +1603,11 @@ export function SalesPipelinePage() {
   const [rejectedTotal, setRejectedTotal] = useState(0);
 
   // KPI strip lives in the Topbar (single header line); the page supplies the data.
-  const { setKpis } = useHeaderKpis();
+  const { setKpis, companyFilter, setCompanyFilter, setCompanyOptions } = useHeaderKpis();
+
+  useEffect(() => {
+    if (companyFilter) setCustomerFilter(companyFilter);
+  }, [companyFilter]);
   const stageColors: Record<string, { tile: string; icon: string }> = {
     Enquiry: { tile: 'bg-gradient-to-br from-blue-800 to-blue-950 border-blue-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
     Quotation: { tile: 'bg-gradient-to-br from-violet-800 to-violet-950 border-violet-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
@@ -1784,7 +1971,7 @@ export function SalesPipelinePage() {
   const dcSaveRef = useRef<(() => Promise<boolean>) | null>(null);
   const [mockImages, setMockImages] = useState<Record<string, string>>({});
 
-  const handleInlineEdit = async (title: string, id: string, field: string, value: string) => {
+  const handleInlineEdit = async (title: string, id: string, field: string | Record<string, any>, value?: string) => {
     const tableMap: any = {
       'Enquiry': 'cnc_enquiries',
       'Quotation': 'cnc_quotations',
@@ -1797,8 +1984,10 @@ export function SalesPipelinePage() {
     const table = tableMap[title];
     if (!table) return;
 
+    const patch: Record<string, any> = typeof field === 'object' ? field : { [field]: value };
+
     if (field !== 'image_url') {
-      const { error } = await supabase.from(table).update({ [field]: value }).eq('id', id);
+      const { error } = await supabase.from(table).update(patch).eq('id', id);
       if (error) {
          console.error("Failed to update:", error);
          alert("Failed to update field: " + error.message);
@@ -1812,7 +2001,10 @@ export function SalesPipelinePage() {
           const keyMap: any = { 'Enquiry': 'enquiry', 'Quotation': 'quotation', 'Sales Order': 'order', 'Inward': 'inward', 'Finished Goods': 'finished_goods', 'DC': 'dc', 'Invoice': 'invoice' };
           const stateKey = keyMap[title];
           if (newPrev[stateKey]) {
-             newPrev[stateKey] = { ...newPrev[stateKey], [field]: value };
+             newPrev[stateKey] = { ...newPrev[stateKey], ...patch };
+          }
+          if (title === 'Inward' && Array.isArray(newPrev.inwards)) {
+             newPrev.inwards = newPrev.inwards.map((r: any) => String(r.id) === String(id) ? { ...r, ...patch } : r);
           }
           return newPrev;
        });
@@ -1948,6 +2140,61 @@ export function SalesPipelinePage() {
       fetchPipeline();
     } catch (err: any) {
       alert(err?.message || 'File upload failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleItemFileRemove = async (title: string, raw: any, itemIndex: number, filePathToRemove: string) => {
+    if (!confirm('Are you sure you want to remove this attached file?')) return;
+    setLoading(true);
+    try {
+      if (title === 'Inward') {
+        const nextAttachments = (raw.attachments || []).filter((att: any) => {
+          const p = typeof att === 'string' ? att : (att.path || att.url || '');
+          return p !== filePathToRemove;
+        });
+        const { error } = await supabase.from('cnc_inwards').update({ attachments: nextAttachments }).eq('id', raw.id);
+        if (error) throw error;
+        setViewModalData((prev: any) => prev ? { ...prev, inward: { ...prev.inward, attachments: nextAttachments } } : prev);
+      } else {
+        const keyMap: any = { 'Enquiry': 'enquiry', 'Quotation': 'quotation', 'Sales Order': 'order' };
+        const fieldMap: any = { 'Enquiry': 'enquiring_for', 'Quotation': 'description', 'Sales Order': 'items' };
+        const tableMap: any = { 'Enquiry': 'cnc_enquiries', 'Quotation': 'cnc_quotations', 'Sales Order': 'cnc_sales_orders' };
+        const stateKey = keyMap[title];
+        const field = fieldMap[title];
+        const table = tableMap[title];
+        if (!stateKey || !field || !table) return;
+        let currentItems: any[] = [];
+        if (title === 'Sales Order') {
+          currentItems = Array.isArray(raw.items) ? raw.items : [];
+        } else {
+          const rawVal = raw[field];
+          try {
+            const parsed = typeof rawVal === 'string' ? JSON.parse(rawVal) : rawVal;
+            currentItems = Array.isArray(parsed) ? parsed : (Array.isArray(raw.items) ? raw.items : []);
+          } catch { currentItems = Array.isArray(raw.items) ? raw.items : []; }
+        }
+        const nextItems = currentItems.map((it: any, idx: number) => {
+          if (idx !== itemIndex) return it;
+          const curPaths = Array.isArray(it.filePaths) ? it.filePaths : (it.filePath ? [it.filePath] : []);
+          return {
+            ...it,
+            filePaths: curPaths.filter((p: any) => (typeof p === 'string' ? p : p.path || p.url) !== filePathToRemove)
+          };
+        });
+        const payloadVal = title === 'Sales Order' ? nextItems : JSON.stringify(nextItems);
+        const { error } = await supabase.from(table).update({ [field]: payloadVal }).eq('id', raw.id);
+        if (error) throw error;
+        setViewModalData((prev: any) => {
+          if (!prev || !prev[stateKey]) return prev;
+          const updated = { ...prev[stateKey], [field]: payloadVal, items: nextItems };
+          return { ...prev, [stateKey]: updated };
+        });
+      }
+      fetchPipeline();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to remove file.');
     } finally {
       setLoading(false);
     }
@@ -2150,7 +2397,31 @@ export function SalesPipelinePage() {
                     <tr key={i} className="border-b border-slate-100 last:border-0">
                       <td className="px-4 py-3 font-medium text-slate-800">
                         {item.partName || item.productName || '-'}
-                        {fileEntries.length > 0 && <div className="mt-1 flex flex-wrap gap-1">{fileEntries.map(fe => <button key={fe.path} type="button" className="inline-flex items-center gap-1 text-[10px] text-blue-700 hover:underline" onClick={e => { e.stopPropagation(); void openProductFile(fe.path); }}><FileText size={11}/>{fe.name}</button>)}</div>}
+                        {fileEntries.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {fileEntries.map(fe => (
+                              <span key={fe.path} className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-blue-700">
+                                <button type="button" className="inline-flex items-center gap-1 hover:underline truncate max-w-[140px]" onClick={e => { e.stopPropagation(); void openProductFile(fe.path); }}>
+                                  <FileText size={11} className="shrink-0" />{fe.name}
+                                </button>
+                                {viewEditMode && (
+                                  <button
+                                    type="button"
+                                    className="ml-0.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-slate-400 hover:bg-rose-100 hover:text-rose-600 transition-colors cursor-pointer text-xs font-bold leading-none"
+                                    title={`Remove ${fe.name}`}
+                                    aria-label={`Remove ${fe.name}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void handleItemFileRemove(title, raw, i, fe.path);
+                                    }}
+                                  >
+                                    ×
+                                  </button>
+                                )}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3">{item.quantity}</td>
                       <td className="px-4 py-3">{formatINR(item.unitPrice || 0)}</td>
@@ -2193,7 +2464,27 @@ export function SalesPipelinePage() {
                 const p = typeof att === 'string' ? att : (att.path || att.url || '');
                 const n = typeof att === 'string' ? p.split('/').pop() : (att.name || p.split('/').pop() || `File ${ai + 1}`);
                 if (!p) return null;
-                return <button key={`${p}-${ai}`} type="button" className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-blue-700 hover:border-brand-300" onClick={() => void openProductFile(p)}><FileText size={12} />{n}</button>;
+                return (
+                  <span key={`${p}-${ai}`} className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-blue-700">
+                    <button type="button" className="inline-flex items-center gap-1 hover:underline truncate max-w-[180px]" onClick={() => void openProductFile(p)}>
+                      <FileText size={12} className="shrink-0" />{n}
+                    </button>
+                    {viewEditMode && (
+                      <button
+                        type="button"
+                        className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 hover:bg-rose-100 hover:text-rose-600 transition-colors cursor-pointer text-xs font-bold leading-none"
+                        title={`Remove ${n}`}
+                        aria-label={`Remove ${n}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleItemFileRemove(title, raw, 0, p);
+                        }}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </span>
+                );
               })}
               {viewEditMode && (
                 <label className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
@@ -2448,6 +2739,31 @@ export function SalesPipelinePage() {
   });
   const [enquiryForm, setEnquiryForm] = useState(resetEnquiryForm());
 
+  // Measures where the first product field starts in the enquiry entry row so
+  // added product lines below can be indented to sit straight under it. The
+  // first line itself is never restyled — only the wrapped lines get padding.
+  const enquiryRowRef = useRef<HTMLDivElement | null>(null);
+  const firstEnquiryItemRef = useRef<HTMLSpanElement | null>(null);
+  const [enquiryItemIndent, setEnquiryItemIndent] = useState(0);
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      const row = enquiryRowRef.current;
+      const anchor = firstEnquiryItemRef.current;
+      if (row && anchor) {
+        const next = Math.max(0, Math.round(anchor.offsetLeft));
+        setEnquiryItemIndent(prev => (prev === next ? prev : next));
+      }
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    const ro = typeof ResizeObserver !== 'undefined' && enquiryRowRef.current
+      ? new ResizeObserver(measure)
+      : null;
+    if (ro && enquiryRowRef.current) ro.observe(enquiryRowRef.current);
+    return () => { window.removeEventListener('resize', measure); ro?.disconnect(); };
+  });
+
   const [quoteForm, setQuoteForm] = useState<any>({
     quoteNo: '', customer: '', leadNo: '', quoteDate: '', validTill: '', salesperson: 'Admin',
     contacts: [{ person: '', phone: '', email: '' }],
@@ -2458,7 +2774,7 @@ export function SalesPipelinePage() {
 
   
 
-  const emptyInwardItem = (defaults: any = {}) => ({ partyName: defaults.partyName || '', productKey: defaults.productKey || '', productName: defaults.productName || '', enquiryId: defaults.enquiryId || '', projectName: defaults.projectName || '', partName: '', partNumber: '', quantity: '', price: '', discount: '0', gst: '18', remarks: defaults.remarks || '' });
+  const emptyInwardItem = (defaults: any = {}) => ({ partyName: defaults.partyName || '', productKey: defaults.productKey || '', productName: defaults.productName || '', enquiryId: defaults.enquiryId || '', projectName: defaults.projectName || '', partName: '', partNumber: '', quantity: '', price: '', discount: '0', gst: '18', remarks: defaults.remarks || '', files: (defaults.files || []) as File[] });
   const emptyInwardPart = (defaults: any = {}) => ({ category: defaults.category || 'GOODS PURCHASE', referenceNo: defaults.referenceNo || '', inwardDate: defaults.inwardDate || new Date().toISOString().split('T')[0], remarks: defaults.remarks || '', files: [] as File[], productKey: defaults.productKey || '', productName: defaults.productName || '', enquiryId: defaults.enquiryId || '', projectName: defaults.projectName || '', partyName: defaults.partyName || '', items: [emptyInwardItem({ partyName: defaults.partyName || '' })] });
   const [inwardForm, setInwardForm] = useState<any>({
     inwardNo: '', category: 'GOODS PURCHASE', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: '', remarks: '',
@@ -2517,6 +2833,15 @@ export function SalesPipelinePage() {
     return Array.from(map.values()).sort((a, b) => a.company.localeCompare(b.company));
   }, [customerList, knownCompanies, supplierDirectory]);
 
+  useEffect(() => {
+    const fromCards = cards.map(c => c.customer);
+    const fromCompanies = (allKnownCompanies || []).map((c: any) => c.company);
+    const list = Array.from(new Set([...fromCards, ...fromCompanies]))
+      .filter((n): n is string => Boolean(n && typeof n === 'string'))
+      .sort((a, b) => a.localeCompare(b));
+    setCompanyOptions(list);
+  }, [cards, allKnownCompanies, setCompanyOptions]);
+
   // Already-entered product names across enquiries — for the Product Name dropdown
   // (user can still type a brand-new product name).
   const existingProductNames = useMemo(() => {
@@ -2532,11 +2857,50 @@ export function SalesPipelinePage() {
     return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
   }, [rawLeadsList]);
 
+  // Products available when adding/editing an inward: includes Components & Raw Materials catalogue items,
+  // plus all pipeline products from enquiries and sales orders (matching the options available when adding inward).
+  const inwardEditProductOptions = useMemo(() => {
+    const list: { name: string; detail?: string; group: 'catalogue' | 'pipeline' }[] = [];
+    const seen = new Set<string>();
+
+    // 1. Components / Raw Materials catalogue items (same source as eligibleCatalogue in inward entry form)
+    (eligibleCatalogue || []).forEach((m: any) => {
+      const name = String(m.name || '').trim();
+      if (name && !seen.has(name.toLowerCase())) {
+        seen.add(name.toLowerCase());
+        const detail = [m.code, m.unit ? `per ${m.unit}` : '', m.unitPrice ? `₹${m.unitPrice}` : ''].filter(Boolean).join(' · ');
+        list.push({ name, detail, group: 'catalogue' });
+      }
+    });
+
+    // 2. Enquiry & Sales Order pipeline products (same source as enquiryProductOptions in inward entry form)
+    const pipe = enquiryProductOptions(rawLeadsList, undefined, salesOrdersList);
+    (pipe || []).forEach((o: any) => {
+      const name = String(o.name || '').trim();
+      if (name && !seen.has(name.toLowerCase())) {
+        seen.add(name.toLowerCase());
+        const detail = [o.customer || o.leadNo, o.saleLabel].filter(Boolean).join(' · ');
+        list.push({ name, detail, group: 'pipeline' });
+      }
+    });
+
+    // 3. Fallback: all distinct product names across existing enquiries/orders
+    (existingProductNames || []).forEach((n: string) => {
+      const name = String(n || '').trim();
+      if (name && !seen.has(name.toLowerCase())) {
+        seen.add(name.toLowerCase());
+        list.push({ name, group: 'pipeline' });
+      }
+    });
+
+    return list;
+  }, [eligibleCatalogue, rawLeadsList, salesOrdersList, existingProductNames]);
+
   const fetchPipeline = async () => {
     setLoading(true);
     try {
     // Fetch all leads to build a lookup map for Unique Numbers
-    const { data: allLeads, error: leadsErr } = await supabase.from('cnc_enquiries').select('id, lead_no, enquiry_no, status, pipeline_stage, customer, part_name, quantity, estimated_value, expected_date, contact_person, phone, email, enquiring_for, gst, city');
+    const { data: allLeads, error: leadsErr } = await supabase.from('cnc_enquiries').select('id, lead_no, enquiry_no, status, pipeline_stage, customer, part_name, quantity, estimated_value, expected_date, received_date, created_at, contact_person, phone, email, enquiring_for, gst, city');
     if (leadsErr) console.error("Error fetching leads:", leadsErr);
     
     const leadMap = new Map();
@@ -2600,7 +2964,7 @@ export function SalesPipelinePage() {
     activeLeads.forEach(l => newCards.push({
       id: `lead_${l.id}`, stage: 'Enquiry', type: 'lead',
       refNo: leadMap.get(l.id), customer: l.customer, part: formatLeadProductDisplay(l),
-      qty: l.quantity, value: l.estimated_value, date: l.expected_date, status: l.status, raw: l
+      qty: l.quantity, value: l.estimated_value, date: l.expected_date || l.received_date || (l.created_at ? String(l.created_at).split('T')[0] : ''), status: l.status, raw: l
     }));
 
     if (quotes) quotes.forEach(q => newCards.push({
@@ -3509,6 +3873,17 @@ export function SalesPipelinePage() {
         ? (/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/.test(baseUnique) ? baseUnique : `${baseUnique}-${stampSuffix}`)
         : stampSuffix;
 
+      const stampedFinalItems = finalItems.map(i => {
+        const rawName = String(i.partName || i.productName || '').trim();
+        const stampedName = attachDateTimeToProduct(rawName, null, nowStamp);
+        return {
+          ...i,
+          partName: stampedName,
+          productName: stampedName,
+        };
+      });
+      const names = stampedFinalItems.map(i => i.partName);
+
       const { error } = await supabase.from('cnc_sales_orders').insert([{
         id: crypto.randomUUID(),
         order_no: oNo, customer: card.customer, customer_id: card.raw.customer_id || null, quote_no: card.raw.quote_no || '',
@@ -3517,9 +3892,10 @@ export function SalesPipelinePage() {
         shipping_contact: '', shipping_phone: '',
         lead_no: stampedLeadNo, order_date: new Date().toISOString().split('T')[0],
         customer_po_no: '', customer_po_date: null,
-        items: finalItems,
+        items: stampedFinalItems,
 
-        part_name: item.partName, part_number: item.partNumber, part_no: item.partNumber,
+        part_name: stampedFinalItems.length > 1 ? `${names.join(', ')} (${stampedFinalItems.length} Products)` : names[0],
+        part_number: item.partNumber, part_no: item.partNumber,
         quantity: q, delivered: 0,
         value: totalVal, total_value: totalVal,
         
@@ -3881,7 +4257,10 @@ export function SalesPipelinePage() {
         seen.add(id);
       }
     }
-    const flatFiles = groups.flatMap((g: any) => g.files || []);
+    const flatFiles = groups.flatMap((g: any) => [
+      ...(g.files || []),
+      ...(g.items || []).flatMap((it: any) => it.files || []),
+    ]);
     if (flatFiles.some((file: File) => file.size > 50 * 1024 * 1024)) {
       alert('Each attachment must be 50 MB or smaller.');
       return;
@@ -3896,8 +4275,9 @@ export function SalesPipelinePage() {
       const rows = [];
       for (const { g, it } of flatItems) {
         const inwardId = crypto.randomUUID();
-        const attachments = (g.files && g.files.length && company?.id)
-          ? await Promise.all((g.files || []).map((file: File) => uploadInwardAttachment(company!.id, inwardId, file)))
+        const itemFiles = [...(g.files || []), ...(it.files || [])];
+        const attachments = (itemFiles.length && company?.id)
+          ? await Promise.all(itemFiles.map((file: File) => uploadInwardAttachment(company!.id, inwardId, file)))
           : [];
         const q = Number(it.quantity) || 0;
         const p = Number(it.price) || 0;
@@ -4220,20 +4600,25 @@ export function SalesPipelinePage() {
     try {
       uploadedPaths = await Promise.all(entered.map((it: any) => Promise.all(((it.files || []) as File[]).map(f => uploadOrderFile(company!.id, f)))));
     } catch (e: any) { setSavingSo(false); alert(e?.message || 'Could not upload the files.'); return; }
-    const finalItems = entered.map((it: any, fileIdx: number) => ({
-       id: it.id || crypto.randomUUID(),
-       filePaths: uploadedPaths[fileIdx] ?? [],
-       partName: it.partName,
-       partNumber: '',
-       description: '',
-       quantity: String(Number(it.quantity) || 0),
-       rejectedQty: Number(it.rejectedQty) || 0,
-       status: it.itemStatus || 'Confirmed',
-       unitPrice: String(Number(it.unitPrice) || 0),
-       discount: '0',
-       unitDiscount: '0',
-       gst: it.gst || '18'
-    }));
+    const nowStamp = new Date();
+    const finalItems = entered.map((it: any, fileIdx: number) => {
+      const rawName = String(it.partName || '').trim();
+      const stampedName = attachDateTimeToProduct(rawName, null, nowStamp);
+      return {
+        id: it.id || crypto.randomUUID(),
+        filePaths: uploadedPaths[fileIdx] ?? [],
+        partName: stampedName,
+        partNumber: '',
+        description: '',
+        quantity: String(Number(it.quantity) || 0),
+        rejectedQty: Number(it.rejectedQty) || 0,
+        status: it.itemStatus || 'Confirmed',
+        unitPrice: String(Number(it.unitPrice) || 0),
+        discount: '0',
+        unitDiscount: '0',
+        gst: it.gst || '18'
+      };
+    });
     const totalQty = finalItems.reduce((s: number, i: any) => s + (Number(i.quantity) || 0), 0);
     const names = finalItems.map((i: any) => i.partName);
     const prodStatuses = Array.from(new Set(finalItems.map((i: any) => String(i.status || '').trim()).filter(Boolean)));
@@ -4555,21 +4940,66 @@ export function SalesPipelinePage() {
           setEnquiryForm({...enquiryForm, items: newItems});
         }} />
         <label className="inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
-          <UploadCloud size={13}/>{(item.files || []).length ? `${item.files.length} file(s)` : 'Upload file'}
+          <UploadCloud size={13}/>{((item.files || []).length + getItemFileEntries(item).length) ? `${(item.files || []).length + getItemFileEntries(item).length} file(s)` : 'Upload file'}
           <input type="file" multiple accept="*/*" className="hidden" onChange={e => {
             const selectedFiles = Array.from(e.currentTarget.files || []);
-            const newItems = [...(enquiryForm.items || [])];
-            newItems[idx] = { ...newItems[idx], files: [...(newItems[idx].files || []), ...selectedFiles] };
-            setEnquiryForm({...enquiryForm, items: newItems});
             e.currentTarget.value = '';
+            if (selectedFiles.length) {
+              setEnquiryForm((prev: any) => ({
+                ...prev,
+                items: (prev.items || []).map((it: any, i: number) => i === idx ? { ...it, files: [...(it.files || []), ...selectedFiles] } : it)
+              }));
+            }
           }} />
         </label>
-        {(item.files || []).length > 0 && item.files.map((file: File, fileIdx: number) => (
-          <span key={`${file.name}-${fileIdx}`} className="inline-flex shrink-0 items-center gap-1 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-600">
-            <span className="max-w-[9rem] truncate">{file.name}</span>
-            <button type="button" title={`Remove ${file.name}`} className="font-bold text-rose-600 hover:text-rose-800" onClick={() => { const newItems = [...enquiryForm.items]; newItems[idx] = {...newItems[idx], files: newItems[idx].files.filter((_: File, j: number) => j !== fileIdx)}; setEnquiryForm({...enquiryForm, items: newItems}); }}>×</button>
-          </span>
-        ))}
+        {((item.files || []).length > 0 || getItemFileEntries(item).length > 0) && (
+          <div className="flex flex-wrap gap-1 items-center">
+            {((item.files || []) as File[]).map((file: File, fileIdx: number) => (
+              <span key={`enq-f-${file.name}-${fileIdx}`} className="inline-flex shrink-0 items-center gap-1 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-600">
+                <span className="max-w-[8rem] truncate font-medium">{file.name}</span>
+                <button
+                  type="button"
+                  title={`Remove ${file.name}`}
+                  className="ml-0.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-slate-400 hover:bg-rose-100 hover:text-rose-600 transition-colors cursor-pointer text-xs font-bold leading-none"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEnquiryForm((prev: any) => ({
+                      ...prev,
+                      items: (prev.items || []).map((it: any, i: number) => i === idx ? {
+                        ...it,
+                        files: (it.files || []).filter((_: File, j: number) => j !== fileIdx)
+                      } : it)
+                    }));
+                  }}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            {getItemFileEntries(item).map((f: any, fpi: number) => (
+              <span key={`enq-fp-${f.key || f.path}-${fpi}`} className="inline-flex shrink-0 items-center gap-1 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-600">
+                <button type="button" className="max-w-[8rem] truncate text-blue-700 hover:underline" onClick={() => void openProductFile(f.path)}>{f.name}</button>
+                <button
+                  type="button"
+                  title={`Remove ${f.name}`}
+                  className="ml-0.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-slate-400 hover:bg-rose-100 hover:text-rose-600 transition-colors cursor-pointer text-xs font-bold leading-none"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEnquiryForm((prev: any) => ({
+                      ...prev,
+                      items: (prev.items || []).map((it: any, i: number) => i === idx ? {
+                        ...it,
+                        filePaths: (it.filePaths || []).filter((p: any) => (typeof p === 'string' ? p : p.path || p.url) !== f.path)
+                      } : it)
+                    }));
+                  }}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <input className={`${compactInput} w-[6.5rem]`} placeholder="Remarks..." value={item.remarks || ''} onChange={e => {
           const newItems = [...(enquiryForm.items || [])];
           newItems[idx] = { ...newItems[idx], remarks: e.target.value };
@@ -4603,7 +5033,7 @@ export function SalesPipelinePage() {
         )}
 
         {/* One compact row: header (back + title), company, product line, actions, search. */}
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div ref={enquiryRowRef} className="relative flex flex-wrap items-center gap-1.5">
           {opts?.onBack && (
             <div className="flex items-center gap-1.5 shrink-0 mr-1">
               <button 
@@ -4638,7 +5068,7 @@ export function SalesPipelinePage() {
           <span className="h-6 w-px shrink-0 bg-slate-300" aria-hidden="true" />
 
           {(enquiryForm.items || [{ productName: '', partName: '', quantity: '', remarks: '', filePaths: [] as string[], files: [] as File[] }]).slice(0, 1).map((item: any, idx: number) => (
-            <Fragment key={idx}>{renderItemFields(item, idx)}</Fragment>
+            <span key={idx} ref={firstEnquiryItemRef} className="inline-flex flex-wrap items-center gap-1.5">{renderItemFields(item, idx)}</span>
           ))}
           <datalist id="enquiry-product-list">{existingProductNames.map(n => <option key={n} value={n} />)}</datalist>
 
@@ -4652,11 +5082,12 @@ export function SalesPipelinePage() {
               </>
             )}
           </div>
-          {/* Added products: each on its own full-width line below, no sideways scroll. */}
+          {/* Added products: each on its own full-width line below, indented to sit
+              straight under the first line's product fields. No sideways scroll. */}
           {(enquiryForm.items || []).slice(1).map((item: any, i: number) => {
             const idx = i + 1;
             return (
-              <div key={idx} className="flex flex-wrap items-center gap-2 basis-full border-t border-slate-200/60 pt-2">
+              <div key={idx} style={{ paddingLeft: enquiryItemIndent }} className="flex flex-wrap items-center gap-1.5 basis-full border-t border-slate-200/60 pt-2">
                 {renderItemFields(item, idx)}
               </div>
             );
@@ -4766,17 +5197,66 @@ export function SalesPipelinePage() {
                   {['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'].map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
                 <label className="inline-flex h-7 w-full cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach drawings or any file (all formats)">
-                  <UploadCloud size={13} />{(item.files || []).length ? `${item.files.length} file${item.files.length === 1 ? '' : 's'}` : 'Upload'}
-                  <input type="file" multiple accept="*/*" className="hidden" aria-label={`Drawings for product ${idx + 1}`} onChange={e => { const picked = Array.from(e.currentTarget.files || []); e.currentTarget.value = ''; if (picked.length) upd({ files: [...(item.files || []), ...picked] }); }} />
+                  <UploadCloud size={13} />{((item.files || []).length + getItemFileEntries(item).length) ? `${(item.files || []).length + getItemFileEntries(item).length} file${((item.files || []).length + getItemFileEntries(item).length) === 1 ? '' : 's'}` : 'Upload'}
+                  <input type="file" multiple accept="*/*" className="hidden" aria-label={`Drawings for product ${idx + 1}`} onChange={e => {
+                    const picked = Array.from(e.currentTarget.files || []);
+                    e.currentTarget.value = '';
+                    if (picked.length) {
+                      setSoForm((prev: any) => ({
+                        ...prev,
+                        items: (prev.items || []).map((r: any, i: number) => i === idx ? { ...r, files: [...(r.files || []), ...picked] } : r)
+                      }));
+                    }
+                  }} />
                 </label>
                 <button type="button" title={`Remove product ${idx + 1}`} aria-label={`Remove product ${idx + 1}`} className="flex h-7 w-7 items-center justify-center rounded-md text-lg leading-none text-rose-500 hover:bg-rose-50 hover:text-rose-700" onClick={() => setSoForm((prev: any) => ({ ...prev, items: (prev.items || []).filter((_: any, i: number) => i !== idx) }))}>×</button>
               </div>
-              {(item.files || []).length > 0 && (
+              {((item.files || []).length > 0 || getItemFileEntries(item).length > 0) && (
                 <div className="mt-1.5 flex flex-wrap gap-1.5 pl-9" data-testid="so-files">
-                  {(item.files as File[]).map((f, fi) => (
-                    <span key={`${f.name}-${fi}`} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-700">
-                      <span className="max-w-[180px] truncate">{f.name}</span>
-                      <button type="button" className="font-bold text-rose-500 hover:text-rose-700" aria-label={`Remove ${f.name}`} onClick={() => upd({ files: (item.files as File[]).filter((_, j) => j !== fi) })}>×</button>
+                  {getItemFileEntries(item).map((f: any, fpi: number) => (
+                    <span key={`so-fp-${f.key || f.path}-${fpi}`} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-700 shadow-xs">
+                      <button type="button" className="max-w-[180px] truncate font-medium text-blue-700 hover:underline" onClick={() => void openProductFile(f.path)}>{f.name}</button>
+                      <button
+                        type="button"
+                        className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 hover:bg-rose-100 hover:text-rose-600 transition-colors cursor-pointer text-sm font-bold leading-none"
+                        title={`Remove ${f.name}`}
+                        aria-label={`Remove ${f.name}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSoForm((prev: any) => ({
+                            ...prev,
+                            items: (prev.items || []).map((r: any, i: number) => i === idx ? {
+                              ...r,
+                              filePaths: (r.filePaths || []).filter((p: any) => (typeof p === 'string' ? p : p.path || p.url) !== f.path)
+                            } : r)
+                          }));
+                        }}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                  {((item.files || []) as File[]).map((f: File, fi: number) => (
+                    <span key={`so-f-${f.name}-${fi}`} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-700 shadow-xs">
+                      <span className="max-w-[180px] truncate font-medium">{f.name}</span>
+                      <button
+                        type="button"
+                        className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 hover:bg-rose-100 hover:text-rose-600 transition-colors cursor-pointer text-sm font-bold leading-none"
+                        title={`Remove ${f.name}`}
+                        aria-label={`Remove ${f.name}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSoForm((prev: any) => ({
+                            ...prev,
+                            items: (prev.items || []).map((r: any, i: number) => i === idx ? {
+                              ...r,
+                              files: (r.files || []).filter((_: any, j: number) => j !== fi)
+                            } : r)
+                          }));
+                        }}
+                      >
+                        ×
+                      </button>
                     </span>
                   ))}
                 </div>
@@ -4855,12 +5335,6 @@ export function SalesPipelinePage() {
             />
             <FormField label="Party Address" inline><input className={`${compactInput} w-[14rem]`} value={dcForm.partyAddress || ''} onChange={e=>setDcForm({...dcForm, partyAddress: e.target.value})} /></FormField>
             <FormField label="Party GSTIN" inline><input className={`${compactInput} w-[11rem]`} value={dcForm.partyGstin || ''} onChange={e=>setDcForm({...dcForm, partyGstin: e.target.value})} /></FormField>
-            {opts?.searchSlot && (
-              <div className="ml-auto flex shrink-0 items-center gap-2">
-                <span className="h-6 w-px shrink-0 bg-slate-300 mx-0.5" aria-hidden="true" />
-                {opts.searchSlot}
-              </div>
-            )}
           </div>
           {/* Row 2 - dispatch references. */}
           <div className="flex flex-wrap items-center gap-2">
@@ -4940,7 +5414,10 @@ export function SalesPipelinePage() {
               );
             })}
             <datalist id="dc-product-list">
-              {partsMaster.map((p: any) => <option key={p.id || p.part_name} value={p.part_name} />)}
+              {Array.from(new Set([
+                ...enquiryProductOptions(rawLeadsList, undefined, salesOrdersList).map((o: any) => o.name),
+                ...partsMaster.map((p: any) => p.part_name),
+              ].filter(Boolean))).map((n: string) => <option key={n} value={n} />)}
             </datalist>
             <button type="button" onClick={() => setDcItems((prev) => [...prev, { name: '', avail: null, qty: '', selected: true, hsn: '', unit: 'Nos', price: '' }])} className="mt-1 flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] font-semibold text-brand-600 hover:text-brand-700">
               <span className="text-sm">+</span> Add Part
@@ -4974,6 +5451,11 @@ export function SalesPipelinePage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-2.5">
+          {opts?.searchSlot && (
+            <div className="flex shrink-0 items-center">
+              {opts.searchSlot}
+            </div>
+          )}
           <Button variant="secondary" size="sm" onClick={clearDcForm}>Clear / Reset</Button>
           <Button size="sm" onClick={saveDeliveryChallan} disabled={dcSaving} className={MODULE_THEMES.DC.btnPrimary}>{dcSaving ? 'Saving...' : 'Save'}</Button>
         </div>
@@ -5048,25 +5530,56 @@ export function SalesPipelinePage() {
                   </div>
                   <FormField label="Inward Date" required inline><input type="date" className={`${compactInput} w-[10.5rem]`} value={group.inwardDate || ''} onChange={e=>setGroup({ inwardDate: e.target.value })} /></FormField>
                   <FormField label="Reference No." inline><input className={`${compactInput} w-[10rem]`} value={group.referenceNo || ''} onChange={e=>setGroup({ referenceNo: e.target.value })} placeholder="e.g. DC/Invoice No" /></FormField>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <span className={inlineLbl}>Files</span>
                     <label className="inline-flex h-7 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach bills, DCs or any file (all formats)">
                       <UploadCloud size={13}/>{(group.files || []).length ? `${group.files.length} file${group.files.length === 1 ? '' : 's'}` : 'Choose Files'}
-                      <input type="file" multiple accept="*/*" className="hidden" onChange={e=>{ setGroup({ files: [...(group.files || []), ...Array.from(e.target.files || [])] }); e.currentTarget.value=''; }} />
+                      <input type="file" multiple accept="*/*" className="hidden" onChange={e=>{
+                        const picked = Array.from(e.target.files || []);
+                        e.currentTarget.value = '';
+                        if (picked.length) {
+                          setGroup({ files: [...(group.files || []), ...picked] });
+                        }
+                      }} />
                     </label>
-                    {(group.files || []).length > 0 && <span className="max-w-[10rem] truncate text-[11px] text-slate-500">{group.files.map((f: File) => f.name).join(', ')}</span>}
+                    {(group.files || []).length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {((group.files || []) as File[]).map((f: File, fi: number) => (
+                          <span key={`inw-f-${f.name}-${fi}`} className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-700 shadow-xs">
+                            <span className="max-w-[110px] truncate font-medium">{f.name}</span>
+                            <button
+                              type="button"
+                              className="ml-0.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-slate-400 hover:bg-rose-100 hover:text-rose-600 transition-colors cursor-pointer text-xs font-bold leading-none"
+                              title={`Remove ${f.name}`}
+                              aria-label={`Remove ${f.name}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setInwardForm((prev: any) => ({
+                                  ...prev,
+                                  parts: (prev.parts || []).map((p: any, pi: number) => pi === index ? {
+                                    ...p,
+                                    files: (p.files || []).filter((_: any, j: number) => j !== fi)
+                                  } : p)
+                                }));
+                              }}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   {addPartBtn}
                   {inwardForm.parts.length > 1 && <button type="button" onClick={() => setInwardForm({...inwardForm, parts: inwardForm.parts.filter((_: any, i: number) => i !== index)})} className="ml-auto shrink-0 text-xs font-medium text-rose-600 hover:text-rose-800">Remove</button>}
                 </div>
                 {(group.items || []).map((item: any, ii: number) => (
-                  <div key={ii} className="mt-1.5 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-1.5">
+                  <div key={ii} className="mt-1.5 flex flex-nowrap items-center gap-1.5 border-t border-slate-200 pt-1.5 overflow-x-auto py-1">
                     <span className="w-4 shrink-0 text-center text-[11px] font-bold text-slate-400">{ii + 1}</span>
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      <span className={inlineLbl}>Product</span>
+                    <div className="flex shrink-0 min-w-0 items-center">
                       {(group.category || 'GOODS PURCHASE') === 'EXPENSES' ? (
                         <>
-                          <input className={`${compactInput} w-[13rem]`} list={`expense-products-${index}-${ii}`} placeholder="Type the product / project" value={item.productName || ''}
+                          <input className={`${compactInput} w-[12.5rem]`} list={`expense-products-${index}-${ii}`} placeholder="Search & select product / project" title="Product" value={item.productName || ''}
                             onChange={e => onInwardProductInput(index, ii, e.target.value, { allowFreeText: true })} />
                           <datalist id={`expense-products-${index}-${ii}`}>
                             {eligibleCatalogue.map((m: any) => <option key={m.key} value={m.name}>{[m.code, m.unit ? `per ${m.unit}` : '', m.unitPrice ? `₹${m.unitPrice}` : ''].filter(Boolean).join(' · ')}</option>)}
@@ -5075,7 +5588,7 @@ export function SalesPipelinePage() {
                         </>
                       ) : (
                         <>
-                          <input className={`${compactInput} w-[13rem]`} list={`inward-products-${index}-${ii}`} placeholder="Search & select product" value={item.productName || ''}
+                          <input className={`${compactInput} w-[12.5rem]`} list={`inward-products-${index}-${ii}`} placeholder="Search & select product" title="Product" value={item.productName || ''}
                             onChange={e => onInwardProductInput(index, ii, e.target.value)} />
                           <datalist id={`inward-products-${index}-${ii}`}>
                             {eligibleCatalogue.map((m: any) => <option key={m.key} value={m.name}>{[m.code, m.unit ? `per ${m.unit}` : '', m.unitPrice ? `₹${m.unitPrice}` : ''].filter(Boolean).join(' · ')}</option>)}
@@ -5084,25 +5597,62 @@ export function SalesPipelinePage() {
                         </>
                       )}
                     </div>
-                    <div className="flex items-center gap-1.5"><span className={inlineLbl}>Part Name *</span>
-                      <input className={`${compactInput} w-[10rem]`} placeholder="Part Name" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} /></div>
-                    <div className="flex items-center gap-1.5"><span className={inlineLbl}>Remarks</span>
-                      <input className={`${compactInput} w-[10rem]`} placeholder="Remarks..." value={item.remarks ?? ''} onChange={e=>setItem(ii, { remarks: e.target.value })} /></div>
-                    <div className="flex items-center gap-1.5"><span className={inlineLbl}>Qty *</span>
-                      <input type="number" min="0" className={`${compactInput} w-[4.5rem]`} placeholder="Qty" value={item.quantity || ''} onChange={e=>setItem(ii, { quantity: e.target.value })} /></div>
-                    <div className="flex items-center gap-1.5"><span className={inlineLbl}>Price *</span>
-                      <input type="number" min="0" className={`${compactInput} w-[6rem]`} placeholder="Price" value={item.price || ''} onChange={e=>setItem(ii, { price: e.target.value })} /></div>
-                    <div className="flex items-center gap-1.5"><span className={inlineLbl}>Disc %</span>
-                      <input type="number" min="0" className={`${compactInput} w-[4.5rem]`} placeholder="%" value={item.discount || ''} onChange={e=>setItem(ii, { discount: e.target.value })} /></div>
-                    <div className="flex items-center gap-1.5"><span className={inlineLbl}>GST %</span>
-                      <input type="number" min="0" className={`${compactInput} w-[4.5rem]`} placeholder="%" value={item.gst || ''} onChange={e=>setItem(ii, { gst: e.target.value })} /></div>
-                    <div className="flex items-center gap-1.5"><span className={inlineLbl}>Total</span>
-                      <input className={`${compactInput} w-[6rem] bg-white font-bold`} value={lineTotal(item) || 0} disabled /></div>
-                    {(group.items || []).length > 1 && (
-                      <button type="button" className="shrink-0 rounded p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600" title="Remove line" onClick={() => setGroup({ items: (group.items || []).filter((_: any, j: number) => j !== ii) })}>
+                    <input className={`${compactInput} w-[9.5rem] shrink-0`} placeholder="Part Name *" title="Part Name" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} />
+                    <input className={`${compactInput} w-[8.5rem] shrink-0`} placeholder="Remarks..." title="Remarks" value={item.remarks ?? ''} onChange={e=>setItem(ii, { remarks: e.target.value })} />
+                    <div className="flex shrink-0 items-center gap-1"><span className={inlineLbl}>Qty *</span>
+                      <input type="number" min="0" className={`${compactInput} w-[4.25rem]`} placeholder="Qty" value={item.quantity || ''} onChange={e=>setItem(ii, { quantity: e.target.value })} /></div>
+                    <div className="flex shrink-0 items-center gap-1"><span className={inlineLbl}>Price *</span>
+                      <input type="number" min="0" className={`${compactInput} w-[5.5rem]`} placeholder="Price" value={item.price || ''} onChange={e=>setItem(ii, { price: e.target.value })} /></div>
+                    <div className="flex shrink-0 items-center gap-1"><span className={inlineLbl}>Disc %</span>
+                      <input type="number" min="0" className={`${compactInput} w-[3.75rem]`} placeholder="%" value={item.discount || ''} onChange={e=>setItem(ii, { discount: e.target.value })} /></div>
+                    <div className="flex shrink-0 items-center gap-1"><span className={inlineLbl}>GST %</span>
+                      <input type="number" min="0" className={`${compactInput} w-[3.75rem]`} placeholder="%" value={item.gst || ''} onChange={e=>setItem(ii, { gst: e.target.value })} /></div>
+                    <div className="flex shrink-0 items-center gap-1"><span className={inlineLbl}>Total</span>
+                      <input className={`${compactInput} w-[5.5rem] bg-white font-bold`} value={lineTotal(item) || 0} title="Total" disabled /></div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <label className="inline-flex h-7 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach drawing or spec for this product">
+                        <UploadCloud size={13} />{(item.files || []).length ? `${item.files.length} file${item.files.length === 1 ? '' : 's'}` : 'Attach Drawing'}
+                        <input type="file" multiple accept="*/*" className="hidden" onChange={e => {
+                          const picked = Array.from(e.target.files || []);
+                          e.currentTarget.value = '';
+                          if (picked.length) {
+                            setItem(ii, { files: [...(item.files || []), ...picked] });
+                          }
+                        }} />
+                      </label>
+                      {(item.files || []).length > 0 && (
+                        <div className="flex items-center gap-1">
+                          {((item.files || []) as File[]).map((f: File, fi: number) => (
+                            <span key={`item-f-${f.name}-${fi}`} className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-700 shadow-xs">
+                              <span className="max-w-[90px] truncate font-medium">{f.name}</span>
+                              <button
+                                type="button"
+                                className="ml-0.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-slate-400 hover:bg-rose-100 hover:text-rose-600 transition-colors cursor-pointer text-xs font-bold leading-none"
+                                title={`Remove ${f.name}`}
+                                aria-label={`Remove ${f.name}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setItem(ii, {
+                                    files: (item.files || []).filter((_: any, j: number) => j !== fi)
+                                  });
+                                }}
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {(group.items || []).length > 1 ? (
+                      <button type="button" className="shrink-0 rounded p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 ml-auto" title="Remove line" onClick={() => setGroup({ items: (group.items || []).filter((_: any, j: number) => j !== ii) })}>
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
                       </button>
-                    )}
+                    ) : (item.productName || item.partName || (item.files || []).length > 0) ? (
+                      <button type="button" className="shrink-0 rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 ml-auto" title="Clear line" onClick={() => setItem(ii, emptyInwardItem())}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                      </button>
+                    ) : null}
                   </div>
                 ))}
                 {(inwardForm.productOptions || []).length === 0 && eligibleCatalogue.length === 0 && (group.category || 'GOODS PURCHASE') !== 'EXPENSES' && <span className="mt-1 block text-xs text-amber-700">No products found. Add the product to the Components / Raw Materials master or to an Enquiry first.</span>}
@@ -5195,8 +5745,9 @@ export function SalesPipelinePage() {
 
       if (items.length > 0) {
         items.forEach((it: any) => {
-          const prodName = String(it.partName || it.productName || it.part_name || it.description || '').trim();
+          let prodName = String(it.partName || it.productName || it.part_name || it.description || '').trim();
           if (prodName) {
+            prodName = attachDateTimeToProduct(prodName, c.raw);
             const key = `${norm(company)}||${norm(prodName)}`;
             if (!postFgProductKeys.has(key)) {
               optionsMap.set(key, { company, product: prodName });
@@ -5204,8 +5755,9 @@ export function SalesPipelinePage() {
           }
         });
       } else {
-        const prod = String(c.raw?.part_name || c.part || '').trim();
+        let prod = String(c.raw?.part_name || c.part || '').trim();
         if (prod && !/^multiple/i.test(prod)) {
+          prod = attachDateTimeToProduct(prod, c.raw);
           const key = `${norm(company)}||${norm(prod)}`;
           if (!postFgProductKeys.has(key)) {
             optionsMap.set(key, { company, product: prod });
@@ -5226,8 +5778,9 @@ export function SalesPipelinePage() {
         if (Array.isArray(r)) items = r;
       } catch { /* no lines */ }
       items.forEach((it: any) => {
-        const prodName = String(it.partName || it.productName || it.part_name || it.description || '').trim();
+        let prodName = String(it.partName || it.productName || it.part_name || it.description || '').trim();
         if (prodName) {
+          prodName = attachDateTimeToProduct(prodName, o);
           const key = `${norm(company)}||${norm(prodName)}`;
           if (!postFgProductKeys.has(key)) {
             optionsMap.set(key, { company, product: prodName });
@@ -5256,12 +5809,18 @@ export function SalesPipelinePage() {
           const inwardCard = cards.find(c =>
             c.stage === 'Inward' &&
             k(c.customer) === k(company) &&
-            (k(c.part).includes(k(product)) || k((c.raw as any)?.part_name) === k(product) || k((c.raw as any)?.product_name) === k(product))
+            (k(c.part).includes(k(product)) || k((c.raw as any)?.part_name) === k(product) || k((c.raw as any)?.product_name) === k(product) || getProductBaseName(c.part) === getProductBaseName(product))
           );
           // Next check matching order
           const order: any = (salesOrdersList || []).find((o: any) => {
             if (k(o.customer || o.customer_name) !== k(company)) return false;
-            try { const r = typeof o.items === 'string' ? JSON.parse(o.items) : o.items; return Array.isArray(r) && r.some((it: any) => k(it.partName || it.productName || it.part_name || it.description) === k(product)); } catch { return false; }
+            try {
+              const r = typeof o.items === 'string' ? JSON.parse(o.items) : o.items;
+              return Array.isArray(r) && r.some((it: any) => {
+                const n = it.partName || it.productName || it.part_name || it.description;
+                return k(attachDateTimeToProduct(n, o)) === k(product) || k(n) === k(getProductBaseName(product));
+              });
+            } catch { return false; }
           });
           const base = { id: `fg-${Date.now()}`, stage: 'Inward', type: 'inward', customer: company, part: product, qty: inwardCard?.qty || 0, value: 0, date: '' };
           if (inwardCard) {
@@ -5397,8 +5956,33 @@ export function SalesPipelinePage() {
       {/* 3. Pipeline Toolbar (Tabs, All Companies, and Search/Filters) */}
       {onPipelineView && pipelineViewMode !== 'companies' && (
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-          {/* 1. Board View Toggles */}
-          {viewTabs}
+          {/* 1. Board View Toggles + Company Filter Pill */}
+          <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap min-w-0">
+            {viewTabs}
+
+            {pipelineViewMode !== 'list' && pipelineViewMode !== 'companies' && (
+              <div className="relative flex items-center gap-1.5 sm:gap-2 px-3 py-1 bg-white border border-amber-500 rounded-full shadow-xs shrink-0">
+                <Building2 size={15} className="text-amber-500 shrink-0" />
+                <span className="text-[11px] font-extrabold text-slate-500 tracking-wider uppercase shrink-0">COMPANY:</span>
+                <div className="relative flex items-center">
+                  <select 
+                    className="appearance-none text-xs font-bold text-slate-800 bg-transparent border-0 focus:outline-none cursor-pointer pr-5 py-0 max-w-[150px] md:max-w-[200px] truncate"
+                    value={customerFilter}
+                    onChange={(e) => {
+                      setCustomerFilter(e.target.value);
+                      setCompanyFilter(e.target.value);
+                    }}
+                  >
+                    <option value="All Companies">All Companies</option>
+                    {Array.from(new Set(cards.map(c => c.customer))).filter(Boolean).sort().map(customer => (
+                      <option key={customer} value={customer}>{customer}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} className="text-slate-700 pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 shrink-0" />
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* The tool strip lives inside QuotationModule's header on the quotation list so
               it shares one line with that card's title, search and view toggles. It only
@@ -5407,23 +5991,11 @@ export function SalesPipelinePage() {
             <div className="flex flex-1 items-center justify-end min-w-0">{quotationTools}</div>
           )}
 
-          {/* 2. Right Side: All Companies button + Filter + Search */}
-          <div className="flex items-center ml-auto gap-3 flex-nowrap min-w-0 w-full md:w-auto">
+          {/* 2. Right Side: All Companies Button + Search and Card Actions */}
+          <div className="flex items-center ml-auto gap-2 sm:gap-3 flex-nowrap min-w-0">
             {allCompaniesButton}
-
-            {pipelineViewMode !== 'list' && pipelineViewMode !== 'companies' && (
+            {!onQuotationView && (
               <>
-                <select 
-                  className="border border-slate-200 rounded-lg text-sm px-3 py-2 bg-white text-slate-700 focus:outline-none focus:border-brand-500 shadow-sm font-medium min-w-0 flex-1 md:flex-none md:w-48 truncate"
-                  value={customerFilter}
-                  onChange={(e) => setCustomerFilter(e.target.value)}
-                >
-                  <option value="All Companies">All Companies</option>
-                  {Array.from(new Set(cards.map(c => c.customer))).filter(Boolean).sort().map(customer => (
-                    <option key={customer} value={customer}>{customer}</option>
-                  ))}
-                </select>
-                {!onQuotationView && <>
                 <div className="relative shrink-0">
                   <input type="text" placeholder="Search cards..." className="pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm w-32 md:w-48 focus:outline-none focus:border-brand-500 bg-white shadow-sm" />
                   <svg className="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
@@ -5434,7 +6006,6 @@ export function SalesPipelinePage() {
                 <button className="p-2 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 shadow-sm transition-colors shrink-0">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
                 </button>
-                </>}
               </>
             )}
           </div>
@@ -5518,6 +6089,18 @@ export function SalesPipelinePage() {
             <span className="text-sm font-bold text-brand-800" data-testid="pipeline-bulk-count">
               {selectedCards.size} card{selectedCards.size === 1 ? '' : 's'} selected
             </span>
+            {showInvoiceHandoff ? (
+              <button
+                type="button"
+                onClick={() => void sendDcToInvoiceQueue()}
+                disabled={bulkMoving}
+                data-testid="pipeline-bulk-send-invoice"
+                title="Queue the selected Delivery Challans Ready for Invoice (no pricing is opened)"
+                className="px-3 py-1.5 text-sm font-semibold rounded-lg shadow-sm transition-colors bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {bulkMoving ? 'Sending…' : 'Send to Invoice'}
+              </button>
+            ) : (
             <button
               type="button"
               onClick={() => void bulkMoveToNextStage()}
@@ -5528,6 +6111,7 @@ export function SalesPipelinePage() {
             >
               {bulkMoving ? 'Moving…' : `Move to Next Stage${bulkTarget ? ` → ${bulkTarget}` : ''}`}
             </button>
+            )}
             <button
               type="button"
               onClick={clearCardSelection}
@@ -6158,12 +6742,52 @@ export function SalesPipelinePage() {
                             <div>
                               <select
                                 disabled={!viewEditMode}
-                                className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500 disabled:bg-slate-50 disabled:text-slate-700"
+                                className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500 disabled:bg-slate-50 disabled:text-slate-700 cursor-pointer"
                                 value={row.product_name || ''}
-                                onChange={(e) => { if (e.target.value !== (row.product_name || '')) void handleInlineEdit('Inward', row.id, 'product_name', e.target.value); }}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val === '__custom__') {
+                                    const custom = window.prompt('Enter product name:');
+                                    if (custom && custom.trim() && custom.trim() !== (row.product_name || '')) {
+                                      void handleInlineEdit('Inward', row.id, 'product_name', custom.trim());
+                                    }
+                                    return;
+                                  }
+                                  if (val !== (row.product_name || '')) {
+                                    const masterHit = (partsCatalogue || []).find((m: any) => normStr(m.name) === normStr(val) || (m.code && normStr(m.code) === normStr(val)));
+                                    const patch: Record<string, any> = { product_name: val };
+                                    if (masterHit) {
+                                      if (!String(row.part_name || '').trim() || String(row.part_name).trim() === String(row.product_name || '').trim()) {
+                                        patch.part_name = masterHit.name;
+                                      }
+                                    }
+                                    void handleInlineEdit('Inward', row.id, patch);
+                                  }
+                                }}
                               >
                                 <option value="">Select product…</option>
-                                {Array.from(new Set([...enquiryProductOptions(rawLeadsList, row.project_name).map((o: any) => o.name), row.product_name || ''].filter(Boolean))).map((n: string) => <option key={n} value={n}>{n}</option>)}
+                                {viewEditMode && <option value="__custom__">+ Enter custom product name…</option>}
+                                {row.product_name && !inwardEditProductOptions.some(o => o.name.toLowerCase() === String(row.product_name).toLowerCase()) && (
+                                  <option value={row.product_name}>{row.product_name}</option>
+                                )}
+                                {inwardEditProductOptions.filter(o => o.group === 'catalogue').length > 0 && (
+                                  <optgroup label="Components & Raw Materials (Catalogue)">
+                                    {inwardEditProductOptions.filter(o => o.group === 'catalogue').map(o => (
+                                      <option key={`cat-${o.name}`} value={o.name}>
+                                        {o.name}{o.detail ? ` (${o.detail})` : ''}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                                {inwardEditProductOptions.filter(o => o.group === 'pipeline').length > 0 && (
+                                  <optgroup label="Pipeline Products (Enquiry / Sales Order)">
+                                    {inwardEditProductOptions.filter(o => o.group === 'pipeline').map(o => (
+                                      <option key={`pipe-${o.name}`} value={o.name}>
+                                        {o.name}{o.detail ? ` (${o.detail})` : ''}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
                               </select>
                             </div>
                             {lineKeys.map(k => <div key={k} className="contents">{inwardCellFor(row, k, '')}</div>)}

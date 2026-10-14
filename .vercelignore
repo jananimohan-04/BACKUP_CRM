@@ -1,0 +1,24 @@
+# Files that must never be uploaded to a deployment.
+#
+# Vercel already honours .gitignore, but that only skips *untracked* files:
+# anything committed (pixel-perfect-app/.env*, the old scratch seeds) plus the
+# local-only files sitting untracked in this working tree still go up unless
+# they are named explicitly here.
+
+# Local-only Postgres setup: password-signin auth patch, demo seed data and the
+# local schema baseline (the real schema lives in the git-tracked migrations).
+scratch/local-only-password-signin.sql
+scratch/seed-local-inwards-demo.sql
+supabase/migrations/20260922990000_baseline_cnc_schema.sql
+
+# Supabase CLI runtime state - docker.env holds the service-role key and JWT
+# secret for the local stack.
+supabase/.temp/
+supabase/.branches/
+
+# Any .env* at any depth. The live .env / .env.local are already gitignored,
+# but the committed backups are not.
+.env*
+
+# Separate Lovable/TanStack app - not part of this build.
+pixel-perfect-app/

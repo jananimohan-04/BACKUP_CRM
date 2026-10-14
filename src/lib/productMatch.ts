@@ -1,7 +1,11 @@
 // The same product is often typed a little differently on an order, a challan and a costing sheet (spacing, a slipped
 // letter). Names whose digits match and whose letters differ by at most two characters are one product.
 
-const flat = (s: unknown) => String(s ?? '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+const stripTimestamp = (s: unknown) => String(s ?? '')
+  .replace(/\s*-\s*\d{2}[-/.]\d{2}[-/.]\d{2,4}\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?/i, '')
+  .replace(/\s*-\s*\d{2}[A-Za-z]{3}\d{2}[-,]\s*\d{1,2}:\d{2}(?:\s*[AP]M)?/i, '');
+
+const flat = (s: unknown) => stripTimestamp(s).trim().toLowerCase().replace(/[^a-z0-9]/g, '');
 
 const distance = (a: string, b: string) => {
   let prev = Array.from({ length: b.length + 1 }, (_, i) => i);

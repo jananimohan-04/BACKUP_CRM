@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FileText, Building2, Calculator, Plus, UserCheck, Trash2, Package, Palette, MessageCircle, Mail, FileDown, FileSpreadsheet, Bookmark, BookmarkPlus, Download, Library, Search, X } from 'lucide-react';
+import { Building2, Calculator, Plus, UserCheck, Trash2, Package, Palette, MessageCircle, Mail, FileDown, FileSpreadsheet, Bookmark, BookmarkPlus, Download, Library, Search, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { formatINR, todayISO } from '@/lib/format';
@@ -15,7 +15,7 @@ import { ProductWorkingsPage } from './ProductWorkingsPage';
 import { hasWorkings, type Workings } from '@/lib/quotationWorkings';
 import { PDF_THEMES, downloadQuotePdf, exportQuoteCsv, quoteSummaryText, type PdfThemeId, type QuoteClient, type QuoteDoc } from '@/lib/quotationDocument';
 
-const cell = 'w-full h-9 px-2 text-sm bg-white border border-slate-200 rounded-md focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20';
+const cell = 'w-full h-8 px-2 text-sm bg-white border border-slate-200 rounded-md focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20';
 const numeric = (v: string) => v.replace(/[^0-9.,]/g, '');
 
 let rowSeq = 0;
@@ -178,13 +178,8 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
   }
 
   return (
-    <div className={embed ? '' : 'p-4 lg:p-6 bg-grid min-h-full'}>
-      <div className={embed ? 'space-y-3' : 'bg-white border border-slate-200 rounded-2xl p-4 space-y-3'}>
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900"><FileText className="text-orange-500" size={26} /> Create New Quotation</h1>
-          <p className="text-sm text-slate-500 mt-1">Create accurate, professional quotations with products, pricing, taxes, and terms.</p>
-        </div>
-
+    <div className={embed ? '' : 'p-2 lg:p-3 bg-grid min-h-full'}>
+      <div className={embed ? 'space-y-2' : 'bg-white border border-slate-200 rounded-2xl p-2.5 space-y-2'}>
         {msg && (
           <div role="status" className={`flex items-start justify-between gap-3 text-sm rounded-lg px-3 py-2 border ${msg.kind === 'ok' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-700'}`}>
             <span>{msg.text}</span><button aria-label="Dismiss" onClick={() => setMsg(null)}><X size={14} /></button>
@@ -192,41 +187,41 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
         )}
 
         {/* Client */}
-        <section className="rounded-xl border border-slate-200 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <section className="rounded-xl border border-slate-200 p-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
             <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-800"><Building2 size={16} className="text-orange-500" /> Add Client / Company</h2>
             <div className="flex flex-wrap items-center gap-2">
-              <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 border border-slate-200 rounded-lg px-2 h-9">Date:
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 border border-slate-200 rounded-lg px-2 h-8">Date:
                 <input type="date" aria-label="Quotation date" value={date} onChange={e => setDate(e.target.value)} className="text-sm bg-transparent focus:outline-none" />
               </label>
               {profileStore.subs.length > 0 && (
-                <select aria-label="Quote from" value={sellerRef} onChange={e => setSellerRef(e.target.value)} className="h-9 px-2 text-sm border border-slate-200 rounded-lg bg-white">
+                <select aria-label="Quote from" value={sellerRef} onChange={e => setSellerRef(e.target.value)} className="h-8 px-2 text-sm border border-slate-200 rounded-lg bg-white">
                   <option value="">{profileStore.profile.orgName || 'Main organisation'}</option>
                   {profileStore.subs.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               )}
-              <span className="text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-3 h-9 flex items-center">{clients.length} {clients.length === 1 ? 'Client' : 'Clients'} Selected</span>
-              <button onClick={() => { setSearch(''); setPickOpen(true); }} className="flex items-center gap-1.5 h-9 px-3 text-sm font-medium border border-slate-200 rounded-lg hover:bg-slate-50"><UserCheck size={15} /> Select Client</button>
+              <span className="text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-3 h-8 flex items-center">{clients.length} {clients.length === 1 ? 'Client' : 'Clients'} Selected</span>
+              <button onClick={() => { setSearch(''); setPickOpen(true); }} className="flex items-center gap-1.5 h-8 px-3 text-sm font-medium border border-slate-200 rounded-lg hover:bg-slate-50"><UserCheck size={15} /> Select Client</button>
             </div>
           </div>
           <div className="overflow-x-auto border border-slate-200 rounded-lg">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-[11px] uppercase text-slate-500"><tr>
-                {['Client / Company Name', 'Email', 'Phone Number', 'Address', 'GSTIN Number', 'Act'].map(h => <th key={h} className="text-left font-semibold px-3 py-2.5">{h}</th>)}
+                {['Client / Company Name', 'Email', 'Phone Number', 'Address', 'GSTIN Number', 'Act'].map(h => <th key={h} className="text-left font-semibold px-3 py-1.5">{h}</th>)}
               </tr></thead>
               <tbody>
                 {clients.map(c => (
                   <tr key={c.key} className="border-t border-slate-100">
-                    <td className="px-3 py-2 font-medium text-slate-800">{c.name}</td><td className="px-3 py-2">{c.email || '—'}</td><td className="px-3 py-2">{c.phone || '—'}</td>
-                    <td className="px-3 py-2">{c.address || '—'}</td><td className="px-3 py-2">{c.gstin || '—'}</td>
-                    <td className="px-3 py-2"><button aria-label={`Remove ${c.name}`} onClick={() => togglePick(c)} className="text-slate-400 hover:text-red-600"><Trash2 size={15} /></button></td>
+                    <td className="px-3 py-1 font-medium text-slate-800">{c.name}</td><td className="px-3 py-1">{c.email || '—'}</td><td className="px-3 py-1">{c.phone || '—'}</td>
+                    <td className="px-3 py-1">{c.address || '—'}</td><td className="px-3 py-1">{c.gstin || '—'}</td>
+                    <td className="px-3 py-1"><button aria-label={`Remove ${c.name}`} onClick={() => togglePick(c)} className="text-slate-400 hover:text-red-600"><Trash2 size={15} /></button></td>
                   </tr>
                 ))}
               </tbody>
             </table>
             {clients.length === 0 && (
-              <div className="flex flex-col items-center py-10 text-center">
-                <Building2 size={28} className="text-slate-300 mb-2" />
+              <div className="flex flex-col items-center py-3 text-center">
+                <Building2 size={20} className="text-slate-300 mb-1" />
                 <p className="text-sm font-semibold text-slate-700">No client company attached to this quotation.</p>
                 <p className="text-xs text-slate-500 mt-1">Click <b className="text-blue-600">Select Client</b> to choose from all companies under your account.</p>
               </div>
@@ -240,30 +235,30 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[920px]">
               <thead className="bg-slate-50 text-[11px] uppercase text-slate-500"><tr>
-                {['Sl.No', 'HSN/SAC Code', 'Description', 'Qty', 'Unit', 'Unit Price', 'Discount %', 'Discounted Unit Price', 'Amount', 'Act'].map(h => <th key={h} className="text-left font-semibold px-2 py-2.5">{h}</th>)}
+                {['Sl.No', 'HSN/SAC Code', 'Description', 'Qty', 'Unit', 'Unit Price', 'Discount %', 'Discounted Unit Price', 'Amount', 'Act'].map(h => <th key={h} className="text-left font-semibold px-2 py-1.5">{h}</th>)}
               </tr></thead>
               <tbody>
                 {lines.map((l, i) => (
                   <tr key={l.id} className="border-t border-slate-100 align-top">
-                    <td className="px-2 py-2 text-slate-500">{i + 1}</td>
-                    <td className="px-2 py-2 w-28"><input className={cell} aria-label={`Row ${i + 1} HSN`} list={HSN_LIST_ID} placeholder="Select HSN" value={l.hsn} onChange={e => setLine(l.id, { hsn: e.target.value })} /></td>
-                    <td className="px-2 py-2 min-w-[300px]"><div className="flex items-center gap-2"><input className={cell} aria-label={`Row ${i + 1} description`} placeholder="Type or select product…" value={l.description} onChange={e => setLine(l.id, { description: e.target.value })} />
+                    <td className="px-2 py-1 text-slate-500">{i + 1}</td>
+                    <td className="px-2 py-1 w-28"><input className={cell} aria-label={`Row ${i + 1} HSN`} list={HSN_LIST_ID} placeholder="Select HSN" value={l.hsn} onChange={e => setLine(l.id, { hsn: e.target.value })} /></td>
+                    <td className="px-2 py-1 min-w-[300px]"><div className="flex items-center gap-2"><input className={cell} aria-label={`Row ${i + 1} description`} placeholder="Type or select product…" value={l.description} onChange={e => setLine(l.id, { description: e.target.value })} />
                       <button type="button" data-testid={`workings-${i}`} aria-label={`Row ${i + 1} workings`} onClick={() => setWorkingsFor(l.id)}
-                        className={`shrink-0 h-9 px-2.5 text-xs font-semibold rounded-md border flex items-center gap-1 ${hasWorkings(l.workings) ? 'bg-orange-500 text-white border-orange-500' : 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100'}`}><Calculator size={13} /> Workings</button></div></td>
-                    <td className="px-2 py-2 w-24"><input className={`${cell} ${errAt(i, 'qty') ? 'border-red-400' : ''}`} inputMode="decimal" aria-label={`Row ${i + 1} quantity`} value={l.qty} onChange={e => setLine(l.id, { qty: numeric(e.target.value) })} /></td>
-                    <td className="px-2 py-2 w-24"><select className={cell} aria-label={`Row ${i + 1} unit`} value={l.unit} onChange={e => setLine(l.id, { unit: e.target.value })}>{QUOTE_UNITS.map(u => <option key={u}>{u}</option>)}</select></td>
-                    <td className="px-2 py-2 w-32"><input className={`${cell} ${errAt(i, 'unitPrice') ? 'border-red-400' : ''}`} inputMode="decimal" aria-label={`Row ${i + 1} unit price`} placeholder="0" value={l.unitPrice} onChange={e => setLine(l.id, { unitPrice: numeric(e.target.value) })} /></td>
-                    <td className="px-2 py-2 w-24"><input className={`${cell} ${errAt(i, 'discount') ? 'border-red-400' : ''}`} inputMode="decimal" aria-label={`Row ${i + 1} discount`} placeholder="0" value={l.discount} onChange={e => setLine(l.id, { discount: numeric(e.target.value) })} /></td>
-                    <td className="px-2 py-2 w-32 pt-3 font-mono text-slate-700" data-testid={`disc-unit-${i}`}>{rowResults[i].active && !Object.keys(rowResults[i].issues).length ? formatINR(rowResults[i].discountedUnit, { decimals: 'always' }) : (rowResults[i].active ? '—' : formatINR(0, { decimals: 'always' }))}</td>
-                    <td className="px-2 py-2 w-32 pt-3 font-mono font-semibold text-slate-900" data-testid={`amount-${i}`}>{rowResults[i].active && !Object.keys(rowResults[i].issues).length ? formatINR(rowResults[i].amount, { decimals: 'always' }) : (rowResults[i].active ? '—' : formatINR(0, { decimals: 'always' }))}</td>
-                    <td className="px-2 py-2 pt-3 whitespace-nowrap"><button aria-label={`Save row ${i + 1} to product library`} title="Save to Product Library" onClick={() => saveRowToLibrary(l)} className="text-slate-400 hover:text-orange-600 mr-2"><BookmarkPlus size={15} /></button><button aria-label={`Delete row ${i + 1}`} onClick={() => setLines(ls => ls.filter(x => x.id !== l.id))} className="text-slate-400 hover:text-red-600"><Trash2 size={15} /></button></td>
+                        className={`shrink-0 h-8 px-2.5 text-xs font-semibold rounded-md border flex items-center gap-1 ${hasWorkings(l.workings) ? 'bg-orange-500 text-white border-orange-500' : 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100'}`}><Calculator size={13} /> Workings</button></div></td>
+                    <td className="px-2 py-1 w-24"><input className={`${cell} ${errAt(i, 'qty') ? 'border-red-400' : ''}`} inputMode="decimal" aria-label={`Row ${i + 1} quantity`} value={l.qty} onChange={e => setLine(l.id, { qty: numeric(e.target.value) })} /></td>
+                    <td className="px-2 py-1 w-24"><select className={cell} aria-label={`Row ${i + 1} unit`} value={l.unit} onChange={e => setLine(l.id, { unit: e.target.value })}>{QUOTE_UNITS.map(u => <option key={u}>{u}</option>)}</select></td>
+                    <td className="px-2 py-1 w-32"><input className={`${cell} ${errAt(i, 'unitPrice') ? 'border-red-400' : ''}`} inputMode="decimal" aria-label={`Row ${i + 1} unit price`} placeholder="0" value={l.unitPrice} onChange={e => setLine(l.id, { unitPrice: numeric(e.target.value) })} /></td>
+                    <td className="px-2 py-1 w-24"><input className={`${cell} ${errAt(i, 'discount') ? 'border-red-400' : ''}`} inputMode="decimal" aria-label={`Row ${i + 1} discount`} placeholder="0" value={l.discount} onChange={e => setLine(l.id, { discount: numeric(e.target.value) })} /></td>
+                    <td className="px-2 py-1 w-32 pt-2 font-mono text-slate-700" data-testid={`disc-unit-${i}`}>{rowResults[i].active && !Object.keys(rowResults[i].issues).length ? formatINR(rowResults[i].discountedUnit, { decimals: 'always' }) : (rowResults[i].active ? '—' : formatINR(0, { decimals: 'always' }))}</td>
+                    <td className="px-2 py-1 w-32 pt-2 font-mono font-semibold text-slate-900" data-testid={`amount-${i}`}>{rowResults[i].active && !Object.keys(rowResults[i].issues).length ? formatINR(rowResults[i].amount, { decimals: 'always' }) : (rowResults[i].active ? '—' : formatINR(0, { decimals: 'always' }))}</td>
+                    <td className="px-2 py-1 pt-2 whitespace-nowrap"><button aria-label={`Save row ${i + 1} to product library`} title="Save to Product Library" onClick={() => saveRowToLibrary(l)} className="text-slate-400 hover:text-orange-600 mr-2"><BookmarkPlus size={15} /></button><button aria-label={`Delete row ${i + 1}`} onClick={() => setLines(ls => ls.filter(x => x.id !== l.id))} className="text-slate-400 hover:text-red-600"><Trash2 size={15} /></button></td>
                   </tr>
                 ))}
               </tbody>
             </table>
             {lines.length === 0 && (
-              <div className="flex flex-col items-center py-10 text-center">
-                <Package size={28} className="text-orange-400 mb-2" />
+              <div className="flex flex-col items-center py-4 text-center">
+                <Package size={28} className="text-orange-400 mb-1" />
                 <p className="text-sm font-semibold text-slate-700">Quotation Sheet is Empty</p>
                 <p className="text-xs text-slate-500 mt-1">Click <b className="text-blue-600">+ Add Product</b> below to add and type product details directly in the table.</p>
               </div>
@@ -271,15 +266,15 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
           </div>
         </section>
         <div className="flex flex-wrap gap-2">
-          <button onClick={() => setLines(ls => [...ls, newLine()])} className="flex items-center gap-2 h-10 px-4 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700"><Plus size={16} /> Add Product</button>
-          <button onClick={() => { setProdList(loadProducts(company?.id)); setProdOpen(true); }} className="flex items-center gap-2 h-10 px-4 text-sm font-medium border border-slate-200 rounded-lg hover:bg-slate-50"><Library size={16} /> From Product Library</button>
+          <button onClick={() => setLines(ls => [...ls, newLine()])} className="flex items-center gap-2 h-8 px-3 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700"><Plus size={16} /> Add Product</button>
+          <button onClick={() => { setProdList(loadProducts(company?.id)); setProdOpen(true); }} className="flex items-center gap-2 h-8 px-3 text-sm font-medium border border-slate-200 rounded-lg hover:bg-slate-50"><Library size={16} /> From Product Library</button>
         </div>
 
         {/* Terms + totals */}
-        <div className="grid lg:grid-cols-[1fr_380px] gap-4 items-start">
-          <div className="space-y-4">
-            <section className="rounded-xl border border-slate-200 p-4">
-              <div className="flex items-center justify-between mb-2">
+        <div className="grid lg:grid-cols-[1fr_380px] gap-2 items-start">
+          <div className="space-y-2">
+            <section className="rounded-xl border border-slate-200 p-2.5">
+              <div className="flex items-center justify-between mb-1">
                 <div><h2 className="text-sm font-bold uppercase text-slate-800">Terms &amp; Conditions</h2><p className="text-xs text-slate-500">Commercial terms, payment stages, and validity printed on PDF</p></div>
                 <div className="relative">
                   <button onClick={() => setTermsMenu(m => (m ? null : loadTerms(company?.id).templates))} className="flex items-center gap-1 text-xs font-semibold text-orange-600 border border-orange-200 bg-orange-50 rounded-lg px-3 h-8"><Download size={13} /> Import T&amp;C</button>
@@ -291,28 +286,28 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
                   )}
                 </div>
               </div>
-              <textarea aria-label="Terms and conditions" rows={5} value={terms} onChange={e => setTerms(e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg p-3 focus:outline-none focus:border-brand-500" />
+              <textarea aria-label="Terms and conditions" rows={3} value={terms} onChange={e => setTerms(e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none focus:border-brand-500" />
             </section>
-            <section className="rounded-xl border border-slate-200 p-4">
+            <section className="rounded-xl border border-slate-200 p-2.5">
               <h2 className="text-sm font-bold uppercase text-slate-800">Additional Notes <span className="ml-2 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">Included in PDF</span></h2>
-              <p className="text-xs text-slate-500 mb-2">Dispatch instructions, special handling, or custom remarks printed on PDF</p>
-              <textarea aria-label="Additional notes" rows={3} value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. Delivery lead time: 7-10 working days from PO confirmation. Material test certificates (MTC) will be provided upon dispatch." className="w-full text-sm border border-slate-200 rounded-lg p-3 focus:outline-none focus:border-brand-500" />
+              <p className="text-xs text-slate-500 mb-1">Dispatch instructions, special handling, or custom remarks printed on PDF</p>
+              <textarea aria-label="Additional notes" rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. Delivery lead time: 7-10 working days from PO confirmation. Material test certificates (MTC) will be provided upon dispatch." className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none focus:border-brand-500" />
             </section>
           </div>
 
-          <section className="rounded-xl border border-slate-200 p-4 text-sm space-y-3">
+          <section className="rounded-xl border border-slate-200 p-2.5 text-sm space-y-1.5">
             <Row label="TOTAL AMOUNT BEFORE TAX :" value={totals.subtotal} testid="subtotal" />
             {([['cgst', 'CGST'], ['sgst', 'SGST'], ['igst', 'IGST']] as const).map(([k, n]) => (
               <div key={k} className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-slate-700">Add: {n}</span>
-                <span className="flex items-center gap-1 text-slate-500"><input aria-label={`${n} percent`} inputMode="decimal" className="w-14 h-8 text-center border border-slate-200 rounded-md" value={tax[k]} onChange={e => setTax(t => ({ ...t, [k]: numeric(e.target.value) }))} /> % :</span>
+                <span className="flex items-center gap-1 text-slate-500"><input aria-label={`${n} percent`} inputMode="decimal" className="w-12 h-7 text-center border border-slate-200 rounded-md" value={tax[k]} onChange={e => setTax(t => ({ ...t, [k]: numeric(e.target.value) }))} /> % :</span>
                 <span className="font-mono ml-auto" data-testid={k}>{formatINR(totals[k], { decimals: 'always' })}</span>
               </div>
             ))}
             <Row label="Round Off :" value={totals.roundOff} testid="roundoff" plus />
-            <div className="flex items-center justify-between border-t border-slate-200 pt-3">
+            <div className="flex items-center justify-between border-t border-slate-200 pt-2">
               <span className="font-bold text-slate-900">TOTAL AMOUNT</span>
-              <span className="font-mono text-2xl font-bold text-orange-600" data-testid="grand-total">{formatINR(totals.total, { decimals: 'always' })}</span>
+              <span className="font-mono text-xl font-bold text-orange-600" data-testid="grand-total">{formatINR(totals.total, { decimals: 'always' })}</span>
             </div>
           </section>
         </div>
@@ -322,7 +317,7 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
         )}
 
         {/* Actions */}
-        <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
+        <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-2">
           <div className="relative">
             <button onClick={() => setThemeOpen(o => !o)} className="flex items-center gap-2 h-10 px-3 text-sm font-medium border border-slate-200 rounded-lg hover:bg-slate-50"><Palette size={15} className="text-orange-500" /> Select PDF Theme · {PDF_THEMES[theme].label}</button>
             {themeOpen && (
@@ -398,5 +393,5 @@ function Row({ label, value, testid, plus }: { label: string; value: number; tes
 }
 
 function ActionBtn({ children, icon, cls, onClick, disabled }: { children: string; icon: React.ReactNode; cls: string; onClick: () => void; disabled?: boolean }) {
-  return <button onClick={onClick} disabled={disabled} className={`flex items-center gap-2 h-10 px-3.5 text-sm font-semibold rounded-lg disabled:opacity-60 ${cls}`}>{icon}{children}</button>;
+  return <button onClick={onClick} disabled={disabled} className={`flex items-center gap-2 h-8 px-3 text-sm font-semibold rounded-lg disabled:opacity-60 ${cls}`}>{icon}{children}</button>;
 }

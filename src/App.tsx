@@ -115,7 +115,7 @@ function MainLayout() {
   useStickyTableHeads(mainRef, location.pathname);
 
   // Remove leading slash for matching with Lovable's navigation config
-  const currentPage = location.pathname.substring(1) || 'dashboard';
+  const currentPage = location.pathname.substring(1) || 'sales/pipeline';
 
   const handleNavigate = (page: string) => {
     navigate(`/${page}`);
@@ -154,7 +154,7 @@ function MainLayout() {
         <main ref={mainRef} key={company?.id ?? 'all-companies'} className="flex-1 overflow-y-auto scrollbar-dark transition-[background] duration-500" style={{ background: getPageTheme(location.pathname).gradient }}>
           <RequireModule module={moduleForPage(currentPage)}>
           <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/" element={<Navigate to="/sales/pipeline" replace />} />
             <Route path="/dashboard" element={<Dashboard onNavigate={handleNavigate} />} />
             
             {/* Sales */}

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Card';
 import { UploadCloud } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { itemFilePaths, openStoredFile, uploadOrderFile } from '@/lib/orderFiles';
+import { attachDateTimeToProduct } from './SalesPipelinePage';
 /** Sales-order line items: parsed `items` array, falling back to the header part name. */
 export function soProductItems(order: any): any[] {
   try {
@@ -22,9 +23,9 @@ export function soProductNames(order: any, qtyTracking?: any): string[] {
   const fromTrack = Array.isArray(qtyTracking?.products)
     ? qtyTracking.products.map((p: any) => String(p?.name || '').trim()).filter(Boolean)
     : [];
-  if (fromTrack.length) return Array.from(new Set(fromTrack));
+  if (fromTrack.length) return Array.from(new Set(fromTrack.map((n: string) => attachDateTimeToProduct(n, order))));
   const names = soProductItems(order)
-    .map((it: any) => String(it.partName || it.productName || it.part_name || it.description || '').trim())
+    .map((it: any) => attachDateTimeToProduct(String(it.partName || it.productName || it.part_name || it.description || '').trim(), order))
     .filter(Boolean);
   return Array.from(new Set(names));
 }
@@ -48,7 +49,7 @@ export function SalesOrderSection({ order, qtyTracking, editMode: editing, saveR
   const [customer, setCustomer] = useState(String(order?.customer || order?.customer_name || ''));
   const [orderDate, setOrderDate] = useState(String(order?.order_date || '').slice(0, 10));
   const [items, setItems] = useState<any[]>(baseItems.map((it: any) => ({
-    partName: String(it.partName || it.productName || it.part_name || it.description || ''),
+    partName: attachDateTimeToProduct(String(it.partName || it.productName || it.part_name || it.description || ''), order),
     quantity: it.quantity ?? it.qty ?? '',
     rejectedQty: it.rejectedQty ?? it.rejected_qty ?? it.rejected ?? '',
     unitPrice: it.unitPrice ?? '',
@@ -94,9 +95,10 @@ export function SalesOrderSection({ order, qtyTracking, editMode: editing, saveR
       const prevItems = soProductItems(order);
       const saved = entered.map((it: any, idx: number) => {
         const prev = prevItems[idx] && typeof prevItems[idx] === 'object' ? prevItems[idx] : {};
+        const stampedPartName = attachDateTimeToProduct(it.partName, order);
         return {
           ...prev,
-          partName: it.partName,
+          partName: stampedPartName,
           quantity: it.quantity === '' ? '0' : it.quantity,
           rejectedQty: it.rejectedQty === '' ? 0 : Number(it.rejectedQty) || 0,
           unitPrice: it.unitPrice === '' || it.unitPrice == null ? '0' : it.unitPrice,
@@ -189,7 +191,7 @@ export function SalesOrderSection({ order, qtyTracking, editMode: editing, saveR
               </select>
               {editing ? (
                 <label className="inline-flex h-[30px] w-full cursor-pointer items-center justify-center gap-1.5 rounded border border-dashed border-slate-300 bg-white px-2 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach drawings or any file (all formats)">
-                  <UploadCloud size={13} />Upload
+                  <UploadCloud size={13} />{((it.files || []).length + (it.filePaths || []).length) ? `${(it.files || []).length + (it.filePaths || []).length} file${((it.files || []).length + (it.filePaths || []).length) === 1 ? '' : 's'}` : 'Upload'}
                   <input type="file" multiple accept="*/*" className="hidden" aria-label={`Drawings for product ${idx + 1}`} onChange={(e) => { const picked = Array.from(e.currentTarget.files || []); e.currentTarget.value = ''; if (picked.length) updItem(idx, { files: [...(it.files || []), ...picked] }); }} />
                 </label>
               ) : <span className="text-xs text-slate-400">{(it.filePaths || []).length ? `${it.filePaths.length} file${it.filePaths.length === 1 ? '' : 's'}` : '—'}</span>}
@@ -197,15 +199,31 @@ export function SalesOrderSection({ order, qtyTracking, editMode: editing, saveR
             {((it.filePaths || []).length > 0 || (it.files || []).length > 0) && (
               <div className="mt-2 flex flex-wrap gap-1.5 pl-9" data-testid="so-item-files">
                 {(it.filePaths as { name: string; path: string }[]).map((f) => (
-                  <span key={f.path} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px]">
+                  <span key={f.path} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] shadow-xs">
                     <button type="button" className="max-w-[220px] truncate text-blue-700 hover:underline" onClick={() => void openStoredFile(f.path)}>{f.name}</button>
-                    {editing && <button type="button" className="text-rose-500 hover:text-rose-700" aria-label={`Remove ${f.name}`} onClick={() => updItem(idx, { filePaths: (it.filePaths as { path: string }[]).filter(x => x.path !== f.path) })}>×</button>}
+                    {editing && (
+                      <button
+                        type="button"
+                        className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 hover:bg-rose-100 hover:text-rose-600 transition-colors cursor-pointer text-sm font-bold leading-none"
+                        aria-label={`Remove ${f.name}`}
+                        onClick={() => updItem(idx, { filePaths: (it.filePaths as { path: string }[]).filter(x => x.path !== f.path) })}
+                      >
+                        ×
+                      </button>
+                    )}
                   </span>
                 ))}
                 {(it.files as File[] || []).map((f, fi) => (
-                  <span key={`${f.name}-${fi}`} className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                  <span key={`${f.name}-${fi}`} className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800 shadow-xs">
                     <span className="max-w-[200px] truncate">{f.name} (new)</span>
-                    <button type="button" className="text-rose-500 hover:text-rose-700" aria-label={`Remove ${f.name}`} onClick={() => updItem(idx, { files: (it.files as File[]).filter((_, j) => j !== fi) })}>×</button>
+                    <button
+                      type="button"
+                      className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 hover:bg-rose-100 hover:text-rose-600 transition-colors cursor-pointer text-sm font-bold leading-none"
+                      aria-label={`Remove ${f.name}`}
+                      onClick={() => updItem(idx, { files: (it.files as File[]).filter((_, j) => j !== fi) })}
+                    >
+                      ×
+                    </button>
                   </span>
                 ))}
               </div>
