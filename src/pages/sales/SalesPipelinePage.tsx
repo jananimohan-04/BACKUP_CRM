@@ -2830,8 +2830,26 @@ export function SalesPipelinePage() {
       if (!name || map.has(name.toLowerCase())) return;
       map.set(name.toLowerCase(), { company: name, contact_person: '', phone: '', email: '', city: '', gst: '' });
     });
+    // Fallback: customers already visible on this user's own board cards, so the
+    // company pickers keep working when the master tables are permission-gated
+    // (customers need All Companies view, suppliers need Suppliers view).
+    // Only stages the user may see contribute names — nothing leaks across.
+    (cards || []).forEach((c: any) => {
+      if (!canView(STAGE_MODULE[c.stage] ?? 'sales-pipeline')) return;
+      const name = String(c.customer || '').trim();
+      if (!name || map.has(name.toLowerCase())) return;
+      const r = c.raw ?? {};
+      map.set(name.toLowerCase(), {
+        company: name,
+        contact_person: String(r.contact_person || ''),
+        phone: String(r.phone || ''),
+        email: String(r.email || ''),
+        city: String(r.city || ''),
+        gst: String(r.gst || r.gstin || '')
+      });
+    });
     return Array.from(map.values()).sort((a, b) => a.company.localeCompare(b.company));
-  }, [customerList, knownCompanies, supplierDirectory]);
+  }, [customerList, knownCompanies, supplierDirectory, cards, canView]);
 
   useEffect(() => {
     const fromCards = cards.map(c => c.customer);
@@ -3924,10 +3942,11 @@ export function SalesPipelinePage() {
         contacts: parseContacts(card.raw)
       });
       setInwardModalTarget(card);
-      // The Inward form is inline on the Inward list: take the user there with the
-      // pre-filled inward ready to confirm.
+      // The Inward form opens as a popup right on the Kanban board (same
+      // renderInwardEntryForm + saveInward as the board's Add button) — the
+      // board never navigates away, and the list page is untouched.
       setInwardSavedCount(0);
-      setActiveView('inward_list');
+      setAddPopup('Inward');
     } else if (card.type === 'inward' && toStage === 'Finished Goods') {
       // Costing gate: open the Finished Goods + Costing modal instead of moving.
       // Nothing is written until the user approves inside the modal; Cancel
@@ -5104,7 +5123,7 @@ export function SalesPipelinePage() {
   // open. Every field, the company search/autocomplete, the dynamic product rows, the
   // drawing uploads and saveStandaloneSalesOrder are unchanged — only the modal chrome
   // (backdrop, positioning, close button and footer) is gone.
-  const renderSalesOrderEntryForm = (opts?: { onBack?: () => void; searchSlot?: ReactNode }) => (
+  const renderSalesOrderEntryForm = (opts?: { onBack?: () => void; searchSlot?: ReactNode; popup?: boolean }) => (
     <section className={`rounded-xl border shadow-sm ${tint('Sales Order').panel}`} data-testid="so-entry-form">
       <div className="space-y-2.5 p-3">
         {soSaveNotice && (
@@ -5114,8 +5133,10 @@ export function SalesPipelinePage() {
           </div>
         )}
 
-        {/* One compact row for the order fields on a single line. */}
-        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto scrollbar-thin">
+        {/* One compact row for the order fields on a single line. In the board
+            popup the row wraps instead of scrolling, so the company dropdown
+            is never clipped by the scroll container. */}
+        <div className={opts?.popup ? 'flex flex-wrap items-center gap-2' : 'flex flex-nowrap items-center gap-2 overflow-x-auto scrollbar-thin'}>
           {opts?.onBack && (
             <div className="flex items-center gap-1.5 shrink-0 mr-1">
               <button 
@@ -6432,12 +6453,28 @@ export function SalesPipelinePage() {
         subtitle="Fill in the details and save. The board refreshes once the record is created."
         accent={addPopup ? tint(addPopup) : undefined}
         size="2xl"
-        width={1000}
-        draggable={false}
+        width={1240}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setAddPopup(null)}>Cancel</Button>
+            {addPopup === 'Enquiry' && (
+              <Button size="sm" onClick={saveEnquiry} disabled={savingEnquiry} className={MODULE_THEMES.Enquiry.btnPrimary}>{savingEnquiry ? 'Saving...' : 'Save Enquiry'}</Button>
+            )}
+            {addPopup === 'Sales Order' && (
+              <Button size="sm" onClick={saveStandaloneSalesOrder} disabled={savingSo} className={MODULE_THEMES['Sales Order'].btnPrimary}>{savingSo ? 'Saving...' : 'Save Order'}</Button>
+            )}
+            {addPopup === 'Inward' && (
+              <Button size="sm" disabled={savingInward} onClick={() => void saveInward(false)} className={MODULE_THEMES.Inward.btnPrimary}>{savingInward ? 'Saving...' : 'Submit'}</Button>
+            )}
+            {addPopup === 'DC' && (
+              <Button size="sm" onClick={saveDeliveryChallan} disabled={dcSaving} className={MODULE_THEMES.DC.btnPrimary}>{dcSaving ? 'Saving...' : 'Save'}</Button>
+            )}
+          </>
+        }
       >
-        <div className="max-h-[62vh] overflow-y-auto scrollbar-thin pr-1">
+        <div className="max-h-[62vh] overflow-y-auto overflow-x-auto scrollbar-thin pr-1">
           {addPopup === 'Enquiry' && renderEnquiryEntryForm()}
-          {addPopup === 'Sales Order' && renderSalesOrderEntryForm()}
+          {addPopup === 'Sales Order' && renderSalesOrderEntryForm({ popup: true })}
           {addPopup === 'Inward' && renderInwardEntryForm()}
           {addPopup === 'DC' && renderDeliveryChallanEntryForm()}
         </div>
