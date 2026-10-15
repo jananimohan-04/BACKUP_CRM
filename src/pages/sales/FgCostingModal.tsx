@@ -7,7 +7,8 @@
 // always performed (insert Completed work order + mark inward rows Processed).
 // Cancel writes nothing and the card stays put.
 
-import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment, type ReactNode } from 'react';
+import { calcWorkings, rowCost, type WorkRow, type Workings } from '@/lib/quotationWorkings';
 import { supabase } from '@/lib/supabase';
 import { todayISO } from '@/lib/format';
 import { tint } from '@/lib/entryTints';
@@ -1207,6 +1208,32 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                 </div>
               </div>
             )}
+            {products.filter((p) => p.workings).map((p, pi) => {
+              const w = p.workings as Workings;
+              const r = calcWorkings(w);
+              const sections: [string, WorkRow[], number][] = [['Materials', w.materials ?? [], r.materials], ['Process operations', w.processes ?? [], r.processes], ['Other expenses', w.others ?? [], r.others]];
+              if (!sections.some(([, rows]) => rows.length)) return null;
+              return (
+                <div key={pi} className="mt-3 rounded-lg border border-slate-200" data-testid="quotation-breakdown">
+                  <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-600 bg-slate-50 rounded-t-lg">Quoted cost breakdown · {p.name}</p>
+                  <table className="w-full text-xs">
+                    <tbody>
+                      {sections.map(([label, rows, sub]) => rows.length > 0 && (
+                        <Fragment key={label}>
+                          <tr className="bg-slate-50/60"><td colSpan={3} className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</td><td className="px-3 py-1 text-right font-semibold tabular-nums">{inr(sub)}</td></tr>
+                          {rows.map((row) => (
+                            <tr key={row.id} className="border-t border-slate-100"><td className="px-3 py-1 text-slate-700">{row.description || '—'}</td><td className="px-2 py-1 tabular-nums text-slate-500">{row.qty}</td><td className="px-2 py-1 tabular-nums text-slate-500">× {row.rate}</td><td className="px-3 py-1 text-right tabular-nums">{inr(rowCost(row))}</td></tr>
+                          ))}
+                        </Fragment>
+                      ))}
+                      <tr className="border-t border-slate-200"><td colSpan={3} className="px-3 py-1 text-slate-500">Cost subtotal</td><td className="px-3 py-1 text-right font-semibold tabular-nums">{inr(r.subtotal)}</td></tr>
+                      <tr><td colSpan={3} className="px-3 py-1 text-slate-500">Profit margin {w.marginPct || 0}%</td><td className="px-3 py-1 text-right tabular-nums">{inr(r.profit)}</td></tr>
+                      <tr className="border-t border-slate-200 bg-brand-50/60"><td colSpan={3} className="px-3 py-1.5 font-bold text-brand-800">Quoted cost per unit</td><td className="px-3 py-1.5 text-right font-bold tabular-nums text-brand-800">{inr(r.total)}</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })}
             <p className="text-[11px] text-slate-400 mt-2">Reference values — overrides affect this sheet only (discount/tax ratio preserved). The quotation master is never modified.</p>
           </div>
 

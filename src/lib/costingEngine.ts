@@ -23,7 +23,7 @@ export interface OpLine {
   warn_machine: boolean; warn_labour: boolean;
 }
 
-export interface ProductOption { code: string; name: string; qty: number; unitPrice: number }
+export interface ProductOption { code: string; name: string; qty: number; unitPrice: number; workings?: any }
 
 export interface CostingTotals {
   material: number; machine: number; labour: number; machineLabour: number;
@@ -58,6 +58,7 @@ export function parseQuoteProducts(q: any): ProductOption[] {
         name: it.partName ?? '',
         qty: costNum(it.quantity),
         unitPrice: costNum(it.unitPrice),
+        workings: it.workings,
       }));
     }
   } catch { /* single-product quotation */ }
@@ -101,11 +102,19 @@ export function buildOpLines(woOps: any[], jobCards: any[], processes: any[], wo
     cardsByOp.get(k)!.push(c);
   }
   const ops: OpLine[] = [];
+  // Real run time of a job card (actual start to end). Used when no cycle / setup time was planned,
+  // so a job that really ran for hours is never costed as zero.
+  const elapsedHours = (cs: any[]) => cs.reduce((s, c) => {
+    const st = c?.actual_start ? new Date(c.actual_start).getTime() : NaN;
+    const en = new Date(c?.actual_end || c?.completed_at || '').getTime();
+    return Number.isFinite(st) && Number.isFinite(en) && en > st ? s + (en - st) / 3600000 : s;
+  }, 0);
   const pushOp = (
     seq: number, p: any, machine: string, operator: string,
-    qty: number, cycleMin: number, setupMin: number,
+    qty: number, cycleMin: number, setupMin: number, loggedHours = 0,
   ) => {
-    const mh = hoursOf(setupMin, qty, cycleMin);
+    const planned = hoursOf(setupMin, qty, cycleMin);
+    const mh = planned > 0 ? planned : Math.max(0, loggedHours);
     const mRate = costNum(p?.cost_per_hour);
     const lh = operator ? mh : 0;
     const machineCost = mh * mRate;
@@ -144,7 +153,8 @@ export function buildOpLines(woOps: any[], jobCards: any[], processes: any[], wo
       const c = cards[0];
       const qty = costNum(o.completed_qty) > 0 ? costNum(o.completed_qty) : costNum(o.planned_qty);
       pushOp(costNum(o.operation_sequence), p, o.machine ?? c?.machine ?? '', o.operator ?? c?.operator ?? '',
-        qty, costNum(o.est_cycle_time), costNum(o.setup_time));
+        qty, costNum(o.est_cycle_time), costNum(o.setup_time),
+        costNum(o.actual_minutes) > 0 ? costNum(o.actual_minutes) / 60 : elapsedHours(cards));
     }
   } else {
     const seen = new Set<string>();
@@ -154,7 +164,7 @@ export function buildOpLines(woOps: any[], jobCards: any[], processes: any[], wo
       seen.add(k);
       const p = procByName.get(String(c.operation ?? '').toLowerCase());
       const qty = costNum(c.qty_completed) > 0 ? costNum(c.qty_completed) : costNum(c.qty_planned);
-      pushOp(Number(c.op_no) / 10 || 0, p, c.machine ?? '', c.operator ?? '', qty, costNum(c.cycle_time), costNum(c.setup_time));
+      pushOp(Number(c.op_no) / 10 || 0, p, c.machine ?? '', c.operator ?? '', qty, costNum(c.cycle_time), costNum(c.setup_time), elapsedHours(cardsByOp.get(k) ?? [c]));
     }
   }
   ops.sort((a, b) => a.seq - b.seq);

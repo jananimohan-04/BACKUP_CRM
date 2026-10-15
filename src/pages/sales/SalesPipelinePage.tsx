@@ -4183,6 +4183,7 @@ export function SalesPipelinePage() {
         const lineItems = doc.lines.filter(l => l.description.trim() || l.unitPrice.trim()).map(l => ({
           id: l.id, partName: l.description.trim(), partNumber: '', quantity: l.qty, unitPrice: l.unitPrice, discount: l.discount || '0', unitDiscount: '0',
           gst: String((Number(doc.tax.cgst) || 0) + (Number(doc.tax.sgst) || 0) + (Number(doc.tax.igst) || 0)), filePaths: [], files: [],
+          workings: l.workings, // the cost breakdown behind the price, shown in Finished Goods + Costing
         }));
         const first = lineItems[0];
         const names = lineItems.map(i => i.partName).filter(Boolean).join(', ');
@@ -4411,6 +4412,7 @@ export function SalesPipelinePage() {
     // reopening the popup used to do) and the list above it is already refreshed.
     setInwardSavedCount(0);
     openDummyInward();
+    setAddPopup(null); // Submit from the New Inward popup closes it
   };
 
   const saveFinishedGoods = async () => {
