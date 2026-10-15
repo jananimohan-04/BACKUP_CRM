@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { GripVertical, X } from 'lucide-react';
+import { GripVertical, Maximize2, Minimize2, Minus, X } from 'lucide-react';
 import type { EntryTint } from '@/lib/entryTints';
 
 // Light scrim only: the page behind stays clearly visible (never blurred).
@@ -44,7 +44,10 @@ export function Modal({
   dirtyMessage = 'Discard unsaved changes?',
   inline = false,
   accent,
+  windowControls = false,
 }: {
+  /** Adds minimize / maximize buttons to the header (popup mode only). */
+  windowControls?: boolean;
   open: boolean;
   onClose: () => void;
   title: string;
@@ -76,6 +79,8 @@ export function Modal({
   const [dragging, setDragging] = useState(false);
   const [resizing, setResizing] = useState(false);
   const [touched, setTouched] = useState(false);
+  const [minimized, setMinimized] = useState(false);
+  const [maximized, setMaximized] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
   const resizeRef = useRef<{ sx: number; sy: number; w: number; h: number; dir: 'se' | 'e' | 's' } | null>(null);
@@ -91,6 +96,8 @@ export function Modal({
       const vw = window.innerWidth;
       setDim({ w: initialWidth(size, vw, width), h: null });
       setTouched(false);
+      setMinimized(false);
+      setMaximized(false);
       setConfirming(false);
       setDragging(false);
       setResizing(false);
@@ -173,7 +180,7 @@ export function Modal({
   };
 
   const onHeaderPointerDown = (e: React.PointerEvent<HTMLElement>) => {
-    if (!draggable) return;
+    if (!draggable || maximized) return;
     // Never start a drag from a control inside the header (e.g. the X).
     if ((e.target as HTMLElement).closest('button')) return;
     e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -235,18 +242,20 @@ export function Modal({
       <div
         ref={boxRef}
         className="absolute"
-        style={{
+        style={maximized ? {
+          left: 16, top: 16, width: 'calc(100vw - 2rem)', height: 'calc(100vh - 2rem)', maxWidth: 'none', maxHeight: 'none',
+        } : {
           left: pos.x,
           top: pos.y,
           width: dim.w,
           maxWidth: 'calc(100vw - 2rem)',
-          height: dim.h ?? undefined,
+          height: minimized ? undefined : dim.h ?? undefined,
           maxHeight: 'min(80vh, 850px)',
         }}
       >
         <div
           className="relative bg-white rounded-2xl shadow-2xl w-full border border-slate-200 flex flex-col animate-scale-in overflow-hidden"
-          style={{ height: dim.h ? `${dim.h}px` : undefined, maxHeight: 'min(80vh, 850px)' }}
+          style={maximized ? { height: '100%' } : { height: dim.h && !minimized ? `${dim.h}px` : undefined, maxHeight: 'min(80vh, 850px)' }}
           onChange={() => setTouched(true)}
         >
           <div
@@ -268,16 +277,42 @@ export function Modal({
                 {subtitle && <p className={`text-xs font-medium mt-0.5 truncate ${accent ? accent.note : 'text-slate-500'}`}>{subtitle}</p>}
               </div>
             </div>
-            <button
-              onClick={onClose}
-              onPointerDown={(e) => e.stopPropagation()}
-              className={`w-8 h-8 flex items-center justify-center rounded border transition-colors shadow-sm shrink-0 ${accent ? 'border-transparent hover:border-white/30 hover:bg-white/20 text-white/90' : 'border-transparent hover:border-slate-200 hover:bg-white text-slate-500'}`}
-            >
-              <X size={16} />
-            </button>
+            <div className="flex items-center gap-1 shrink-0">
+              {windowControls && (
+                <>
+                  <button
+                    type="button"
+                    title={minimized ? 'Restore' : 'Minimize'}
+                    aria-label={minimized ? 'Restore' : 'Minimize'}
+                    onClick={() => { setMinimized((m) => !m); setMaximized(false); }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    className={`w-8 h-8 flex items-center justify-center rounded border transition-colors shrink-0 ${accent ? 'border-transparent hover:bg-white/20 text-white/90' : 'border-transparent hover:border-slate-200 hover:bg-white text-slate-500'}`}
+                  >
+                    <Minus size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    title={maximized ? 'Restore' : 'Maximize'}
+                    aria-label={maximized ? 'Restore' : 'Maximize'}
+                    onClick={() => { setMaximized((m) => !m); setMinimized(false); }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    className={`w-8 h-8 flex items-center justify-center rounded border transition-colors shrink-0 ${accent ? 'border-transparent hover:bg-white/20 text-white/90' : 'border-transparent hover:border-slate-200 hover:bg-white text-slate-500'}`}
+                  >
+                    {maximized ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+                  </button>
+                </>
+              )}
+              <button
+                onClick={onClose}
+                onPointerDown={(e) => e.stopPropagation()}
+                className={`w-8 h-8 flex items-center justify-center rounded border transition-colors shadow-sm shrink-0 ${accent ? 'border-transparent hover:border-white/30 hover:bg-white/20 text-white/90' : 'border-transparent hover:border-slate-200 hover:bg-white text-slate-500'}`}
+              >
+                <X size={16} />
+              </button>
+            </div>
           </div>
-          <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-5 bg-slate-50/30 min-h-0">{children}</div>
-          {footer && (
+          <div className={`flex-1 overflow-y-auto scrollbar-thin px-6 py-5 bg-slate-50/30 min-h-0 ${minimized ? 'hidden' : ''}`}>{children}</div>
+          {footer && !minimized && (
             <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50 shrink-0">
               {footer}
             </div>

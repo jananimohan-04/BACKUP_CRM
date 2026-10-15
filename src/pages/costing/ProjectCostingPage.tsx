@@ -120,6 +120,32 @@ const isServicePurchaseCategory = (cat: string | null | undefined) => {
 const isPurchaseCategory = (cat: string | null | undefined) =>
   isGoodsPurchaseCategory(cat) || isServicePurchaseCategory(cat);
 
+// Quotation totals by sales order (via quotation_id / quote_no), falling back to customer + part.
+// Returns a matcher: (project / sales-order refs, party, part) -> quoted amount, or null.
+async function loadQuoteLookup() {
+  const lc = (v: unknown) => String(v ?? '').trim().toLowerCase();
+  const [{ data: sos }, { data: quotes }] = await Promise.all([
+    supabase.from('cnc_sales_orders').select('order_no, quotation_id, quote_no'),
+    supabase.from('cnc_quotations').select('id, quote_no, customer, part_name, total_value'),
+  ]);
+  const quoteList = quotes ?? [];
+  const totalOf = (q: any) => Number(q?.total_value) || 0;
+  return (refs: unknown[], party: string | null, part: string | null): number | null => {
+    const wanted = new Set(refs.map(lc).filter(Boolean));
+    let sum = 0;
+    const seen = new Set<string>();
+    for (const so of sos ?? []) {
+      if (!wanted.has(lc(so.order_no))) continue;
+      const q = quoteList.find((x: any) => (so.quotation_id && x.id === so.quotation_id) || (so.quote_no && lc(x.quote_no) === lc(so.quote_no)));
+      if (q && !seen.has(String(q.id))) { seen.add(String(q.id)); sum += totalOf(q); }
+    }
+    if (sum > 0) return sum;
+    const byParty = quoteList.filter((q: any) => lc(q.customer) === lc(party) && lc(q.part_name) === lc(part));
+    const latest = byParty[byParty.length - 1];
+    return latest && totalOf(latest) > 0 ? totalOf(latest) : null;
+  };
+}
+
 export function ProjectCostingPage() {
   const { company } = useAuth();
   const { setHeader, setTabActions } = useHeaderKpis();
@@ -310,6 +336,18 @@ export function ProjectCostingPage() {
           return proj;
         });
       }
+
+      // Planned Cost: the amount quoted to the customer, unless planned_workings already has one.
+      const quoteLookup = await loadQuoteLookup();
+      rows = rows.map((proj) => {
+        if (Number(proj.planned_cost) > 0) return proj;
+        const linked = (woList || []).filter((w: any) => w.wo_no === proj.project_name || w.sales_order === proj.project_name);
+        const quoted = quoteLookup(
+          [proj.project_name, ...linked.map((w: any) => w.sales_order)],
+          proj.party_name, proj.part_name,
+        );
+        return quoted ? { ...proj, planned_cost: quoted.toFixed(2) } : proj;
+      });
 
       setProjects(rows);
       setTotal(result.total || 0);
@@ -528,6 +566,14 @@ export function ProjectCostingPage() {
         mergedOps = [...mergedOps, ...extra];
       }
 
+      let plannedCost = baseReport.project?.planned_cost ?? null;
+      if (!(Number(plannedCost) > 0)) {
+        const quoted = (await loadQuoteLookup())(
+          [p.project_name, ...workOrders.map((w: any) => w.sales_order)], p.party_name, p.part_name,
+        );
+        if (quoted) plannedCost = quoted.toFixed(2);
+      }
+
       const finalDetail: CostingDetail = {
         ...baseReport,
         operations: mergedOps,
@@ -536,6 +582,7 @@ export function ProjectCostingPage() {
         categories: updatedCategories,
         project: {
           ...baseReport.project,
+          planned_cost: plannedCost,
           actual_cost: combinedActual !== null ? String(combinedActual) : null,
           cost_source: costSource,
           profit,
@@ -849,7 +896,7 @@ export function ProjectCostingPage() {
                       <div className="text-[10px] uppercase tracking-wide text-slate-500">Sales Order Value</div>
                       <div className="text-sm font-bold">{money(project?.sales_value)}</div>
                     </div>
-                    <div title={project?.planned_cost ? 'From planned_workings' : 'No estimate source recorded'}>
+                    <div title={project?.planned_cost ? 'From planned_workings, else the quotation total' : 'No estimate source recorded'}>
                       <div className="text-[10px] uppercase tracking-wide text-slate-500">Planned Cost</div>
                       <div className="text-sm font-bold">{money(project?.planned_cost)}</div>
                     </div>
