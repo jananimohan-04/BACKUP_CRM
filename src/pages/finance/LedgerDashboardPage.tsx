@@ -236,36 +236,17 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
   return (
     <div className={embedded ? '' : 'p-4 lg:p-6 bg-grid min-h-full'}>
       <div className="space-y-5 max-w-[1500px] mx-auto">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          {embedded ? (
-            <p className="text-sm text-slate-500"><span className="font-semibold text-slate-700" data-testid="row-count">{sorted.length} rows</span> · Bank entries, invoices and inwards in one party ledger.</p>
-          ) : (
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 text-white flex items-center justify-center shadow-lg shadow-orange-500/25"><BookText size={22} /></div>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-baseline gap-3">Ledger Dashboard <span className="text-sm font-medium text-slate-500" data-testid="row-count">{sorted.length} rows</span></h1>
-              <p className="text-sm text-slate-500">Bank entries, invoices and inwards in one party ledger.</p>
+        {!embedded && (
+          <div className="flex flex-nowrap items-center gap-3 overflow-x-auto scrollbar-thin">
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 text-white flex items-center justify-center shadow-lg shadow-orange-500/25"><BookText size={22} /></div>
+              <div>
+                <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-baseline gap-3">Ledger Dashboard <span className="text-sm font-medium text-slate-500" data-testid="row-count">{sorted.length} rows</span></h1>
+                <p className="text-sm text-slate-500">Bank entries, invoices and inwards in one party ledger.</p>
+              </div>
             </div>
           </div>
-          )}
-          <div className="relative" ref={menuRef}>
-            <button type="button" aria-label="More options" aria-haspopup="menu" aria-expanded={menuOpen} data-testid="ledger-menu" className={`${btn} !px-2.5`} onClick={() => setMenuOpen(o => !o)}>
-              <MoreVertical size={18} className={anyLoading ? 'animate-pulse text-orange-500' : ''} />
-            </button>
-            {menuOpen && (
-              <div role="menu" className="absolute right-0 mt-2 w-60 z-30 rounded-xl border border-slate-200 bg-white shadow-xl py-1.5">
-                <button role="menuitem" className={item} data-testid="refresh-all" disabled={anyLoading} onClick={() => { setMenuOpen(false); void refreshAll().then(() => setNote('Everything refreshed.')); }}><RefreshCw size={14} className={anyLoading ? 'animate-spin' : ''} />Refresh all</button>
-                <div className="my-1 border-t border-slate-100" />
-                {srcBtn('Bank', <Landmark size={14} />, 'Update Bank')}
-                {srcBtn('Invoice', <FileText size={14} />, 'Update Invoice')}
-                {srcBtn('Inward', <PackageOpen size={14} />, 'Update Inward')}
-                <div className="my-1 border-t border-slate-100" />
-                <button role="menuitem" className={item} onClick={() => { setMenuOpen(false); setStmtParty(applied.party || parties[0] || ''); setModal('statement'); }}><BookOpen size={14} />Ledger Statement</button>
-                <button role="menuitem" className={`${item} !text-orange-800`} onClick={() => { setMenuOpen(false); setModal('book'); }}><BookText size={14} />Ledger Book</button>
-              </div>
-            )}
-          </div>
-        </div>
+        )}
 
         {errors.length > 0 && (
           <div role="alert" data-testid="source-error" className="flex items-start gap-2 text-sm rounded-xl border border-red-200 bg-red-50 text-red-800 px-3.5 py-2.5">
@@ -275,21 +256,21 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
         )}
         {note && <div role="status" data-testid="ledger-note" className="rounded-xl border border-sky-200 bg-sky-50 text-sky-800 text-sm px-3.5 py-2">{note}</div>}
 
-        <div className="grid sm:grid-cols-2 gap-4" data-testid="rec-pay">
-          <button type="button" onClick={() => { setSearch(cur => (cur === 'Customer' ? '' : 'Customer')); setPage(1); }} className="text-left rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white px-5 py-4 shadow-sm hover:shadow-md transition">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-sky-700">Receivable · customers owe you</p>
-            <p className="mt-1 text-2xl font-extrabold tabular-nums text-slate-900" data-testid="receivable-total">₹{money(recPay.receivable) || '0.00'}</p>
-            <p className="text-xs text-slate-500">{recPay.customers} customer{recPay.customers === 1 ? '' : 's'} with a balance</p>
-          </button>
-          <button type="button" onClick={() => { setSearch(cur => (cur === 'Supplier' ? '' : 'Supplier')); setPage(1); }} className="text-left rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white px-5 py-4 shadow-sm hover:shadow-md transition">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-amber-700">Payable · you owe suppliers</p>
-            <p className="mt-1 text-2xl font-extrabold tabular-nums text-slate-900" data-testid="payable-total">₹{money(recPay.payable) || '0.00'}</p>
-            <p className="text-xs text-slate-500">{recPay.suppliers} supplier{recPay.suppliers === 1 ? '' : 's'} with a balance</p>
-          </button>
-        </div>
-
         <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/70 flex flex-wrap lg:flex-nowrap items-center gap-2">
+          <div className="px-3 py-2 border-b border-slate-100 bg-slate-50/70 flex flex-nowrap items-center gap-2 overflow-x-auto scrollbar-thin [&>*]:shrink-0">
+            <p className="text-xs text-slate-500 whitespace-nowrap shrink-0"><span className="font-semibold text-slate-700" data-testid="row-count">{sorted.length} rows</span></p>
+            <button type="button" onClick={() => { setSearch(cur => (cur === 'Customer' ? '' : 'Customer')); setPage(1); }}
+              title={`${recPay.customers} customer${recPay.customers === 1 ? '' : 's'} with a balance — click to filter`}
+              className="shrink-0 whitespace-nowrap rounded-lg border border-sky-200 bg-sky-50/60 px-2 py-1 text-[11px] font-bold text-sky-800 hover:shadow-sm transition">
+              RECEIVABLE <b className="tabular-nums" data-testid="receivable-total">₹{money(recPay.receivable) || '0.00'}</b> <span className="font-medium text-sky-600">({recPay.customers})</span>
+            </button>
+            <button type="button" onClick={() => { setSearch(cur => (cur === 'Supplier' ? '' : 'Supplier')); setPage(1); }}
+              title={`${recPay.suppliers} supplier${recPay.suppliers === 1 ? '' : 's'} with a balance — click to filter`}
+              className="shrink-0 whitespace-nowrap rounded-lg border border-amber-200 bg-amber-50/60 px-2 py-1 text-[11px] font-bold text-amber-800 hover:shadow-sm transition">
+              PAYABLE <b className="tabular-nums" data-testid="payable-total">₹{money(recPay.payable) || '0.00'}</b> <span className="font-medium text-amber-600">({recPay.suppliers})</span>
+            </button>
+            <span className="h-6 w-px bg-slate-200 shrink-0" aria-hidden="true" />
+            <Filter size={14} className="text-slate-400 shrink-0" />
             <Filter size={14} className="text-slate-400" />
             <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">Start <input type="date" aria-label="Start date" className={inp} value={from} onChange={e => setFrom(e.target.value)} /></label>
             <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">End <input type="date" aria-label="End date" className={inp} value={to} onChange={e => setTo(e.target.value)} /></label>
@@ -304,6 +285,23 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
               <button className={btn} data-testid="ledger-pdf" title="Download PDF" onClick={() => void downloadPdf()}><FileDown size={14} />PDF</button>
               <button className={btn} title="Export CSV" onClick={exportRows}><FileSpreadsheet size={14} />CSV</button>
             </span>
+            <div className="relative shrink-0" ref={menuRef}>
+              <button type="button" aria-label="More options" aria-haspopup="menu" aria-expanded={menuOpen} data-testid="ledger-menu" className={`${btn} !px-2.5`} onClick={() => setMenuOpen(o => !o)}>
+                <MoreVertical size={18} className={anyLoading ? 'animate-pulse text-orange-500' : ''} />
+              </button>
+              {menuOpen && (
+                <div role="menu" className="absolute right-0 mt-2 w-60 z-30 rounded-xl border border-slate-200 bg-white shadow-xl py-1.5">
+                  <button role="menuitem" className={item} data-testid="refresh-all" disabled={anyLoading} onClick={() => { setMenuOpen(false); void refreshAll().then(() => setNote('Everything refreshed.')); }}><RefreshCw size={14} className={anyLoading ? 'animate-spin' : ''} />Refresh all</button>
+                  <div className="my-1 border-t border-slate-100" />
+                  {srcBtn('Bank', <Landmark size={14} />, 'Update Bank')}
+                  {srcBtn('Invoice', <FileText size={14} />, 'Update Invoice')}
+                  {srcBtn('Inward', <PackageOpen size={14} />, 'Update Inward')}
+                  <div className="my-1 border-t border-slate-100" />
+                  <button role="menuitem" className={item} onClick={() => { setMenuOpen(false); setStmtParty(applied.party || parties[0] || ''); setModal('statement'); }}><BookOpen size={14} />Ledger Statement</button>
+                  <button role="menuitem" className={`${item} !text-orange-800`} onClick={() => { setMenuOpen(false); setModal('book'); }}><BookText size={14} />Ledger Book</button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="px-5 py-3 flex flex-wrap items-center justify-between gap-3 text-sm">

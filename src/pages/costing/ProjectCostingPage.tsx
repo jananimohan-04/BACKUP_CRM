@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Download, FileText, Printer, Search, TrendingUp, Package } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Download, FileText, Printer, Search, TrendingUp, Package, GripVertical } from 'lucide-react';
 import { Badge, Button, Card, statusToVariant } from '@/components/ui/Card';
 import { inputClass } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -7,6 +7,7 @@ import { formatDate, formatINR, todayISO } from '@/lib/format';
 import { exportCsv, escapeHtml, printHtml } from '@/lib/reportExport';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 
 type ProjectRow = {
   project_name: string;
@@ -121,6 +122,54 @@ const isPurchaseCategory = (cat: string | null | undefined) =>
 
 export function ProjectCostingPage() {
   const { company } = useAuth();
+  const { setHeader, setTabActions } = useHeaderKpis();
+  const exportRef = useRef<() => void>(() => {});
+  const printRef = useRef<() => void>(() => {});
+
+  // Resizable left/right panes width (persisted in localStorage)
+  const [leftWidth, setLeftWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('project_costing_left_width');
+      const n = saved ? parseInt(saved, 10) : NaN;
+      return Number.isFinite(n) && n >= 220 && n <= 750 ? n : 300;
+    } catch {
+      return 300;
+    }
+  });
+  const [isDragging, setIsDragging] = useState(false);
+
+  const startDrag = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+    const startX = e.clientX;
+    const initialWidth = leftWidth;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const delta = moveEvent.clientX - startX;
+      const nextWidth = Math.max(220, Math.min(750, initialWidth + delta));
+      setLeftWidth(nextWidth);
+    };
+
+    const onMouseUp = (upEvent: MouseEvent) => {
+      const delta = upEvent.clientX - startX;
+      const finalWidth = Math.max(220, Math.min(750, initialWidth + delta));
+      setLeftWidth(finalWidth);
+      try {
+        localStorage.setItem('project_costing_left_width', String(finalWidth));
+      } catch {}
+      setIsDragging(false);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  }, [leftWidth]);
+
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
   const [projects, setProjects] = useState<ProjectRow[]>([]);
@@ -140,9 +189,12 @@ export function ProjectCostingPage() {
 
   useEffect(() => {
     let cancelled = false;
-    supabase.from('cnc_processes').select('*').order('process_code')
-      .then(({ data, error: e }) => { if (!cancelled && !e) setProcRates(data ?? []); })
-      .catch(() => { /* rates stay empty; operations show unmatched */ });
+    (async () => {
+      try {
+        const { data, error: e } = await supabase.from('cnc_processes').select('*').order('process_code');
+        if (!cancelled && !e) setProcRates(data ?? []);
+      } catch { /* rates stay empty; operations show unmatched */ }
+    })();
     return () => { cancelled = true; };
   }, []);
 
@@ -584,6 +636,41 @@ export function ProjectCostingPage() {
     );
   };
 
+  exportRef.current = exportReport;
+  printRef.current = printReport;
+  const hasReport = !!report;
+
+  useEffect(() => {
+    setHeader({ title: 'Project Costing' });
+    setTabActions(
+      <div className="flex items-center gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<Download size={14} />}
+          onClick={() => exportRef.current()}
+          disabled={!hasReport}
+          className="h-7 py-1 text-xs px-2.5 shadow-sm"
+        >
+          Export
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<Printer size={14} />}
+          onClick={() => printRef.current()}
+          className="h-7 py-1 text-xs px-2.5 shadow-sm"
+        >
+          Print
+        </Button>
+      </div>
+    );
+    return () => {
+      setHeader(null);
+      setTabActions(null);
+    };
+  }, [setHeader, setTabActions, hasReport]);
+
   const totalMaterialsAmount = useMemo(() => {
     return (report?.materials || []).reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
   }, [report?.materials]);
@@ -626,85 +713,126 @@ export function ProjectCostingPage() {
   }, [processOps]);
 
   return (
-    <div className="p-4 lg:p-6 space-y-4 bg-slate-50 min-h-full">
-      <PageHeader
-        title="Project Costing"
-        description="Cost analysis from existing project costs, production records, inventory movements, goods purchase inwards (material) and service purchase inwards (machine & labour)."
-        actions={
-          <>
-            <Button variant="secondary" size="sm" icon={<Download size={14} />} onClick={exportReport} disabled={!report}>
-              Export
-            </Button>
-            <Button variant="secondary" size="sm" icon={<Printer size={14} />} onClick={printReport}>
-              Print
-            </Button>
-          </>
-        }
-      />
-      {error && <div className="border border-rose-200 bg-rose-50 text-rose-700 rounded p-2 text-sm">{error}</div>}
-      <div className="grid grid-cols-1 xl:grid-cols-[300px_minmax(0,1fr)] gap-4 items-start">
-        <Card className="overflow-hidden">
-          <div className="p-3 border-b bg-slate-50">
-            <h3 className="font-bold text-sm">Projects / Work Orders</h3>
-            <form
-              className="mt-2 flex gap-1"
-              onSubmit={(e) => {
-                e.preventDefault();
-                setAppliedSearch(search);
-                void loadProjects(1, search);
-              }}
-            >
-              <input
-                className={inputClass}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search project, part, company..."
-              />
-              <Button size="sm" type="submit" aria-label="Search">
-                <Search size={14} />
+    <div className="p-2 sm:p-4 lg:px-6 lg:pt-2 lg:pb-6 space-y-3 bg-slate-50 min-h-full">
+      <div className="lg:hidden">
+        <PageHeader
+          title="Project Costing"
+          description="Cost analysis from existing project costs, production records, inventory movements, goods purchase inwards (material) and service purchase inwards (machine & labour)."
+          actions={
+            <>
+              <Button variant="secondary" size="sm" icon={<Download size={14} />} onClick={exportReport} disabled={!report}>
+                Export
               </Button>
-            </form>
-          </div>
-          <div className="max-h-[340px] overflow-auto divide-y">
-            {loading ? (
-              <div className="p-4 text-center text-xs text-slate-500">Loading projects...</div>
-            ) : (
-              projects.map((p) => (
-                <button
-                  key={p.project_name + '|' + p.part_name + '|' + p.party_name}
-                  onClick={() => setSelected(p)}
-                  className={
-                    'w-full text-left p-3 hover:bg-blue-50 transition-colors ' +
-                    (selected?.project_name === p.project_name && selected?.part_name === p.part_name
-                      ? 'bg-blue-50 border-l-4 border-brand-600'
-                      : '')
-                  }
-                >
-                  <div className="font-semibold text-xs text-slate-800">{p.project_name}</div>
-                  <div className="text-[10px] text-slate-500">{p.part_name} · {p.party_name}</div>
-                  <div className="text-[10px] mt-1 text-slate-600">Recorded actual: {money(p.actual_cost)}</div>
-                </button>
-              ))
-            )}
-            {!loading && !projects.length && (
-              <div className="p-4 text-center text-xs text-slate-500">No project cost records found.</div>
-            )}
-          </div>
-          <div className="flex justify-between p-2 border-t text-xs text-slate-500">
-            <span>{total} projects</span>
-            <div className="flex gap-2">
-              <button disabled={page <= 1} onClick={() => void loadProjects(page - 1)}>
-                <span className="sr-only">Previous</span>‹
-              </button>
-              {page}
-              <button disabled={page * pageSize >= total} onClick={() => void loadProjects(page + 1)}>
-                <span className="sr-only">Next</span>›
-              </button>
+              <Button variant="secondary" size="sm" icon={<Printer size={14} />} onClick={printReport}>
+                Print
+              </Button>
+            </>
+          }
+        />
+      </div>
+      {error && <div className="border border-rose-200 bg-rose-50 text-rose-700 rounded p-2 text-sm">{error}</div>}
+      <div className="flex flex-col xl:flex-row items-start gap-4 xl:gap-0">
+        <div
+          className="w-full xl:w-[var(--left-pane-w)] xl:shrink-0"
+          style={{ ['--left-pane-w' as any]: `${leftWidth}px` }}
+        >
+          <Card className="overflow-hidden">
+            <div className="p-3 border-b bg-slate-50 flex items-center justify-between">
+              <h3 className="font-bold text-sm">Projects / Work Orders</h3>
+              <span className="hidden xl:inline text-[10px] text-slate-400 font-mono" title="Width of panel">{leftWidth}px</span>
             </div>
-          </div>
-        </Card>
+            <div className="p-3 border-b bg-slate-50 pt-0">
+              <form
+                className="flex gap-1"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  setAppliedSearch(search);
+                  void loadProjects(1, search);
+                }}
+              >
+                <input
+                  className={inputClass}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search project, part, company..."
+                />
+                <Button size="sm" type="submit" aria-label="Search">
+                  <Search size={14} />
+                </Button>
+              </form>
+            </div>
+            <div className="max-h-[340px] overflow-auto divide-y">
+              {loading ? (
+                <div className="p-4 text-center text-xs text-slate-500">Loading projects...</div>
+              ) : (
+                projects.map((p) => (
+                  <button
+                    key={p.project_name + '|' + p.part_name + '|' + p.party_name}
+                    onClick={() => setSelected(p)}
+                    className={
+                      'w-full text-left p-3 hover:bg-blue-50 transition-colors ' +
+                      (selected?.project_name === p.project_name && selected?.part_name === p.part_name
+                        ? 'bg-blue-50 border-l-4 border-brand-600'
+                        : '')
+                    }
+                  >
+                    <div className="text-xs font-semibold text-slate-800">{p.part_name} · {p.party_name}</div>
+                    <div className="text-[10px] mt-1 text-slate-600">Recorded actual: {money(p.actual_cost)}</div>
+                  </button>
+                ))
+              )}
+              {!loading && !projects.length && (
+                <div className="p-4 text-center text-xs text-slate-500">No project cost records found.</div>
+              )}
+            </div>
+            <div className="flex justify-between p-2 border-t text-xs text-slate-500">
+              <span>{total} projects</span>
+              <div className="flex gap-2">
+                <button disabled={page <= 1} onClick={() => void loadProjects(page - 1)}>
+                  <span className="sr-only">Previous</span>‹
+                </button>
+                {page}
+                <button disabled={page * pageSize >= total} onClick={() => void loadProjects(page + 1)}>
+                  <span className="sr-only">Next</span>›
+                </button>
+              </div>
+            </div>
+          </Card>
+        </div>
 
-        <div className="space-y-4">
+        {/* Draggable Divider between Left and Right panes (Desktop) */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          onMouseDown={startDrag}
+          onDoubleClick={() => {
+            setLeftWidth(300);
+            try {
+              localStorage.setItem('project_costing_left_width', '300');
+            } catch {}
+          }}
+          className={`hidden xl:flex items-center justify-center w-3 hover:w-3.5 cursor-col-resize select-none shrink-0 self-stretch group z-10 transition-colors ${
+            isDragging ? 'bg-orange-100/60' : 'hover:bg-slate-200/50'
+          }`}
+          title="Drag left/right to resize panels (Double-click to reset to 300px)"
+        >
+          <div
+            className={`rounded-full transition-all flex items-center justify-center ${
+              isDragging
+                ? 'w-1.5 bg-orange-500 h-28 shadow-sm'
+                : 'w-1 h-14 group-hover:h-28 bg-slate-300 group-hover:bg-orange-400 group-hover:w-1.5'
+            }`}
+          >
+            <GripVertical
+              size={11}
+              className={`transition-colors ${
+                isDragging ? 'text-white' : 'text-slate-400 group-hover:text-white'
+              }`}
+            />
+          </div>
+        </div>
+
+        <div className="w-full min-w-0 flex-1 space-y-4 xl:pl-3">
           {!selected ? (
             <Card className="p-12 text-center text-sm text-slate-500">Select a project or work order to view its costing.</Card>
           ) : (

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Eye, Film, Send } from 'lucide-react';
 import { Button } from '@/components/ui/Card';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   supportApi, supportDownloadUrl, supportFileUrl, moduleLabel,
   TICKET_STATUSES, type SupportAttachment, type SupportTicket,
@@ -25,6 +26,8 @@ export function TicketDetail({ ticket, isAdmin, isCreator, companyName, onChange
   companyName: string;
   onChanged: () => void;
 }) {
+  const { profile } = useAuth();
+  const chatEnd = useRef<HTMLDivElement>(null);
   const [detail, setDetail] = useState<{ comments: any[]; attachments: SupportAttachment[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [urls, setUrls] = useState<Record<string, string>>({});
@@ -69,6 +72,9 @@ export function TicketDetail({ ticket, isAdmin, isCreator, companyName, onChange
     return () => { off = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail]);
+
+  // Chat opens (and stays) at the newest message.
+  useEffect(() => { chatEnd.current?.scrollIntoView({ block: 'end' }); }, [detail?.comments.length]);
 
   const images = useMemo(() => {
     const list = detail?.attachments ?? [];
@@ -202,38 +208,58 @@ export function TicketDetail({ ticket, isAdmin, isCreator, companyName, onChange
         <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
           Conversation ({(detail?.comments ?? []).length})
         </p>
-        <div className="max-h-64 space-y-2 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50/60 p-2.5">
+        <div className="flex h-72 flex-col gap-1 overflow-y-auto rounded-xl border border-slate-200 bg-[#efeae2] p-3" data-testid="chat">
           {(detail?.comments ?? []).length === 0 && (
-            <p className="py-2 text-center text-xs text-slate-400">No replies yet.</p>
+            <p className="m-auto rounded-lg bg-white/80 px-3 py-1.5 text-xs text-slate-500">No messages yet. Say hello below.</p>
           )}
-          {(detail?.comments ?? []).map((c: any) => (
-            <div key={c.id} className={`rounded-lg border px-2.5 py-1.5 text-xs ${c.is_system ? 'border-slate-200 bg-white text-slate-500 italic' : c.is_internal ? 'border-violet-200 bg-violet-50 text-slate-700' : 'border-slate-200 bg-white text-slate-700'}`}>
-              <p className="mb-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-400">
-                <b className="text-slate-600">{c.is_system ? 'System' : c.author_name || '—'}</b>
-                <span>{fmtDate(c.created_at)}</span>
-                {c.is_internal && <span className="rounded bg-violet-600 px-1 py-px font-bold text-white">INTERNAL</span>}
-              </p>
-              <p className="whitespace-pre-wrap">{c.body}</p>
-            </div>
-          ))}
+          {(detail?.comments ?? []).map((c: any, i: number, all: any[]) => {
+            const day = new Date(c.created_at).toDateString();
+            const newDay = i === 0 || new Date(all[i - 1].created_at).toDateString() !== day;
+            const mine = !c.is_system && !!profile?.id && c.author_user_id === profile.id;
+            const time = new Date(c.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
+            return (
+              <div key={c.id} className="flex flex-col">
+                {newDay && (
+                  <span className="mx-auto my-1.5 rounded-lg bg-white/90 px-2.5 py-0.5 text-[10px] font-semibold text-slate-500 shadow-sm">
+                    {new Date(c.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </span>
+                )}
+                {c.is_system ? (
+                  <span className="mx-auto my-0.5 max-w-[85%] rounded-lg bg-amber-50 px-2.5 py-1 text-center text-[11px] text-amber-800 shadow-sm">{c.body}</span>
+                ) : (
+                  <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[78%] rounded-xl px-2.5 py-1.5 text-sm shadow-sm ${c.is_internal ? 'border border-violet-300 bg-violet-100 text-violet-900' : mine ? 'rounded-tr-none bg-[#d9fdd3] text-slate-800' : 'rounded-tl-none bg-white text-slate-800'}`}>
+                      {!mine && <p className="mb-0.5 text-[11px] font-bold text-brand-700">{c.author_name || '—'}</p>}
+                      {c.is_internal && <p className="mb-0.5 text-[10px] font-bold uppercase text-violet-700">Internal note · hidden from the user</p>}
+                      <p className="whitespace-pre-wrap break-words">{c.body}</p>
+                      <p className="mt-0.5 text-right text-[10px] text-slate-400">{time}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          <div ref={chatEnd} />
         </div>
-        <div className="mt-2 flex items-start gap-2">
+        <div className="mt-2 flex items-end gap-2">
           <textarea
             value={reply}
             onChange={(e) => setReply(e.target.value)}
-            rows={2}
-            placeholder={isAdmin ? 'Reply to the user…' : 'Add more information…'}
-            className="min-h-[3.5rem] flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm focus:outline-none focus:border-brand-500"
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendReply(); } }}
+            rows={1}
+            aria-label="Type a message"
+            placeholder={isAdmin ? 'Type a message to the user…  (Enter to send, Shift+Enter for a new line)' : 'Type a message…  (Enter to send)'}
+            className="max-h-28 min-h-[2.5rem] flex-1 resize-none rounded-2xl border border-slate-200 bg-white px-3.5 py-2 text-sm focus:border-brand-500 focus:outline-none"
           />
-          <Button onClick={() => void sendReply()} disabled={sending || !reply.trim()} icon={<Send size={14} />}
-            className="bg-brand-600 hover:bg-brand-700 text-white shrink-0">
-            {sending ? 'Sending…' : 'Reply'}
-          </Button>
+          <button type="button" onClick={() => void sendReply()} disabled={sending || !reply.trim()} aria-label="Send"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white shadow hover:bg-[#008f6f] disabled:opacity-50">
+            <Send size={16} />
+          </button>
         </div>
         {isAdmin && (
           <label className="mt-1.5 flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-slate-500">
             <input type="checkbox" checked={internal} onChange={(e) => setInternal(e.target.checked)} className="h-3.5 w-3.5 accent-violet-600" />
-            Internal note (hidden from the ticket creator)
+            Send as an internal note (hidden from the ticket creator)
           </label>
         )}
       </div>

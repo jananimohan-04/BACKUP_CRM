@@ -44,7 +44,7 @@ export function Topbar({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const { kpis, header, tabs, tabActions } = useHeaderKpis();
+  const { kpis, header, tabs, tabActions, headerCenter } = useHeaderKpis();
   // Live clock: date + time, ticking every second.
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -63,10 +63,17 @@ export function Topbar({
 
       {/* Opt-in page title — same line as date/profile (page hides its own header) */}
       {header && (
-        <div className="flex items-center gap-2 shrink-0">
-          <h1 className="text-sm font-bold text-slate-800 whitespace-nowrap">{header.title}</h1>
+        <div className="flex items-center gap-2 min-w-0 shrink">
+          <h1 className="text-sm font-bold text-slate-800 whitespace-nowrap shrink-0">{header.title}</h1>
           {header.subtitle && <span className="text-[11px] text-slate-400 truncate hidden md:inline">{header.subtitle}</span>}
-          {tabs.length > 0 && <span className="h-5 w-px bg-slate-300 mx-1 hidden lg:inline" aria-hidden="true" />}
+          {(tabs.length > 0 || headerCenter) && <span className="h-5 w-px bg-slate-300 mx-1 hidden lg:inline shrink-0" aria-hidden="true" />}
+        </div>
+      )}
+
+      {/* Opt-in center content (e.g. Process Master KPI chips) */}
+      {headerCenter && (
+        <div className="hidden lg:flex items-center gap-2 min-w-0">
+          {headerCenter}
         </div>
       )}
 
@@ -125,7 +132,7 @@ export function Topbar({
       <div className="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
         {/* Opt-in tab actions (e.g. + Create Production Order) */}
         {tabActions && (
-          <div className="hidden lg:flex items-center shrink-0">
+          <div className="hidden lg:flex items-center gap-2 min-w-0 max-w-full overflow-x-auto scrollbar-thin shrink-0">
             {tabActions}
           </div>
         )}

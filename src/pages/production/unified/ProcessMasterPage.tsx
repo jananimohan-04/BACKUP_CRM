@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { formatINR } from '@/lib/format';
 import { StatCard, Badge, Button, statusToVariant } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Modal, FormField, FormSection, ConfirmDialog, inputClass } from '@/components/ui/Modal';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import {
   Cog, CheckCircle, XCircle, IndianRupee,
   Plus, Pencil, Copy, Power, Trash2, X,
@@ -76,6 +77,7 @@ function mapRow(r: any): ProcessMaster {
 }
 
 export function ProcessMasterPage() {
+  const { setHeader, setHeaderCenter, setTabActions } = useHeaderKpis();
   const [processes, setProcesses] = useState<ProcessMaster[]>([]);
   const [loading, setLoading] = useState(true);
   const [tableMissing, setTableMissing] = useState(false);
@@ -149,12 +151,60 @@ export function ProcessMasterPage() {
     setMachineFilter('All Machine Types');
   };
 
-  const openAdd = () => {
+  const openAdd = useCallback(() => {
     setEditId(null);
     setForm(EMPTY_FORM);
     setErrors({});
     setShowForm(true);
-  };
+  }, []);
+
+  useEffect(() => {
+    setHeader({
+      title: 'Process Master',
+    });
+    setHeaderCenter(
+      <div className="flex items-center gap-1.5 xl:gap-2">
+        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-100 hover:bg-slate-200/60 border border-slate-200 rounded-lg text-xs transition-colors">
+          <div className="w-4 h-4 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center">
+            <Cog size={11} />
+          </div>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total:</span>
+          <span className="text-xs font-black text-slate-800 tabular-nums">{stats.total}</span>
+        </div>
+        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs">
+          <div className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
+            <CheckCircle size={11} />
+          </div>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Active:</span>
+          <span className="text-xs font-black text-emerald-800 tabular-nums">{stats.active}</span>
+        </div>
+        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+          <div className="w-4 h-4 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center">
+            <XCircle size={11} />
+          </div>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Inactive:</span>
+          <span className="text-xs font-black text-slate-600 tabular-nums">{stats.inactive}</span>
+        </div>
+        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-50 border border-amber-200 rounded-lg text-xs">
+          <div className="w-4 h-4 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center">
+            <IndianRupee size={11} />
+          </div>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Avg/Hr:</span>
+          <span className="text-xs font-black text-amber-900 tabular-nums">{formatINR(Math.round(stats.avg * 100) / 100)}</span>
+        </div>
+      </div>
+    );
+    setTabActions(
+      <Button icon={<Plus size={14} />} onClick={openAdd} size="sm" className="h-7 py-1 text-xs px-2.5 shadow-sm">
+        Add Process
+      </Button>
+    );
+    return () => {
+      setHeader(null);
+      setHeaderCenter(null);
+      setTabActions(null);
+    };
+  }, [openAdd, setHeader, setHeaderCenter, setTabActions, stats]);
 
   const openEdit = (row: ProcessMaster) => {
     setEditId(row.id);
@@ -410,15 +460,16 @@ export function ProcessMasterPage() {
 
   return (
     <div className="p-4 lg:p-6 bg-slate-50 min-h-full">
-      <PageHeader
-        title="Process Master"
-        description="Define and manage manufacturing processes, machine operations and process costing."
-        actions={
-          <Button icon={<Plus size={15} />} onClick={openAdd}>
-            Add Process
-          </Button>
-        }
-      />
+      <div className="lg:hidden">
+        <PageHeader
+          title="Process Master"
+          actions={
+            <Button icon={<Plus size={15} />} onClick={openAdd}>
+              Add Process
+            </Button>
+          }
+        />
+      </div>
 
       {tableMissing && (
         <div className="mb-4 px-4 py-3 rounded-xl border border-amber-200 bg-amber-50 text-sm text-amber-800">
@@ -429,52 +480,11 @@ export function ProcessMasterPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+      <div className="grid grid-cols-2 lg:hidden gap-3 mb-3">
         <StatCard label="Total Processes" value={String(stats.total)} icon={<Cog size={20} />} accent="navy" />
         <StatCard label="Active Processes" value={String(stats.active)} icon={<CheckCircle size={20} />} accent="success" />
         <StatCard label="Inactive Processes" value={String(stats.inactive)} icon={<XCircle size={20} />} accent="neutral" />
         <StatCard label="Average Cost / Hour" value={formatINR(Math.round(stats.avg * 100) / 100)} icon={<IndianRupee size={20} />} accent="brand" />
-      </div>
-
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-2.5 mb-2.5 flex flex-wrap items-end gap-3">
-        <div className="min-w-[200px]">
-          <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">
-            Process Category
-          </label>
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className={inputClass}
-          >
-            <option>All Categories</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-        </div>
-        <div className="min-w-[200px]">
-          <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">
-            Machine Type
-          </label>
-          <select
-            value={machineFilter}
-            onChange={(e) => setMachineFilter(e.target.value)}
-            className={inputClass}
-          >
-            <option>All Machine Types</option>
-            {machineTypes.map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
-        </div>
-        {(categoryFilter !== 'All Categories' || machineFilter !== 'All Machine Types') && (
-          <button
-            onClick={clearFilters}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
-          >
-            <X size={14} /> Clear
-          </button>
-        )}
       </div>
 
       {loading ? (
@@ -490,6 +500,43 @@ export function ProcessMasterPage() {
           columns={columns}
           title="Processes"
           searchKeys={['processCode', 'processName', 'processCategory', 'machineType', 'description']}
+          toolbarLeft={
+            <div className="flex items-center gap-2">
+              <select
+                aria-label="Process Category"
+                title="Process Category"
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-600 focus:outline-none focus:border-brand-500"
+              >
+                <option>All Categories</option>
+                {categories.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              <select
+                aria-label="Machine Type"
+                title="Machine Type"
+                value={machineFilter}
+                onChange={(e) => setMachineFilter(e.target.value)}
+                className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-600 focus:outline-none focus:border-brand-500"
+              >
+                <option>All Machine Types</option>
+                {machineTypes.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+              {(categoryFilter !== 'All Categories' || machineFilter !== 'All Machine Types') && (
+                <button
+                  onClick={clearFilters}
+                  title="Clear filters"
+                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
+                >
+                  <X size={13} /> Clear
+                </button>
+              )}
+            </div>
+          }
           filterOptions={[
             { label: 'Active', value: 'Active' },
             { label: 'Inactive', value: 'Inactive' },

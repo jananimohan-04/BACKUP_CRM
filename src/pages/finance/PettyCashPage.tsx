@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Wallet, Save, Eraser, Trash2, Filter, FileSpreadsheet, Inbox, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Wallet, Save, Eraser, Trash2, FileSpreadsheet, Inbox, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { supabase } from '@/lib/supabase';
 import { financeApi, type BankFilters } from '@/lib/finance';
 import { accountingApi, type Account } from '@/lib/accounting';
@@ -38,8 +39,14 @@ interface PettyRow {
 type Note = { kind: 'ok' | 'err'; text: string } | null;
 
 export function PettyCashPage() {
+  const { setHeader } = useHeaderKpis();
   const { company } = useAuth();
   const cid = company?.id ?? null;
+
+  useEffect(() => {
+    setHeader({ title: 'Petty Cash Entry' });
+    return () => setHeader(null);
+  }, [setHeader]);
   const [options, setOptions] = useState<BankFilters | null>(null);
   const [chart, setChart] = useState<Account[]>([]);
   const [rows, setRows] = useState<PettyRow[]>([]);
@@ -151,36 +158,59 @@ export function PettyCashPage() {
   const typeOptions = ['Expense', 'Income', 'Receivable', 'Payable', 'Asset', 'Liability', 'Equity'];
 
   return (
-    <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <div className="space-y-5 max-w-[1500px] mx-auto">
-        <div className="flex items-center gap-3">
+    <div className="p-2 sm:p-4 lg:px-6 lg:pt-2 lg:pb-6 bg-grid min-h-full">
+      <div className="max-w-[1500px] mx-auto flex flex-col gap-2.5">
+        <div className="lg:hidden flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 text-white flex items-center justify-center shadow-lg shadow-orange-500/25"><Wallet size={22} /></div>
           <div>
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Petty Cash Entry</h1>
-            <p className="text-sm text-slate-500">Record small cash and bank payments or receipts against a ledger.</p>
           </div>
         </div>
 
         {/* ---------- new entry ---------- */}
-        <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/70"><h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">New cash entry</h2></div>
-          <div className="p-5 space-y-4">
-            <div className="grid md:grid-cols-2 xl:grid-cols-5 gap-4">
-              <div><label className={lbl} htmlFor="pc-date">Value date <span className="text-red-500">*</span></label><input id="pc-date" type="date" className={inp} value={date} onChange={e => setDate(e.target.value)} /></div>
-              <div className="xl:col-span-1"><label className={lbl} htmlFor="pc-desc">Description <span className="text-red-500">*</span></label><input id="pc-desc" className={inp} value={desc} onChange={e => setDesc(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void save(); }} /></div>
-              <div><label className={lbl} htmlFor="pc-debit">Debit <span className="normal-case font-normal text-slate-400">(paid out)</span></label><input id="pc-debit" inputMode="decimal" placeholder="0.00" className={inp} value={debit} onChange={e => { setDebit(e.target.value); if (e.target.value) setCredit(''); }} /></div>
-              <div><label className={lbl} htmlFor="pc-credit">Credit <span className="normal-case font-normal text-slate-400">(received)</span></label><input id="pc-credit" inputMode="decimal" placeholder="0.00" className={inp} value={credit} onChange={e => { setCredit(e.target.value); if (e.target.value) setDebit(''); }} /></div>
-              <div><label className={lbl} htmlFor="pc-bank">Bank name <span className="text-red-500">*</span></label>
-                <select id="pc-bank" className={inp} value={bankId} onChange={e => setBankId(e.target.value)}>
-                  <option value="">Select Bank</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}{a.type === 'Cash' ? ' (Cash)' : ''}</option>)}</select></div>
-            </div>
-            <div className="grid md:grid-cols-2 xl:grid-cols-5 gap-4 items-end">
-              <div className="xl:col-span-2"><label className={lbl} htmlFor="pc-ledger">Ledger name <span className="text-red-500">*</span></label>
-                <input id="pc-ledger" list="pc-ledgers" placeholder="Search Ledger" className={inp} value={ledgerText} onChange={e => setLedgerText(e.target.value)} />
-                <datalist id="pc-ledgers">{ledgers.map(a => <option key={a.id} value={label(a)} />)}</datalist></div>
-              <div><label className={lbl} htmlFor="pc-type">Ledger type</label><input id="pc-type" readOnly className={inp} value={ledgerTypeOf(ledger)} placeholder="Auto" /></div>
-              <button type="button" className={`${btn} text-white bg-gradient-to-b from-orange-500 to-orange-600 shadow-orange-500/25`} disabled={saving || !canManage} onClick={() => void save()}><Save size={15} />{saving ? 'Saving…' : 'Save entry'}</button>
-              <button type="button" className={`${btn} text-slate-700 bg-white border border-slate-200 hover:bg-slate-50`} onClick={clearForm}><Eraser size={15} />Clear</button>
+        <section className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+          <div className="p-2.5 sm:p-3 space-y-2">
+            <div className="flex items-end gap-2 overflow-x-auto min-w-0 pb-0.5">
+              <div className="w-[130px] shrink-0">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" htmlFor="pc-date">Value date <span className="text-red-500">*</span></label>
+                <input id="pc-date" type="date" className="w-full h-8 px-2 text-xs text-slate-800 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-orange-400" value={date} onChange={e => setDate(e.target.value)} />
+              </div>
+              <div className="min-w-[140px] flex-1">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" htmlFor="pc-desc">Description <span className="text-red-500">*</span></label>
+                <input id="pc-desc" placeholder="Description" className="w-full h-8 px-2 text-xs text-slate-800 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-orange-400" value={desc} onChange={e => setDesc(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void save(); }} />
+              </div>
+              <div className="w-[85px] shrink-0">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" htmlFor="pc-debit">Debit <span className="font-normal text-slate-400">(out)</span></label>
+                <input id="pc-debit" inputMode="decimal" placeholder="0.00" className="w-full h-8 px-2 text-xs text-slate-800 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-orange-400" value={debit} onChange={e => { setDebit(e.target.value); if (e.target.value) setCredit(''); }} />
+              </div>
+              <div className="w-[85px] shrink-0">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" htmlFor="pc-credit">Credit <span className="font-normal text-slate-400">(in)</span></label>
+                <input id="pc-credit" inputMode="decimal" placeholder="0.00" className="w-full h-8 px-2 text-xs text-slate-800 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-orange-400" value={credit} onChange={e => { setCredit(e.target.value); if (e.target.value) setDebit(''); }} />
+              </div>
+              <div className="w-[140px] shrink-0">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" htmlFor="pc-bank">Bank name <span className="text-red-500">*</span></label>
+                <select id="pc-bank" className="w-full h-8 px-2 text-xs text-slate-800 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-orange-400 truncate cursor-pointer" value={bankId} onChange={e => setBankId(e.target.value)}>
+                  <option value="">Select Bank</option>
+                  {accounts.map(a => <option key={a.id} value={a.id}>{a.name}{a.type === 'Cash' ? ' (Cash)' : ''}</option>)}
+                </select>
+              </div>
+              <div className="min-w-[140px] flex-1">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" htmlFor="pc-ledger">Ledger name <span className="text-red-500">*</span></label>
+                <input id="pc-ledger" list="pc-ledgers" placeholder="Search Ledger" className="w-full h-8 px-2 text-xs text-slate-800 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-orange-400" value={ledgerText} onChange={e => setLedgerText(e.target.value)} />
+                <datalist id="pc-ledgers">{ledgers.map(a => <option key={a.id} value={label(a)} />)}</datalist>
+              </div>
+              <div className="w-[90px] shrink-0">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" htmlFor="pc-type">Ledger type</label>
+                <input id="pc-type" readOnly className="w-full h-8 px-2 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-md shadow-sm" value={ledgerTypeOf(ledger)} placeholder="Auto" />
+              </div>
+              <button type="button" className="h-8 px-3 text-xs font-semibold text-white bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-500 hover:to-orange-700 rounded-md shadow-sm flex items-center gap-1.5 shrink-0 disabled:opacity-40 cursor-pointer active:scale-[0.98] transition" disabled={saving || !canManage} onClick={() => void save()}>
+                <Save size={13} />
+                <span>{saving ? 'Saving…' : 'Save entry'}</span>
+              </button>
+              <button type="button" className="h-8 px-2.5 text-xs font-semibold text-slate-600 bg-white hover:bg-slate-50 border border-slate-200 rounded-md shadow-sm flex items-center gap-1.5 shrink-0 cursor-pointer transition" onClick={clearForm}>
+                <Eraser size={13} />
+                <span>Clear</span>
+              </button>
             </div>
             {options && !canManage && <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Only administrators can record entries. You can still view and filter them.</p>}
             {note && (
@@ -188,19 +218,6 @@ export function PettyCashPage() {
                 {note.kind === 'ok' ? <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> : <AlertTriangle size={16} className="mt-0.5 shrink-0" />}<span>{note.text}</span>
               </div>
             )}
-          </div>
-        </section>
-
-        {/* ---------- filter ---------- */}
-        <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/70 flex items-center gap-2"><Filter size={15} className="text-orange-500" /><h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Filter</h2></div>
-          <div className="p-5 grid md:grid-cols-3 xl:grid-cols-6 gap-4 items-end">
-            <div><label className={lbl}>From date</label><input type="date" aria-label="From date" className={inp} value={fFrom} onChange={e => setFFrom(e.target.value)} /></div>
-            <div><label className={lbl}>To date</label><input type="date" aria-label="To date" className={inp} value={fTo} onChange={e => setFTo(e.target.value)} /></div>
-            <div><label className={lbl}>Bank name</label><select aria-label="Filter bank" className={inp} value={fBank} onChange={e => setFBank(e.target.value)}><option value="">All Banks</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
-            <div><label className={lbl}>Ledger name</label><select aria-label="Filter ledger" className={inp} value={fLedger} onChange={e => setFLedger(e.target.value)}><option value="">All Ledgers</option>{usedLedgers.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
-            <div><label className={lbl}>Ledger type</label><select aria-label="Filter ledger type" className={inp} value={fType} onChange={e => setFType(e.target.value)}><option value="">All Types</option>{typeOptions.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-            <button type="button" className={`${btn} text-red-600 bg-white border border-red-200 hover:bg-red-50`} onClick={clearFilters} disabled={!filtersOn}>Clear</button>
           </div>
         </section>
 

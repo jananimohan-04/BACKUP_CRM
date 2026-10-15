@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, Landmark, Tags, Layers, BookOpen, PenLine, UploadCloud, FileText, Save, Table2, Eraser, FileDown, FileSpreadsheet, RefreshCw, Wand2, Search, Filter, CheckCircle2, AlertTriangle, Info, Inbox } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { financeApi, type BankFilters, type BankRow } from '@/lib/finance';
 import { accountingApi, type Account } from '@/lib/accounting';
 import { formatINR, todayISO } from '@/lib/format';
@@ -48,6 +49,27 @@ export function BankEntryPage() {
   const [existing, setExisting] = useState<BankRow[]>([]);
   const [modal, setModal] = useState<null | 'banks' | 'types' | 'others' | 'ledger' | 'manual'>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const { setHeader, setTabActions } = useHeaderKpis();
+
+  useEffect(() => {
+    setHeader({
+      title: 'Bank Entry',
+    });
+    setTabActions(
+      <div className="flex items-center gap-1.5">
+        <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => setModal('banks')}><Landmark size={13} className="text-slate-500" /> Manage Banks</button>
+        <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => setModal('types')}><Tags size={13} className="text-slate-500" /> Manage Types</button>
+        <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => { setOthers(loadOthers(cid)); setModal('others'); }}><Layers size={13} className="text-slate-500" /> Manage Others</button>
+        <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => setModal('ledger')}><BookOpen size={13} className="text-slate-500" /> Ledger Details</button>
+        <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => setModal('manual')}><PenLine size={13} className="text-slate-500" /> Manual Entry</button>
+      </div>
+    );
+    return () => {
+      setHeader(null);
+      setTabActions(null);
+    };
+  }, [setHeader, setTabActions, cid]);
 
   // Registered companies (with GSTIN) and the two control ledgers, used to suggest each row's ledger and party.
   const [partyRefs, setPartyRefs] = useState<PartyRef[]>([]);
@@ -280,19 +302,18 @@ export function BankEntryPage() {
   const outTotal = shownData.filter(r => r.direction === 'OUT').reduce((n, r) => n + Number(r.amount || 0), 0);
   const quick = (months: number, label: string) => {
     const active = from === isoDaysAgo(months) && to === todayISO();
-    return <button key={label} className={`h-8 px-3 text-xs font-semibold rounded-full border transition ${active ? 'bg-orange-500 text-white border-orange-500 shadow' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`} onClick={() => range(months)}>{label}</button>;
+    return <button key={label} type="button" className={`h-7 px-2 text-[11px] font-semibold rounded-md border transition whitespace-nowrap cursor-pointer ${active ? 'bg-orange-500 text-white border-orange-500 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`} onClick={() => range(months)}>{label}</button>;
   };
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <div className="space-y-5 max-w-[1500px] mx-auto">
-        {/* ---------- header ---------- */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="space-y-2 max-w-[1500px] mx-auto">
+        {/* ---------- header (mobile/tablet fallback; desktop is unified in topbar) ---------- */}
+        <div className="flex lg:hidden flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 text-white flex items-center justify-center shadow-lg shadow-orange-500/25"><Landmark size={22} /></div>
             <div>
               <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Bank Entry</h1>
-              <p className="text-sm text-slate-500">Import a bank statement, tag each row, and post it to your ledger.</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -306,44 +327,9 @@ export function BankEntryPage() {
 
         {/* ---------- import ---------- */}
         <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-5 py-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex items-center gap-2">
+          <div className="px-5 py-2 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex flex-wrap items-center gap-2">
             <UploadCloud size={16} className="text-orange-500" /><h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Import statement</h2>
-          </div>
-          <div className="p-5 space-y-4">
-            <div className="grid lg:grid-cols-[1.3fr_1fr] gap-4">
-              <label className="flex items-center gap-4 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50/60 hover:border-orange-400 hover:bg-orange-50/30 transition px-5 py-4 cursor-pointer">
-                <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 shadow-sm flex items-center justify-center text-orange-500 shrink-0"><FileText size={22} /></div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-slate-800">Choose a statement file <span className="font-normal text-slate-400">or paste rows below</span></p>
-                  <p className="text-xs text-slate-500 mt-0.5">Excel (.xlsx), CSV, TSV or TXT · up to 5 MB</p>
-                  <button type="button" data-testid="download-sample" onClick={downloadSample}
-                    className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-semibold text-orange-600 hover:text-orange-700 hover:underline">
-                    <FileDown size={14} /> Download sample format
-                  </button>
-                  <input ref={fileRef} type="file" aria-label="Statement file" accept=".xlsx,.csv,.tsv,.txt" onChange={e => void onFile(e.target.files?.[0])} className="mt-2 text-xs text-slate-600 file:mr-3 file:h-8 file:px-3 file:rounded-lg file:border file:border-slate-200 file:bg-white file:text-[13px] file:font-semibold file:text-slate-700 file:cursor-pointer" />
-                </div>
-              </label>
-              <div className="rounded-xl border border-slate-200 bg-white p-4 flex flex-wrap items-center gap-3">
-                <div className="flex-1 min-w-[14rem]">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Post into</p>
-                  <select aria-label="Select bank" className={`${sel} w-full`} value={bankId} onChange={e => { setBankId(e.target.value); setExisting([]); }}>
-                    <option value="">-- Select Bank --</option>
-                    {(options?.accounts ?? []).map(a => <option key={a.id} value={a.id}>{a.name}{a.type === 'Cash' ? ' (Cash)' : ''}</option>)}
-                  </select>
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Balance</p>
-                  <p className="text-lg font-bold text-slate-900 tabular-nums" data-testid="bank-balance">{bank ? `₹${money(bank.balance)}` : '—'}</p>
-                </div>
-                <button className={`${btn} !px-2.5`} aria-label="Refresh" onClick={() => void loadOptions().then(() => loadData(full))}><RefreshCw size={14} /> Refresh</button>
-              </div>
-            </div>
-
-            <textarea aria-label="Statement rows" value={text} onChange={e => setText(e.target.value)} rows={7}
-              placeholder="Paste rows here - use TAB or comma separated columns"
-              className="w-full p-3 text-[13px] font-mono leading-relaxed text-slate-800 bg-slate-50/60 border border-slate-200 rounded-xl resize-y focus:outline-none focus:bg-white focus:border-orange-400 focus:ring-2 focus:ring-orange-500/15" />
-
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="ml-auto flex flex-wrap items-center gap-1.5">
               <button className={btnPrimary} disabled={busy} onClick={() => void save()}><Save size={14} />{busy ? 'Saving…' : 'Save'}</button>
               <button className={btn} disabled={busy} onClick={() => void parseNow()}><Table2 size={14} />View full Table</button>
               <button className={btn} onClick={clearText}><Eraser size={14} />Clear Text</button>
@@ -352,8 +338,41 @@ export function BankEntryPage() {
               <button className={btn} onClick={() => void downloadPdf()}><FileDown size={14} />Download PDF</button>
               <button className={btn} disabled={busy} onClick={() => void updateEntries()}><Wand2 size={14} />Update entries</button>
             </div>
+          </div>
+          <div className="p-3">
+            <div className="flex flex-wrap xl:flex-nowrap items-stretch gap-2">
+              <label className="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50/60 hover:border-orange-400 hover:bg-orange-50/30 transition px-2.5 py-1.5 cursor-pointer shrink-0">
+                <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 shadow-sm flex items-center justify-center text-orange-500 shrink-0"><FileText size={16} /></div>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-slate-800 whitespace-nowrap">Choose a statement file <span className="font-normal text-slate-400">· xlsx, csv, tsv, txt ≤ 5 MB</span></p>
+                  <button type="button" data-testid="download-sample" onClick={downloadSample}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-orange-600 hover:text-orange-700 hover:underline">
+                    <FileDown size={12} /> Download sample format
+                  </button>
+                  <input ref={fileRef} type="file" aria-label="Statement file" accept=".xlsx,.csv,.tsv,.txt" onChange={e => void onFile(e.target.files?.[0])} className="mt-0.5 block text-[11px] text-slate-600 file:mr-2 file:h-7 file:px-2.5 file:rounded-lg file:border file:border-slate-200 file:bg-white file:text-xs file:font-semibold file:text-slate-700 file:cursor-pointer" />
+                </div>
+              </label>
+              <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 flex flex-wrap items-center gap-2 shrink-0">
+                <div className="min-w-[10rem]">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">Post into</p>
+                  <select aria-label="Select bank" className={`${sel} w-full !py-1.5 !text-xs`} value={bankId} onChange={e => { setBankId(e.target.value); setExisting([]); }}>
+                    <option value="">-- Select Bank --</option>
+                    {(options?.accounts ?? []).map(a => <option key={a.id} value={a.id}>{a.name}{a.type === 'Cash' ? ' (Cash)' : ''}</option>)}
+                  </select>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Balance</p>
+                  <p className="text-base font-bold text-slate-900 tabular-nums" data-testid="bank-balance">{bank ? `₹${money(bank.balance)}` : '—'}</p>
+                </div>
+                <button className={`${btn} !px-2.5`} aria-label="Refresh" onClick={() => void loadOptions().then(() => loadData(full))}><RefreshCw size={14} /> Refresh</button>
+              </div>
+              <textarea aria-label="Statement rows" value={text} onChange={e => setText(e.target.value)} rows={2}
+                placeholder="Paste rows here - use TAB or comma separated columns"
+                className="flex-1 min-w-[12rem] p-2 text-xs font-mono leading-relaxed text-slate-800 bg-slate-50/60 border border-slate-200 rounded-lg resize-y focus:outline-none focus:bg-white focus:border-orange-400 focus:ring-2 focus:ring-orange-500/15" />
+            </div>
+
             {msg && (
-              <div role="status" data-testid="bank-msg" className={`flex items-start gap-2 text-sm rounded-xl border px-3.5 py-2.5 ${msgTone}`}>
+              <div role="status" data-testid="bank-msg" className={`mt-2 flex items-start gap-2 text-sm rounded-xl border px-3.5 py-2.5 ${msgTone}`}>
                 {msg.kind === 'err' ? <AlertTriangle size={16} className="mt-0.5 shrink-0" /> : msg.kind === 'ok' ? <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> : <Info size={16} className="mt-0.5 shrink-0" />}
                 <span>{msg.text}</span>
               </div>
@@ -406,30 +425,57 @@ export function BankEntryPage() {
 
         {/* ---------- bank data ---------- */}
         <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-5 py-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2"><Search size={16} className="text-orange-500" /><h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Bank Data</h2></div>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold tabular-nums">In ₹{money(inTotal)}</span>
-              <span className="px-2.5 py-1 rounded-full bg-red-50 text-red-700 border border-red-200 font-bold tabular-nums">Out ₹{money(outTotal)}</span>
+          <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/70 flex items-center gap-2.5 overflow-x-auto min-w-0">
+            {/* Totals */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold tabular-nums whitespace-nowrap">In ₹{money(inTotal)}</span>
+              <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 text-[11px] font-bold tabular-nums whitespace-nowrap">Out ₹{money(outTotal)}</span>
+            </div>
+
+            <span className="h-5 w-px bg-slate-200 shrink-0 mx-0.5" aria-hidden="true" />
+
+            {/* Load Full Data */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-sm transition disabled:opacity-40 whitespace-nowrap cursor-pointer" disabled={loadingData} onClick={() => void loadData(true)}>
+                {loadingData ? 'Loading…' : 'Load Full Data'}
+              </button>
+              <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap" data-testid="data-count">
+                {loadingData ? '' : `${shownData.length} shown${dataTotal > data.length ? ` of ${dataTotal}` : ''}`}
+              </span>
+            </div>
+
+            <span className="h-5 w-px bg-slate-200 shrink-0 mx-0.5" aria-hidden="true" />
+
+            {/* Filters */}
+            <div className="flex items-center gap-2 shrink-0">
+              <Filter size={13} className="text-slate-400 shrink-0" />
+              <select aria-label="Filter bank" className="h-7 px-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-orange-400 w-44 truncate cursor-pointer" value={fBank} onChange={e => setFBank(e.target.value)}>
+                <option value="">-- All Banks / Types --</option>
+                {(options?.accounts ?? []).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+              <select aria-label="Filter ledger type" className="h-7 px-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-orange-400 w-40 truncate cursor-pointer" value={fKind} onChange={e => setFKind(e.target.value)}>
+                <option value="">-- All Ledger Types --</option>
+                {kinds.map(k => <option key={k} value={k}>{k}</option>)}
+              </select>
+              <label className="flex items-center gap-1 text-xs font-medium text-slate-600 cursor-pointer whitespace-nowrap px-1">
+                <input type="checkbox" aria-label="Only error rows" className="accent-orange-500 w-3.5 h-3.5 rounded" checked={onlyErr} onChange={e => setOnlyErr(e.target.checked)} />
+                <span>Only error rows</span>
+              </label>
+              <span className="text-[11px] font-semibold text-slate-400 whitespace-nowrap">From</span>
+              <input type="date" aria-label="From date" className="h-7 px-1.5 text-xs text-slate-700 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-orange-400" value={from} onChange={e => setFrom(e.target.value)} />
+              <span className="text-[11px] font-semibold text-slate-400 whitespace-nowrap">To</span>
+              <input type="date" aria-label="To date" className="h-7 px-1.5 text-xs text-slate-700 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-orange-400" value={to} onChange={e => setTo(e.target.value)} />
+              <div className="flex items-center gap-1">
+                {quick(3, 'Last 3 Months')}
+                {quick(6, 'Last 6 Months')}
+                {quick(12, 'Last 1 Year')}
+              </div>
+              <button className="h-7 px-2 text-xs font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md border border-slate-200 transition-colors whitespace-nowrap cursor-pointer" onClick={clearFilters}>
+                Clear Filters
+              </button>
             </div>
           </div>
-          <div className="p-5 space-y-4">
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 flex flex-wrap items-center gap-2.5">
-              <Filter size={14} className="text-slate-400" />
-              <select aria-label="Filter bank" className={`${sel} w-60`} value={fBank} onChange={e => setFBank(e.target.value)}>
-                <option value="">-- All Banks / Types --</option>{(options?.accounts ?? []).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
-              <select aria-label="Filter ledger type" className={`${sel} w-56`} value={fKind} onChange={e => setFKind(e.target.value)}>
-                <option value="">-- All Ledger Types --</option>{kinds.map(k => <option key={k} value={k}>{k}</option>)}</select>
-              <label className="flex items-center gap-2 text-[13px] font-medium text-slate-600 px-2"><input type="checkbox" aria-label="Only error rows" className="accent-orange-500 w-4 h-4" checked={onlyErr} onChange={e => setOnlyErr(e.target.checked)} /> Only error rows</label>
-              <span className="text-xs font-semibold text-slate-500">From</span><input type="date" aria-label="From date" className={inp} value={from} onChange={e => setFrom(e.target.value)} />
-              <span className="text-xs font-semibold text-slate-500">To</span><input type="date" aria-label="To date" className={inp} value={to} onChange={e => setTo(e.target.value)} />
-              <span className="flex gap-1.5 ml-1">{quick(3, 'Last 3 Months')}{quick(6, 'Last 6 Months')}{quick(12, 'Last 1 Year')}</span>
-              <button className={`${btn} !h-8 ml-auto`} onClick={clearFilters}>Clear Filters</button>
-            </div>
-            <div className="flex items-center gap-3">
-              <button className={btn} disabled={loadingData} onClick={() => void loadData(true)}>{loadingData ? 'Loading…' : 'Load Full Data'}</button>
-              <span className="text-xs text-slate-500" data-testid="data-count">{loadingData ? '' : `${shownData.length} shown${dataTotal > data.length ? ` of ${dataTotal} (click Load Full Data for all)` : ''}`}</span>
-            </div>
+          <div className="p-4 space-y-4">
             {dataError && <div data-testid="data-error" className="flex items-start gap-2 text-sm rounded-xl border border-red-200 bg-red-50 text-red-800 px-3.5 py-2.5"><AlertTriangle size={16} className="mt-0.5 shrink-0" />{dataError}</div>}
             <div className="overflow-auto max-h-[480px] border border-slate-200 rounded-xl">
               <table className="w-full text-xs min-w-[1000px]">

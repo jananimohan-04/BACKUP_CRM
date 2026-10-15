@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ChevronDown, ChevronRight, Download, Play, Printer, TrendingUp } from 'lucide-react';
 import { PageHeader, EmptyState, LoadingState } from '@/components/ui/PageHeader';
 import { Button, Card } from '@/components/ui/Card';
 import { FormField, inputClass } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { accountingApi, childrenMap, type FinancialYear, type ProfitAndLoss, type ReportRow } from '@/lib/accounting';
 import { formatDate, formatINR, formatPercent, todayISO, toPaise } from '@/lib/format';
 import { exportCsv, printHtml, escapeHtml } from '@/lib/reportExport';
@@ -111,7 +112,7 @@ export function ProfitLossPage() {
     return () => { cancelled = true; };
   }, [companyId, urlFrom, urlTo, generate]);
 
-  const changeYear = (id: string) => {
+  const changeYear = useCallback((id: string) => {
     setFyId(id);
     const fy = years.find(y => y.id === id);
     if (!fy) return;
@@ -119,7 +120,7 @@ export function ProfitLossPage() {
     setFrom(fy.start_date);
     setTo(t);
     generate(fy.start_date, t);
-  };
+  }, [years, generate]);
 
   const sections: Section[] = report ? [
     { key: 'INCOME', title: 'Income', total: report.totals.income },
@@ -187,9 +188,98 @@ export function ProfitLossPage() {
     return map;
   }, [report, collapsed, hideZero]);
 
+  const csvRef = useRef<() => void>(() => {});
+  const printRef = useRef<() => void>(() => {});
+  csvRef.current = handleCsv;
+  printRef.current = handlePrint;
+  const hasReport = !!report;
+
+  const { setHeader, setTabActions, setHeaderCenter } = useHeaderKpis();
+  useEffect(() => {
+    setHeader({ title: 'Profit & Loss' });
+    setHeaderCenter(
+      <div className="flex items-center gap-2">
+        <select
+          aria-label="Financial Year"
+          title="Financial Year"
+          className="h-7 px-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-orange-400"
+          value={fyId}
+          onChange={e => changeYear(e.target.value)}
+          disabled={loadingYears || years.length === 0}
+        >
+          {!years.some(y => y.id === fyId) && <option value="">—</option>}
+          {years.map(y => <option key={y.id} value={y.id}>{y.name}{y.status === 'Closed' ? ' (closed)' : ''}</option>)}
+        </select>
+        <input
+          type="date"
+          aria-label="From"
+          title="From"
+          className="h-7 px-2 text-xs text-slate-700 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-orange-400"
+          value={from}
+          onChange={e => setFrom(e.target.value)}
+        />
+        <input
+          type="date"
+          aria-label="To"
+          title="To"
+          className="h-7 px-2 text-xs text-slate-700 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-orange-400"
+          value={to}
+          onChange={e => setTo(e.target.value)}
+        />
+        <button
+          type="button"
+          onClick={() => generate(from, to)}
+          disabled={loading || loadingYears}
+          className="h-7 px-2.5 text-xs font-bold text-white bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-500 hover:to-orange-700 rounded-md shadow-sm flex items-center gap-1 active:scale-[0.98] transition disabled:opacity-40 cursor-pointer"
+        >
+          <Play size={11} className="fill-white" />
+          <span>Generate</span>
+        </button>
+        <label className="inline-flex items-center gap-1 text-xs text-slate-600 whitespace-nowrap cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={hideZero}
+            onChange={e => setHideZero(e.target.checked)}
+            className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+          />
+          <span>Hide zero</span>
+        </label>
+      </div>
+    );
+    setTabActions(
+      <div className="flex items-center gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<Download size={14} />}
+          onClick={() => csvRef.current()}
+          disabled={!hasReport}
+          className="h-7 py-1 text-xs px-2.5 shadow-sm"
+        >
+          CSV
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<Printer size={14} />}
+          onClick={() => printRef.current()}
+          disabled={!hasReport}
+          className="h-7 py-1 text-xs px-2.5 shadow-sm"
+        >
+          Print
+        </Button>
+      </div>
+    );
+    return () => {
+      setHeader(null);
+      setHeaderCenter(null);
+      setTabActions(null);
+    };
+  }, [setHeader, setHeaderCenter, setTabActions, hasReport, fyId, changeYear, loadingYears, years, from, to, generate, loading, hideZero]);
+
   if (!company) {
     return (
-      <div className="p-4 lg:p-6 bg-grid min-h-full">
+      <div className="p-2 sm:p-4 lg:px-6 lg:pt-2 lg:pb-6 bg-grid min-h-full">
         <PageHeader title="Profit & Loss" description="Income and expenses for a period." />
         <Card><EmptyState icon={<TrendingUp size={28} />} title="No company selected" message="Select a company in the top bar to view its accounts." /></Card>
       </div>
@@ -197,35 +287,27 @@ export function ProfitLossPage() {
   }
 
   return (
-    <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader
-        title="Profit & Loss"
-        description={`Income and expenses of ${company.company_name} for a period.`}
-        actions={<>
-          <Button variant="secondary" icon={<Download size={14} />} onClick={handleCsv} disabled={!report}>CSV</Button>
-          <Button variant="secondary" icon={<Printer size={14} />} onClick={handlePrint} disabled={!report}>Print</Button>
-        </>}
-      />
-
-      <Card className="p-4 mb-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="w-56">
-            <FormField label="Financial Year">
-              <select className={inputClass} value={fyId} onChange={e => changeYear(e.target.value)} disabled={loadingYears || years.length === 0}>
-                {!years.some(y => y.id === fyId) && <option value="">—</option>}
-                {years.map(y => <option key={y.id} value={y.id}>{y.name}{y.status === 'Closed' ? ' (closed)' : ''}</option>)}
-              </select>
-            </FormField>
-          </div>
-          <div className="w-44"><FormField label="From"><input type="date" className={inputClass} value={from} onChange={e => setFrom(e.target.value)} /></FormField></div>
-          <div className="w-44"><FormField label="To"><input type="date" className={inputClass} value={to} onChange={e => setTo(e.target.value)} /></FormField></div>
+    <div className="p-2 sm:p-4 lg:px-6 lg:pt-2 lg:pb-6 bg-grid min-h-full">
+      <div className="lg:hidden bg-white rounded-xl border border-slate-200 shadow-sm px-3 py-2 mb-3">
+        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto scrollbar-thin [&>*]:shrink-0">
+          <h1 className="text-base font-bold text-slate-800 whitespace-nowrap">Profit & Loss</h1>
+          <select aria-label="Financial Year" title="Financial Year" className={`${inputClass} !h-9 !text-xs !w-36`} value={fyId} onChange={e => changeYear(e.target.value)} disabled={loadingYears || years.length === 0}>
+            {!years.some(y => y.id === fyId) && <option value="">—</option>}
+            {years.map(y => <option key={y.id} value={y.id}>{y.name}{y.status === 'Closed' ? ' (closed)' : ''}</option>)}
+          </select>
+          <input type="date" aria-label="From" title="From" className={`${inputClass} !h-9 !text-xs !w-32`} value={from} onChange={e => setFrom(e.target.value)} />
+          <input type="date" aria-label="To" title="To" className={`${inputClass} !h-9 !text-xs !w-32`} value={to} onChange={e => setTo(e.target.value)} />
           <Button icon={<Play size={14} />} onClick={() => generate(from, to)} disabled={loading || loadingYears}>Generate</Button>
-          <label className="inline-flex items-center gap-2 text-sm text-slate-600 pb-2 ml-auto">
+          <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 whitespace-nowrap">
             <input type="checkbox" checked={hideZero} onChange={e => setHideZero(e.target.checked)} className="rounded border-slate-300 text-brand-600 focus:ring-brand-500" />
             Hide zero balances
           </label>
+          <span className="ml-auto flex gap-2 shrink-0">
+            <Button variant="secondary" icon={<Download size={14} />} onClick={handleCsv} disabled={!report}>CSV</Button>
+            <Button variant="secondary" icon={<Printer size={14} />} onClick={handlePrint} disabled={!report}>Print</Button>
+          </span>
         </div>
-      </Card>
+      </div>
 
       {error && <ErrorBanner message={error} />}
 

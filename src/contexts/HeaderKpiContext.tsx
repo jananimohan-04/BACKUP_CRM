@@ -44,6 +44,9 @@ interface HeaderKpiContextValue {
   /** Opt-in action buttons (e.g. Create button) rendered alongside tabs in the top bar. */
   tabActions: React.ReactNode;
   setTabActions: (actions: React.ReactNode) => void;
+  /** Opt-in center content (e.g. KPI chips) rendered in the top bar. */
+  headerCenter: React.ReactNode;
+  setHeaderCenter: (node: React.ReactNode) => void;
   /** Company-wise filter for the records ('down datas') across the top 8 pages. */
   companyFilter: string;
   setCompanyFilter: (company: string) => void;
@@ -97,9 +100,10 @@ export function HeaderKpiProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const [tabActions, setTabActions] = useState<React.ReactNode>(null);
+  const [headerCenter, setHeaderCenter] = useState<React.ReactNode>(null);
 
   return (
-    <HeaderKpiContext.Provider value={{ kpis, setKpis, header, setHeader, tabs, setTabs, tabActions, setTabActions, companyFilter, setCompanyFilter, companyOptions, setCompanyOptions }}>
+    <HeaderKpiContext.Provider value={{ kpis, setKpis, header, setHeader, tabs, setTabs, tabActions, setTabActions, headerCenter, setHeaderCenter, companyFilter, setCompanyFilter, companyOptions, setCompanyOptions }}>
       {children}
     </HeaderKpiContext.Provider>
   );
@@ -114,6 +118,8 @@ const defaultHeaderKpiContext: HeaderKpiContextValue = {
   setTabs: () => {},
   tabActions: null,
   setTabActions: () => {},
+  headerCenter: null,
+  setHeaderCenter: () => {},
   companyFilter: 'All Companies',
   setCompanyFilter: () => {},
   companyOptions: [],

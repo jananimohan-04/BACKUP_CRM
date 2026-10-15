@@ -8,6 +8,7 @@ import { Time24 } from '@/components/ui/Time24';
 import { PlannedTimeline } from './PlannedTimeline';
 import { ComparisonTimeline } from './ComparisonPage';
 import { ActualTimeline } from './ActualPage';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 
 function ActualScheduling() {
   const [loading, setLoading] = useState(true);
@@ -1114,12 +1115,20 @@ export function SchedulingPage() {
   const tabs: { id: typeof tab; label: string }[] = [
     { id: 'planned', label: 'Planned Timeline' }, { id: 'actual', label: 'Actual Timeline' }, { id: 'comparison', label: 'Comparison' }, { id: 'board', label: 'Job Board (Machines & Manpower)' },
   ];
+  // Tabs live in the top bar on desktop (same line as date/profile); the local
+  // row below stays only for smaller screens. Cleared on unmount.
+  const { setTabs } = useHeaderKpis();
+  useEffect(() => {
+    setTabs(tabs.map(t => ({ label: t.label, active: t.id === tab, onClick: () => setTab(t.id) })));
+    return () => setTabs([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, setTabs]);
   return (
     <div className="space-y-4">
-      <div className="flex gap-1 border-b border-slate-200" role="tablist">
+      <div className="flex lg:hidden gap-1 border-b border-slate-200" role="tablist">
         {tabs.map(t => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
-            className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${tab === t.id ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{t.label}</button>
+            className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${tab === t.id ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-300 hover:text-white'}`}>{t.label}</button>
         ))}
       </div>
       {tab === 'planned' && <PlannedTimeline />}

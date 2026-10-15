@@ -4,10 +4,11 @@ import {
   AlertTriangle, LayoutList, BookOpen, ChevronDown, ChevronRight, Download, Edit, ExternalLink, FileText, ListTree, Lock, Plus,
   Printer, Search, Trash2, X,
 } from 'lucide-react';
-import { PageHeader, EmptyState, LoadingState } from '@/components/ui/PageHeader';
+import { EmptyState, LoadingState } from '@/components/ui/PageHeader';
 import { Badge, Button, Card } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { LedgerDashboardPage } from '@/pages/finance/LedgerDashboardPage';
 import {
   accountingApi, childrenMap, SOURCE_LABELS, SOURCE_ROUTES,
@@ -141,6 +142,31 @@ export function LedgerPage() {
     return () => { cancelled = true; };
   }, [companyId]);
 
+  const { setHeader, setTabs } = useHeaderKpis();
+  useEffect(() => {
+    setHeader({ title: 'Ledger & Vouchers' });
+    const headerTabs: { label: string; active: boolean; onClick: () => void }[] = [];
+    if (tab === 'ledger' || tab === 'vouchers') {
+      headerTabs.push({
+        label: '← Back to Dashboard',
+        active: false,
+        onClick: () => setTab('dashboard'),
+      });
+    }
+    TABS.forEach(t => {
+      headerTabs.push({
+        label: t.label,
+        active: tab === t.id,
+        onClick: () => setTab(t.id),
+      });
+    });
+    setTabs(headerTabs);
+    return () => {
+      setHeader(null);
+      setTabs([]);
+    };
+  }, [setHeader, setTabs, tab]);
+
   const setTab = (t: Tab) => setSearchParams(prev => {
     const next = new URLSearchParams(prev);
     next.set('tab', t);
@@ -148,17 +174,17 @@ export function LedgerPage() {
   });
 
   return (
-    <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader
-        title="Ledger & Vouchers"
-        description={company ? `Account ledgers, vouchers and chart of accounts of ${company.company_name}.` : 'Account ledgers, vouchers and chart of accounts.'}
-      />
+    <div className="p-2 sm:p-4 lg:px-6 lg:pt-2 lg:pb-6 bg-grid min-h-full">
+      <div className="lg:hidden flex flex-nowrap items-center gap-3 mb-3 overflow-x-auto scrollbar-thin">
+        <h1 className="text-xl font-bold text-slate-800 whitespace-nowrap shrink-0">Ledger & Vouchers</h1>
+        <p className="text-sm text-slate-500 whitespace-nowrap shrink-0">Account ledgers, vouchers and chart of accounts{company ? ` of ${company.company_name}` : ''}.</p>
+      </div>
 
       {!company ? (
         <Card><EmptyState icon={<BookOpen size={28} />} title="No company selected" message="Select a company in the top bar to view its accounts." /></Card>
       ) : (
         <>
-          <div className="flex items-center gap-6 border-b border-slate-200 mb-6 overflow-x-auto">
+          <div className="flex lg:hidden items-center gap-6 border-b border-slate-200 mb-6 overflow-x-auto">
             {/* The Account Ledger and Vouchers views are no longer tabs; they still open from a report's drill-down link. */}
             {(tab === 'ledger' || tab === 'vouchers') && (
               <button onClick={() => setTab('dashboard')} className="inline-flex items-center gap-1.5 pb-3 text-sm font-medium text-brand-600 hover:text-brand-700 whitespace-nowrap">

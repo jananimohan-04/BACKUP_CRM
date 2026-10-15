@@ -6,6 +6,7 @@ import {
   ExternalLink, FileSpreadsheet, AlertCircle, Info, ArrowLeftRight, Factory, Archive, Search,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { supabase } from '@/lib/supabase';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import {
@@ -361,6 +362,102 @@ export function InventoryPage() {
     }
   };
 
+  useEffect(() => {
+    if (!exportOpen) return;
+    const close = () => setExportOpen(false);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [exportOpen]);
+
+  const { setHeader, setTabActions, setHeaderCenter } = useHeaderKpis();
+
+  useEffect(() => {
+    if (!company) {
+      setHeader(null);
+      setHeaderCenter(null);
+      setTabActions(null);
+      return;
+    }
+
+    setHeader({ title: 'Inventory' });
+    setHeaderCenter(
+      live ? (
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5 shrink-0">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live
+        </span>
+      ) : null
+    );
+
+    const topbarBtn = 'h-7 px-2.5 inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-md hover:bg-slate-50 shadow-sm transition disabled:opacity-50 cursor-pointer whitespace-nowrap';
+    const topbarPrimaryBtn = 'h-7 px-2.5 inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-md shadow-sm transition disabled:opacity-60 cursor-pointer whitespace-nowrap';
+
+    setTabActions(
+      <div className="flex items-center gap-1.5">
+        {canManage && (
+          <button type="button" onClick={() => setAdjustPickerOpen(true)} className={topbarBtn}>
+            <SlidersHorizontal size={13} /> Stock Adjustment
+          </button>
+        )}
+        {canManage && (
+          <button type="button" onClick={() => setTransferOpen(true)} className={topbarBtn}>
+            <ArrowLeftRight size={13} /> Stock Transfer
+          </button>
+        )}
+        {canManage && (
+          <button type="button" onClick={() => setImportOpen(true)} className={topbarBtn}>
+            <Upload size={13} /> Import
+          </button>
+        )}
+        {canManage && (
+          <button type="button" onClick={() => setMasterOpen(true)} className={topbarBtn}>
+            <Building2 size={13} /> Warehouse Master
+          </button>
+        )}
+        <div className="relative" data-floating-menu>
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); setExportOpen(o => !o); }}
+            disabled={exporting || !ready}
+            className={topbarBtn}
+          >
+            {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} Export <ChevronDown size={11} />
+          </button>
+          {exportOpen && (
+            <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-slate-200 rounded-lg shadow-xl z-50 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => { setExportOpen(false); void handleExport(); }}
+                className="w-full text-left px-3.5 py-2 text-xs hover:bg-slate-50 flex items-center gap-2"
+              >
+                <FileSpreadsheet size={14} className="text-emerald-600" /> CSV (current filters)
+              </button>
+            </div>
+          )}
+        </div>
+        <button type="button" onClick={() => setEditing('new')} disabled={!filters} className={topbarPrimaryBtn}>
+          <Plus size={13} /> Add Item
+        </button>
+      </div>
+    );
+
+    return () => {
+      setHeader(null);
+      setHeaderCenter(null);
+      setTabActions(null);
+    };
+  }, [
+    company,
+    live,
+    canManage,
+    exporting,
+    ready,
+    exportOpen,
+    filters,
+    setHeader,
+    setHeaderCenter,
+    setTabActions,
+  ]);
+
   // ---- Render -----------------------------------------------------------------------------------
   if (!company) {
     return (
@@ -395,9 +492,9 @@ export function InventoryPage() {
   ];
 
   return (
-    <div className="p-4 lg:p-6 min-h-full bg-white">
+    <div className="p-2 sm:p-4 lg:px-6 lg:pt-2 lg:pb-6 min-h-full bg-white">
       {/* Header */}
-      <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4 mb-5">
+      <div className="lg:hidden flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4 mb-5">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
             Inventory
@@ -454,16 +551,16 @@ export function InventoryPage() {
       )}
 
       {/* Summary cards */}
-      <div className="flex gap-3 mb-5 overflow-x-auto pb-1" data-testid="inventory-cards">
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-1" data-testid="inventory-cards">
         {cards.map(c => (
-          <div key={c.label} data-testid="inventory-card" className="flex-1 min-w-[132px] bg-white border border-slate-200 rounded-xl shadow-sm px-3 py-3 flex items-center gap-2.5">
-            <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${c.tint}`}><c.icon size={18} /></div>
+          <div key={c.label} data-testid="inventory-card" className="flex-1 min-w-[104px] bg-white border border-slate-200 rounded-lg shadow-sm px-2 py-1.5 flex items-center gap-1.5">
+            <div className={`w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 ${c.tint}`}><c.icon size={14} /></div>
             <div className="min-w-0">
-              <p className="text-xs text-slate-600 leading-tight">{c.label}</p>
+              <p className="text-[10px] text-slate-600 leading-tight whitespace-nowrap">{c.label}</p>
               {c.value === null
-                ? (summaryError ? <p className="text-2xl font-bold text-slate-300">—</p> : <div className="h-7 w-24 mt-1 rounded bg-slate-100 animate-pulse" />)
-                : <p className="text-lg font-bold text-slate-900 tracking-tight truncate">{c.value}</p>}
-              {'hint' in c && c.hint && <p className="text-[10px] text-slate-400 whitespace-nowrap">{c.hint}</p>}
+                ? (summaryError ? <p className="text-base font-bold text-slate-300">—</p> : <div className="h-5 w-16 mt-0.5 rounded bg-slate-100 animate-pulse" />)
+                : <p className="text-base font-bold text-slate-900 tracking-tight truncate">{c.value}</p>}
+              {'hint' in c && c.hint && <p className="text-[9px] text-slate-400 whitespace-nowrap">{c.hint}</p>}
             </div>
           </div>
         ))}
@@ -472,36 +569,32 @@ export function InventoryPage() {
       <div className="flex flex-col gap-5 items-stretch">
         {/* Main column: the table now uses the full page width */}
         <div className="w-full min-w-0 bg-white border border-slate-200 rounded-xl shadow-sm">
-          {/* Tabs */}
-          <div className="flex gap-6 px-5 border-b border-slate-200 overflow-x-auto">
-            {!filters && !filtersError && [0, 1, 2, 3].map(i => <div key={i} className="h-5 w-24 my-3.5 rounded bg-slate-100 animate-pulse" />)}
+          {/* Tabs + filters share one line */}
+          <div className="flex flex-nowrap items-center gap-2 px-4 py-2 border-b border-slate-200 overflow-x-auto scrollbar-thin [&>*]:shrink-0">
+            {!filters && !filtersError && [0, 1, 2, 3].map(i => <div key={i} className="h-5 w-16 rounded bg-slate-100 animate-pulse" />)}
             {[...categories.map(c => ({ id: c.id, name: c.name })), { id: '', name: 'All Items' }].map(t => {
               if (!filters && t.id === '' && !filtersError) return null;
               const active = applied.categoryId === t.id;
               return (
                 <button key={t.id || 'all'} onClick={() => handleTab(t.id)}
-                  className={`py-3.5 text-sm whitespace-nowrap border-b-2 -mb-px transition-colors ${active ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-slate-600 hover:text-slate-900'}`}>
+                  className={`py-1.5 text-xs whitespace-nowrap border-b-2 -mb-px transition-colors ${active ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-slate-600 hover:text-slate-900'}`}>
                   {t.name}
                 </button>
               );
             })}
-          </div>
-
-          {(<>
-          {/* Filter bar */}
-          <div className="p-4 flex flex-wrap items-center gap-3 border-b border-slate-100">
+            <span className="h-6 w-px bg-slate-200" aria-hidden="true" />
             <input
               value={draft.search}
               onChange={e => setDraft({ ...draft, search: e.target.value })}
               onKeyDown={e => { if (e.key === 'Enter') handleSearch(); }}
               placeholder="Search by item name, code..."
-              className={`${selectCls} flex-1 min-w-[200px]`}
+              className={`${selectCls} w-44`}
             />
-            <select aria-label="Category" value={draft.categoryId} onChange={e => setDraft({ ...draft, categoryId: e.target.value })} className={selectCls}>
+            <select aria-label="Category" value={draft.categoryId} onChange={e => setDraft({ ...draft, categoryId: e.target.value })} className={`${selectCls} max-w-[150px]`}>
               <option value="">All Categories</option>
               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            <select aria-label="Supplier" value={draft.supplierId} onChange={e => setDraft({ ...draft, supplierId: e.target.value })} className={`${selectCls} max-w-[180px]`}>
+            <select aria-label="Supplier" value={draft.supplierId} onChange={e => setDraft({ ...draft, supplierId: e.target.value })} className={`${selectCls} max-w-[150px]`}>
               <option value="">All Suppliers</option>
               {(filters?.suppliers ?? []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
@@ -512,7 +605,7 @@ export function InventoryPage() {
               <option value="Out of Stock">Out of Stock</option>
               <option value="Reorder">Needs Reorder</option>
             </select>
-            <select aria-label="Warehouse" value={draft.warehouseId} onChange={e => setDraft({ ...draft, warehouseId: e.target.value })} className={`${selectCls} max-w-[180px]`}>
+            <select aria-label="Warehouse" value={draft.warehouseId} onChange={e => setDraft({ ...draft, warehouseId: e.target.value })} className={`${selectCls} max-w-[150px]`}>
               <option value="">All Warehouses</option>
               {(filters?.warehouses ?? []).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
@@ -652,7 +745,6 @@ export function InventoryPage() {
               </select>
             </div>
           </div>
-          </>)}
         </div>
 
         {/* Summary panels: at the end of the page */}

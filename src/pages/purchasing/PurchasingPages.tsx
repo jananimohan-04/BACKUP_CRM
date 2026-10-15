@@ -1,12 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Plus, Eye, Edit, Trash2, Users, FileText, ShoppingCart, Package, Activity, TrendingUp, Power, PowerOff, Printer, Send, CheckCircle, AlertCircle } from 'lucide-react';
+import { Plus, Eye, Edit, Trash2, Users, FileText, ShoppingCart, Package, Activity, TrendingUp, Power, PowerOff, Printer, Send, CheckCircle, AlertCircle, Search, Download } from 'lucide-react';
 import { PageHeader, FilterButton, ExportButton } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Card, Badge, Button, StatCard } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { fromInwards } from '@/lib/ledgerDashboard';
+import { exportCsv } from '@/lib/reportExport';
+import { todayISO } from '@/lib/format';
 
 export function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -724,6 +727,9 @@ export function PurchaseOrdersPage() {
   });
   const [form, setForm] = useState(resetForm());
   const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const { setHeader, setTabActions, setHeaderCenter } = useHeaderKpis();
 
   useEffect(() => {
     fetchData();
@@ -938,6 +944,109 @@ export function PurchaseOrdersPage() {
   }, [inwardRows]);
   const allPOs = useMemo(() => [...pos, ...inwardPOs].sort((a, b) => String(b.order_date ?? '').localeCompare(String(a.order_date ?? ''))), [pos, inwardPOs]);
 
+  const poStats = useMemo(() => {
+    const total = allPOs.length;
+    const draft = allPOs.filter(p => p.status === 'Draft').length;
+    const issued = allPOs.filter(p => p.status === 'Issued').length;
+    const rcvd = allPOs.filter(p => ['Partially Received', 'Received'].includes(p.status)).length;
+    const delayed = allPOs.filter(p => isDelayed(p)).length;
+    return { total, draft, issued, rcvd, delayed };
+  }, [allPOs]);
+
+  const filteredPOs = useMemo(() => {
+    if (!search.trim()) return allPOs;
+    const q = search.toLowerCase();
+    return allPOs.filter(p =>
+      String(p.po_number || '').toLowerCase().includes(q) ||
+      String(p.supplier?.name || '').toLowerCase().includes(q) ||
+      String(p.supplier?.code || '').toLowerCase().includes(q)
+    );
+  }, [allPOs, search]);
+
+  const handleExport = () => {
+    if (filteredPOs.length === 0) return;
+    exportCsv(`Purchase_Orders_${todayISO()}`, [
+      ['PO Number', 'Supplier', 'Order Date', 'Expected By', 'Value (INR)', 'Status'],
+      ...filteredPOs.map(r => [
+        r.po_number,
+        r.supplier?.name ?? '',
+        r.order_date ?? '',
+        r.expected_date ?? '',
+        r.grand_total ?? 0,
+        r.status ?? '',
+      ]),
+    ]);
+  };
+
+  useEffect(() => {
+    setHeader({ title: 'Purchase Orders' });
+    setHeaderCenter(
+      <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 px-2 py-0.5 bg-slate-100 border border-slate-200 rounded-md text-xs">
+          <ShoppingCart size={11} className="text-slate-600" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total:</span>
+          <span className="text-xs font-black text-slate-800 tabular-nums">{poStats.total}</span>
+        </div>
+        <div className="flex items-center gap-1 px-2 py-0.5 bg-slate-100 border border-slate-200 rounded-md text-xs">
+          <FileText size={11} className="text-slate-600" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Draft:</span>
+          <span className="text-xs font-black text-slate-800 tabular-nums">{poStats.draft}</span>
+        </div>
+        <div className="flex items-center gap-1 px-2 py-0.5 bg-orange-50 border border-orange-200 rounded-md text-xs">
+          <Send size={11} className="text-orange-600" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-orange-700">Issued:</span>
+          <span className="text-xs font-black text-orange-900 tabular-nums">{poStats.issued}</span>
+        </div>
+        <div className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 border border-emerald-200 rounded-md text-xs">
+          <Package size={11} className="text-emerald-600" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Received:</span>
+          <span className="text-xs font-black text-emerald-900 tabular-nums">{poStats.rcvd}</span>
+        </div>
+        <div className="flex items-center gap-1 px-2 py-0.5 bg-red-50 border border-red-200 rounded-md text-xs">
+          <Activity size={11} className="text-red-600" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-red-700">Delayed:</span>
+          <span className="text-xs font-black text-red-900 tabular-nums">{poStats.delayed}</span>
+        </div>
+      </div>
+    );
+    setTabActions(
+      <div className="flex items-center gap-2">
+        <div className="relative">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search records..."
+            className="h-7 w-32 xl:w-44 pl-7 pr-2 text-xs rounded-md border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-500/30 focus:border-brand-500 transition-all placeholder:text-slate-400"
+          />
+        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<Download size={13} />}
+          onClick={handleExport}
+          className="h-7 py-1 text-xs px-2.5 shadow-sm font-semibold"
+        >
+          EXPORT
+        </Button>
+        <Button
+          onClick={() => { setForm(resetForm()); setShowAdd(true); }}
+          icon={<Plus size={14} />}
+          size="sm"
+          className="h-7 py-1 text-xs px-2.5 shadow-sm"
+        >
+          New PO
+        </Button>
+      </div>
+    );
+
+    return () => {
+      setHeader(null);
+      setHeaderCenter(null);
+      setTabActions(null);
+    };
+  }, [setHeader, setHeaderCenter, setTabActions, poStats, search, filteredPOs]);
+
   const columns: Column<any>[] = [
     { key: 'po_number', label: 'PO No', sortable: true, render: (r) => <span className="font-mono text-xs font-semibold text-brand-700">{r.po_number}{r.fromInward && <span className="ml-2 rounded bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 font-sans">INWARD</span>}</span> },
     { key: 'supplier', label: 'Supplier', sortable: true, render: (r) => <span className="font-medium text-slate-800">{r.supplier?.name}</span> },
@@ -964,23 +1073,25 @@ export function PurchaseOrdersPage() {
   ];
 
   return (
-    <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader 
-         title="Purchase Orders" 
-         description="Manage commercial purchase commitments issued to suppliers" 
-         actions={<Button onClick={() => { setForm(resetForm()); setShowAdd(true); }} icon={<Plus size={16}/>}>New PO</Button>} 
-      />
+    <div className="p-2 sm:p-4 lg:px-6 lg:pt-2 lg:pb-6 bg-grid min-h-full">
+      <div className="lg:hidden">
+        <PageHeader 
+           title="Purchase Orders" 
+           description="Manage commercial purchase commitments issued to suppliers" 
+           actions={<Button onClick={() => { setForm(resetForm()); setShowAdd(true); }} icon={<Plus size={16}/>}>New PO</Button>} 
+        />
+      </div>
       
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
-        <StatCard label="Total POs" value={allPOs.length.toString()} icon={<ShoppingCart size={20} />} accent="brand" />
-        <StatCard label="Draft" value={allPOs.filter(p => p.status === 'Draft').length.toString()} icon={<FileText size={20} />} accent="neutral" />
-        <StatCard label="Issued / Sent" value={allPOs.filter(p => p.status === 'Issued').length.toString()} icon={<Send size={20} />} accent="brand" />
-        <StatCard label="Partially / Fully Rcvd" value={allPOs.filter(p => ['Partially Received', 'Received'].includes(p.status)).length.toString()} icon={<Package size={20} />} accent="success" />
-        <StatCard label="Delayed" value={allPOs.filter(p => isDelayed(p)).length.toString()} icon={<Activity size={20} />} accent="error" />
+      <div className="lg:hidden grid grid-cols-2 md:grid-cols-5 gap-2.5 mb-3">
+        <StatCard compact label="Total POs" value={allPOs.length.toString()} icon={<ShoppingCart size={16} />} accent="brand" />
+        <StatCard compact label="Draft" value={allPOs.filter(p => p.status === 'Draft').length.toString()} icon={<FileText size={16} />} accent="neutral" />
+        <StatCard compact label="Issued / Sent" value={allPOs.filter(p => p.status === 'Issued').length.toString()} icon={<Send size={16} />} accent="brand" />
+        <StatCard compact label="Partially / Fully Rcvd" value={allPOs.filter(p => ['Partially Received', 'Received'].includes(p.status)).length.toString()} icon={<Package size={16} />} accent="success" />
+        <StatCard compact label="Delayed" value={allPOs.filter(p => isDelayed(p)).length.toString()} icon={<Activity size={16} />} accent="error" />
       </div>
       
       <Card>
-         <DataTable data={allPOs} columns={columns} searchKeys={['po_number', 'supplier.name', 'supplier.code']} />
+         <DataTable hideToolbar data={filteredPOs} columns={columns} />
       </Card>
 
       {/* A Goods Purchase inward: the lines that were bought */}

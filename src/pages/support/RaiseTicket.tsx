@@ -13,6 +13,8 @@ import {
 interface StagedFile extends PendingUpload {
   id: string;
   annotated?: boolean;
+  /** For a marked copy: the id of the screenshot it was drawn on. */
+  of?: string;
 }
 
 const uid = () =>
@@ -57,9 +59,10 @@ export function RaiseTicket({ onSubmitted }: { onSubmitted: (ticketNo: string) =
 
   const removeFile = (id: string) => {
     setFiles((prev) => {
-      const gone = prev.find((f) => f.id === id);
-      if (gone) URL.revokeObjectURL(gone.preview);
-      return prev.filter((f) => f.id !== id);
+      // Removing a screenshot removes its marked copy too.
+      const gone = prev.filter((f) => f.id === id || f.of === id);
+      gone.forEach((f) => URL.revokeObjectURL(f.preview));
+      return prev.filter((f) => f.id !== id && f.of !== id);
     });
   };
 
@@ -67,7 +70,11 @@ export function RaiseTicket({ onSubmitted }: { onSubmitted: (ticketNo: string) =
     if (!marking) return;
     const base = marking.file.name.replace(/\.[a-zA-Z0-9]+$/, '') || 'screenshot';
     const file = new File([blob], `${base}-marked.png`, { type: 'image/png' });
-    setFiles((prev) => [...prev, { id: uid(), file, kind: 'annotated', preview: URL.createObjectURL(file) }]);
+    // One marked copy per screenshot: marking again replaces the previous one instead of adding another.
+    setFiles((prev) => {
+      prev.filter((f) => f.of === marking.id).forEach((f) => URL.revokeObjectURL(f.preview));
+      return [...prev.filter((f) => f.of !== marking.id), { id: uid(), file, kind: 'annotated', preview: URL.createObjectURL(file), of: marking.id }];
+    });
     setMarking(null);
   };
 
@@ -159,23 +166,23 @@ export function RaiseTicket({ onSubmitted }: { onSubmitted: (ticketNo: string) =
             <UploadCloud size={15} /> Choose files
             <input ref={fileRef} type="file" multiple accept="image/*,video/*" className="hidden" onChange={(e) => { addFiles(e.target.files || []); e.currentTarget.value = ''; }} />
           </label>
-          {files.length > 0 && <span className="text-xs text-slate-500">{files.length} attached</span>}
+          {files.some((f) => f.kind !== 'annotated') && <span className="text-xs text-slate-500">{files.filter((f) => f.kind !== 'annotated').length} attached</span>}
         </div>
-        {files.length > 0 && (
+        {files.some((f) => f.kind !== 'annotated') && (
           <ul className="mt-2 space-y-1.5">
-            {files.map((f) => (
+            {files.filter((f) => f.kind !== 'annotated').map((f) => {
+              const marked = files.find((m) => m.of === f.id);
+              return (
               <li key={f.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5">
                 {f.kind === 'video'
                   ? <Film size={14} className="text-slate-400 shrink-0" />
-                  : <img src={f.preview} alt="" className="h-8 w-8 rounded object-cover border border-slate-200 shrink-0" />}
+                  : <img src={(marked ?? f).preview} alt="" className="h-8 w-8 rounded object-cover border border-slate-200 shrink-0" />}
                 <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-700">{f.file.name}</span>
-                {f.kind === 'annotated'
-                  ? <span className="rounded bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 shrink-0">MARKED</span>
-                  : null}
+                {marked && <span className="rounded bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 shrink-0" title="The original and your marked copy are both attached">MARKED</span>}
                 {f.kind === 'original' && (
                   <button type="button" onClick={() => setMarking(f)} title="Mark on this screenshot (arrows, shapes, text)"
                     className="inline-flex shrink-0 items-center gap-1 rounded-md border border-brand-200 bg-brand-50/50 px-2 py-1 text-[11px] font-bold text-brand-700 hover:border-brand-400">
-                    <Pencil size={12} /> Mark
+                    <Pencil size={12} /> {marked ? 'Mark again' : 'Mark'}
                   </button>
                 )}
                 <button type="button" onClick={() => removeFile(f.id)} title={`Remove ${f.file.name}`}
@@ -183,7 +190,8 @@ export function RaiseTicket({ onSubmitted }: { onSubmitted: (ticketNo: string) =
                   <Trash2 size={14} />
                 </button>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </div>

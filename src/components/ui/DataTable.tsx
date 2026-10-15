@@ -47,6 +47,7 @@ export function DataTable<T extends Record<string, any>>({
   toolbarDate,
   toolbarLeft,
   inlineAdd = false,
+  hideToolbar = false,
 }: {
   data: T[];
   columns: Column<T>[];
@@ -65,6 +66,7 @@ export function DataTable<T extends Record<string, any>>({
   /** When true, the Add button moves into the toolbar row (after the status
    *  filter, before Export) instead of the top header row. */
   inlineAdd?: boolean;
+  hideToolbar?: boolean;
 }) {
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<string | null>(null);
@@ -134,9 +136,50 @@ export function DataTable<T extends Record<string, any>>({
 
   return (
     <div className="bg-white rounded-md border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-      {(title || (onAdd && !inlineAdd)) && (
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 bg-slate-50/50">
-          <h3 className="text-sm font-bold text-slate-800 tracking-wider uppercase">{title}</h3>
+      {!hideToolbar && (
+        <div className="flex flex-wrap items-center gap-3 px-3 py-1.5 border-b border-slate-100 bg-white">
+          {title && <h3 className="text-sm font-bold text-slate-800 tracking-wider uppercase whitespace-nowrap">{title}</h3>}
+          {toolbarLeft}
+          <div className="relative flex-1 min-w-[180px]">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+              }}
+              placeholder="Search records..."
+              className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all placeholder:text-slate-400"
+            />
+          </div>
+          {toolbarDate}
+          {filterOptions && (
+            <div className="relative">
+              <SlidersHorizontal size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <select
+                value={filterValue}
+                onChange={(e) => {
+                  setFilterValue(e.target.value);
+                  }}
+                className="pl-9 pr-8 py-2 text-sm font-medium rounded-md border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all appearance-none cursor-pointer"
+              >
+                <option value="all">All Status</option>
+                {filterOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {inlineAdd && onAdd && (
+            <Button size="sm" onClick={onAdd} icon={<Plus size={14} />}>
+              {addLabel || 'Add New'}
+            </Button>
+          )}
+          <button onClick={handleExport} className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold tracking-wide text-slate-600 hover:text-brand-700 bg-white hover:bg-brand-50 rounded-md transition-colors border border-slate-200 hover:border-brand-200 shadow-sm">
+            <Download size={14} />
+            EXPORT
+          </button>
           {onAdd && !inlineAdd && (
             <Button size="sm" onClick={onAdd} icon={<span className="text-base leading-none font-bold">+</span>}>
               {addLabel || 'Add New'}
@@ -144,49 +187,6 @@ export function DataTable<T extends Record<string, any>>({
           )}
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 border-b border-slate-100 bg-white">
-        {toolbarLeft}
-        <div className="relative flex-1 min-w-[240px]">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-            }}
-            placeholder="Search records..."
-            className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all placeholder:text-slate-400"
-          />
-        </div>
-        {toolbarDate}
-        {filterOptions && (
-          <div className="relative">
-            <SlidersHorizontal size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-            <select
-              value={filterValue}
-              onChange={(e) => {
-                setFilterValue(e.target.value);
-                }}
-              className="pl-9 pr-8 py-2 text-sm font-medium rounded-md border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all appearance-none cursor-pointer"
-            >
-              <option value="all">All Status</option>
-              {filterOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-        {inlineAdd && onAdd && (
-          <Button size="sm" onClick={onAdd} icon={<Plus size={14} />}>
-            {addLabel || 'Add New'}
-          </Button>
-        )}
-        <button onClick={handleExport} className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold tracking-wide text-slate-600 hover:text-brand-700 bg-white hover:bg-brand-50 rounded-md transition-colors border border-slate-200 hover:border-brand-200 shadow-sm">
-          <Download size={14} />
-          EXPORT
-        </button>
-      </div>
       <div className="overflow-x-auto scrollbar-thin flex-1">
         <table className="erp-table w-full text-sm">
           <thead>

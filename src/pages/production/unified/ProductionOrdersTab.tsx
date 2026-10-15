@@ -711,7 +711,7 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
       )}
 
       {/* Stats + filters share one line with no scrolling (compact widths throughout). */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-3 py-2 mb-4">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-2.5 py-1.5 mb-2">
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-thin">
           <div className="flex items-center gap-2 shrink-0">
             {[
@@ -726,25 +726,14 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
             ))}
           </div>
           <span className="h-6 w-px bg-slate-200 shrink-0" aria-hidden="true" />
-          <div className="flex items-center gap-1.5 shrink-0 min-w-[8rem] flex-[2]">
-            <span className="text-[10px] font-bold text-slate-500 uppercase whitespace-nowrap">Search</span>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Work Order No. / Sales Order / Company / Product..."
-              className={inputClass}
-            />
-          </div>
           <div className="flex items-center gap-1.5 shrink-0">
-            <span className="text-[10px] font-bold text-slate-500 uppercase whitespace-nowrap">Company</span>
-            <select value={customerFilter} onChange={(e) => setCustomerFilter(e.target.value)} className={`${inputClass} w-28`}>
+            <select value={customerFilter} onChange={(e) => setCustomerFilter(e.target.value)} className={`${inputClass} w-28`} aria-label="Company">
               <option>All Companies</option>
               {customers.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
-            <span className="text-[10px] font-bold text-slate-500 uppercase whitespace-nowrap">Product</span>
-            <select value={productFilter} onChange={(e) => setProductFilter(e.target.value)} className={`${inputClass} w-28`}>
+            <select value={productFilter} onChange={(e) => setProductFilter(e.target.value)} className={`${inputClass} w-28`} aria-label="Product">
               <option>All Products</option>
               {products.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>

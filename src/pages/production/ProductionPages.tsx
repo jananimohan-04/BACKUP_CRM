@@ -7,6 +7,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Card, Badge, Button, StatCard, ProgressBar, statusToVariant, priorityToVariant } from '@/components/ui/Card';
 import { Modal, FormField, FormSection, inputClass, ConfirmDialog } from '@/components/ui/Modal';
 import { BarChart, ChartCard, GaugeChart } from '@/components/ui/Charts';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 // Mock data is only referenced by the unrouted legacy pages (OldProductionPlanningPage, MachineSchedulingPage)
 import { workOrders, machines, productionTrend } from '@/data/mockData';
 import type { WorkOrder, JobCard, Machine } from '@/data/mockData';
@@ -1443,6 +1444,25 @@ export function ShopFloorPage() {
   );
 }
 
+// Compact stat chips shared by the top-bar cluster and the small-screen fallback row.
+function TrackingStats({ planned, completed, rejected, wip }: { planned: number; completed: number; rejected: number; wip: number }) {
+  const items = [
+    { l: 'Total Planned', v: planned, c: 'text-slate-800' },
+    { l: 'Completed', v: completed, c: 'text-emerald-600' },
+    { l: 'Rejected', v: rejected, c: 'text-red-600' },
+    { l: 'WIP', v: wip, c: 'text-amber-600' },
+  ];
+  return (
+    <div className="flex items-center gap-3 shrink-0">
+      {items.map((s) => (
+        <span key={s.l} className="whitespace-nowrap text-[11px] font-bold uppercase tracking-wider text-slate-500">
+          {s.l} <b className={`text-sm tabular-nums ${s.c}`}>{s.v}</b>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function ProductionTrackingPage() {
   const [woData, setWoData] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1473,14 +1493,32 @@ export function ProductionTrackingPage() {
   const totalRejected = woData.reduce((acc, w) => acc + w.rejected, 0);
   const totalWip = woData.filter(w => w.status === 'In Progress').reduce((acc, w) => acc + w.quantity, 0);
 
+  // Header cluster lives in the top bar on desktop (title + stats + actions);
+  // the local row below stays only for smaller screens.
+  const { setHeader, setTabActions } = useHeaderKpis();
+  useEffect(() => {
+    setHeader({ title: 'Production Tracking' });
+    return () => setHeader(null);
+  }, [setHeader]);
+  useEffect(() => {
+    setTabActions(
+      <>
+        <TrackingStats planned={totalPlanned} completed={totalCompleted} rejected={totalRejected} wip={totalWip} />
+        {loading && <Badge variant="neutral">Syncing...</Badge>}
+        <FilterButton />
+        <ExportButton />
+        <DateSelector />
+      </>
+    );
+    return () => setTabActions(null);
+  }, [setTabActions, loading, totalPlanned, totalCompleted, totalRejected, totalWip]);
+
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Production Tracking" description="Track production progress across all work orders" actions={<div className="flex items-center gap-2">{loading && <Badge variant="neutral">Syncing...</Badge>}<FilterButton /><ExportButton /><DateSelector /></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-        <StatCard label="Total Planned" value={totalPlanned.toString()} icon={<ClipboardList size={20} />} accent="brand" />
-        <StatCard label="Completed" value={totalCompleted.toString()} icon={<Package size={20} />} accent="success" />
-        <StatCard label="Rejected" value={totalRejected.toString()} icon={<Cog size={20} />} accent="error" />
-        <StatCard label="WIP" value={totalWip.toString()} icon={<Cog size={20} />} accent="warning" />
+      <div className="flex flex-nowrap items-center gap-3 mb-3 overflow-x-auto scrollbar-thin lg:hidden">
+        <h1 className="text-xl font-bold text-slate-800 whitespace-nowrap shrink-0">Production Tracking</h1>
+        <TrackingStats planned={totalPlanned} completed={totalCompleted} rejected={totalRejected} wip={totalWip} />
+        <div className="ml-auto flex items-center gap-2 shrink-0">{loading && <Badge variant="neutral">Syncing...</Badge>}<FilterButton /><ExportButton /><DateSelector /></div>
       </div>
       <Card className="overflow-hidden">
         <div className="px-4 py-2.5 border-b border-slate-100"><h3 className="text-sm font-semibold text-slate-800">Work Order Progress</h3></div>

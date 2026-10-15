@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Eye, Edit, Trash2, Users as UsersIcon, Building2, ShieldCheck, Settings as SettingsIcon, FileText, ChevronDown, ChevronRight, Search, Lock, KeyRound } from 'lucide-react';
+import { Eye, Edit, Trash2, Users as UsersIcon, Building2, ShieldCheck, Settings as SettingsIcon, FileText, ChevronDown, ChevronRight, Search, Lock, KeyRound, Plus, Download } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, Button, StatCard } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { supabase } from '@/lib/supabase';
+import { exportCsv } from '@/lib/reportExport';
+import { todayISO } from '@/lib/format';
 import { useAuth, type ErpRole } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import {
@@ -189,30 +191,139 @@ export function UsersPage() {
   const roleOptions: ErpRole[] = isSuperAdmin ? ['SUPER_ADMIN', 'COMPANY_ADMIN', 'USER'] : ['COMPANY_ADMIN', 'USER'];
   const ownCompanyName = companies.find(c => c.id === profile?.company_id)?.company_name ?? company?.company_name ?? '';
 
-  return (
-    <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader
-        title="User Management"
-        description={isSuperAdmin ? 'All ERP users across companies. Users sign in with their Google account — no passwords.' : `Users of ${ownCompanyName}. Users sign in with their Google account — no passwords.`}
-        actions={isSuperAdmin ? (
-          <select value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)} className={`${inputClass} w-56`}>
+  const [search, setSearch] = useState('');
+
+  const searchedUsers = useMemo(() => {
+    if (!search.trim()) return visibleUsers;
+    const q = search.toLowerCase();
+    return visibleUsers.filter(u =>
+      (u.full_name || '').toLowerCase().includes(q) ||
+      (u.email || '').toLowerCase().includes(q) ||
+      (u.role || '').toLowerCase().includes(q) ||
+      (u.company_name || '').toLowerCase().includes(q)
+    );
+  }, [visibleUsers, search]);
+
+  const activeCount = visibleUsers.filter(u => u.status === 'Active').length;
+  const inactiveCount = visibleUsers.filter(u => u.status !== 'Active').length;
+
+  const handleExport = () => {
+    if (searchedUsers.length === 0) return;
+    exportCsv(`ERP_Users_${todayISO()}`, [
+      ['Full Name', 'Email', 'Company', 'Role', 'Status', 'Created Date'],
+      ...searchedUsers.map(u => [
+        u.full_name || '',
+        u.email || '',
+        u.company_name || '',
+        ROLE_LABELS[u.role] || u.role,
+        u.status || '',
+        formatDate(u.created_at),
+      ]),
+    ]);
+  };
+
+  const handleExportRef = useRef(handleExport);
+  handleExportRef.current = handleExport;
+  const openCreateRef = useRef(openCreate);
+  openCreateRef.current = openCreate;
+
+  const { setHeader, setTabActions, setHeaderCenter } = useHeaderKpis();
+
+  useEffect(() => {
+    setHeader({ title: 'User Management' });
+    setHeaderCenter(
+      <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 px-2 py-0.5 bg-slate-100 border border-slate-200 rounded-md text-xs">
+          <UsersIcon size={11} className="text-slate-600" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total:</span>
+          <span className="text-xs font-black text-slate-800 tabular-nums">{visibleUsers.length}</span>
+        </div>
+        <div className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 border border-emerald-200 rounded-md text-xs">
+          <UsersIcon size={11} className="text-emerald-600" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Active:</span>
+          <span className="text-xs font-black text-emerald-900 tabular-nums">{activeCount}</span>
+        </div>
+        <div className="flex items-center gap-1 px-2 py-0.5 bg-slate-100 border border-slate-200 rounded-md text-xs">
+          <UsersIcon size={11} className="text-slate-500" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Inactive:</span>
+          <span className="text-xs font-black text-slate-700 tabular-nums">{inactiveCount}</span>
+        </div>
+      </div>
+    );
+    setTabActions(
+      <div className="flex items-center gap-2">
+        {isSuperAdmin && (
+          <select
+            value={companyFilter}
+            onChange={(e) => setCompanyFilter(e.target.value)}
+            className="h-7 px-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-brand-500 max-w-[150px] truncate"
+          >
             <option value="">All companies</option>
             {companies.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
           </select>
-        ) : undefined}
-      />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-        <StatCard label="Total Users" value={visibleUsers.length.toString()} icon={<UsersIcon size={20} />} accent="brand" />
-        <StatCard label="Active" value={visibleUsers.filter(u => u.status === 'Active').length.toString()} icon={<UsersIcon size={20} />} accent="success" />
-        <StatCard label="Inactive" value={visibleUsers.filter(u => u.status !== 'Active').length.toString()} icon={<UsersIcon size={20} />} accent="neutral" />
+        )}
+        <div className="relative">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search records..."
+            className="h-7 w-32 xl:w-44 pl-7 pr-2 text-xs rounded-md border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-500/30 focus:border-brand-500 transition-all placeholder:text-slate-400"
+          />
+        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<Download size={13} />}
+          onClick={() => handleExportRef.current()}
+          className="h-7 py-1 text-xs px-2.5 shadow-sm font-semibold"
+        >
+          EXPORT
+        </Button>
+        <Button
+          onClick={() => openCreateRef.current()}
+          icon={<Plus size={14} />}
+          size="sm"
+          className="h-7 py-1 text-xs px-2.5 shadow-sm"
+        >
+          Create User
+        </Button>
+      </div>
+    );
+    return () => {
+      setHeader(null);
+      setHeaderCenter(null);
+      setTabActions(null);
+    };
+  }, [setHeader, setHeaderCenter, setTabActions, visibleUsers.length, activeCount, inactiveCount, isSuperAdmin, companyFilter, companies, search]);
+
+  return (
+    <div className="p-3 sm:p-4 lg:px-4 lg:pt-1.5 lg:pb-4 bg-grid min-h-full space-y-2">
+      <div className="lg:hidden">
+        <PageHeader
+          title="User Management"
+          description={isSuperAdmin ? 'All ERP users across companies. Users sign in with their Google account — no passwords.' : `Users of ${ownCompanyName}. Users sign in with their Google account — no passwords.`}
+          actions={isSuperAdmin ? (
+            <select value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)} className={`${inputClass} w-56`}>
+              <option value="">All companies</option>
+              {companies.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
+            </select>
+          ) : undefined}
+        />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+          <StatCard label="Total Users" value={visibleUsers.length.toString()} icon={<UsersIcon size={20} />} accent="brand" />
+          <StatCard label="Active" value={activeCount.toString()} icon={<UsersIcon size={20} />} accent="success" />
+          <StatCard label="Inactive" value={inactiveCount.toString()} icon={<UsersIcon size={20} />} accent="neutral" />
+        </div>
       </div>
       <DataTable
-        data={visibleUsers}
+        data={searchedUsers}
         columns={columns}
         searchKeys={['full_name', 'email', 'role', 'company_name']}
         onAdd={openCreate}
         addLabel="Create User"
         emptyMessage={loading ? 'Loading…' : 'No users yet'}
+        hideToolbar
       />
 
       <Modal
@@ -342,7 +453,102 @@ export function CompaniesPage() {
     await refresh();
   };
 
+  const [search, setSearch] = useState('');
+
   const rows = companies.map(c => ({ ...c, users: userCounts[c.id] || 0 }));
+
+  const searchedRows = useMemo(() => {
+    if (!search.trim()) return rows;
+    const q = search.toLowerCase();
+    return rows.filter(r =>
+      (r.company_name || '').toLowerCase().includes(q) ||
+      (r.code || '').toLowerCase().includes(q) ||
+      (r.status || '').toLowerCase().includes(q)
+    );
+  }, [rows, search]);
+
+  const activeCount = companies.filter(c => c.status === 'Active').length;
+  const inactiveCount = companies.filter(c => c.status !== 'Active').length;
+
+  const handleExport = () => {
+    if (searchedRows.length === 0) return;
+    exportCsv(`ERP_Companies_${todayISO()}`, [
+      ['Company Name', 'Code', 'Users', 'Status', 'Created Date'],
+      ...searchedRows.map(r => [
+        r.company_name || '',
+        r.code || '',
+        r.users || 0,
+        r.status || '',
+        formatDate(r.created_at),
+      ]),
+    ]);
+  };
+
+  const handleExportRef = useRef(handleExport);
+  handleExportRef.current = handleExport;
+  const openCreateRef = useRef(() => { setForm(emptyCompanyForm); setFormError(null); setShowForm(true); });
+  openCreateRef.current = () => { setForm(emptyCompanyForm); setFormError(null); setShowForm(true); };
+
+  const { setHeader, setTabActions, setHeaderCenter } = useHeaderKpis();
+
+  useEffect(() => {
+    setHeader({ title: 'Company Management' });
+    setHeaderCenter(
+      <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 px-2 py-0.5 bg-slate-100 border border-slate-200 rounded-md text-xs">
+          <Building2 size={11} className="text-slate-600" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Companies:</span>
+          <span className="text-xs font-black text-slate-800 tabular-nums">{companies.length}</span>
+        </div>
+        <div className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 border border-emerald-200 rounded-md text-xs">
+          <Building2 size={11} className="text-emerald-600" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Active:</span>
+          <span className="text-xs font-black text-emerald-900 tabular-nums">{activeCount}</span>
+        </div>
+        <div className="flex items-center gap-1 px-2 py-0.5 bg-slate-100 border border-slate-200 rounded-md text-xs">
+          <Building2 size={11} className="text-slate-500" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Inactive:</span>
+          <span className="text-xs font-black text-slate-700 tabular-nums">{inactiveCount}</span>
+        </div>
+      </div>
+    );
+    setTabActions(
+      <div className="flex items-center gap-2">
+        <div className="relative">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search records..."
+            className="h-7 w-32 xl:w-44 pl-7 pr-2 text-xs rounded-md border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-500/30 focus:border-brand-500 transition-all placeholder:text-slate-400"
+          />
+        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<Download size={13} />}
+          onClick={() => handleExportRef.current()}
+          className="h-7 py-1 text-xs px-2.5 shadow-sm font-semibold"
+        >
+          EXPORT
+        </Button>
+        <Button
+          onClick={() => openCreateRef.current()}
+          icon={<Plus size={14} />}
+          size="sm"
+          className="h-7 py-1 text-xs px-2.5 shadow-sm"
+        >
+          Create Company
+        </Button>
+      </div>
+    );
+    return () => {
+      setHeader(null);
+      setHeaderCenter(null);
+      setTabActions(null);
+    };
+  }, [setHeader, setHeaderCenter, setTabActions, companies.length, activeCount, inactiveCount, search]);
+
   const columns: Column<CompanyRow & { users: number }>[] = [
     { key: 'company_name', label: 'Company', sortable: true, render: (r) => (
       <div className="flex items-center gap-3">
@@ -367,19 +573,22 @@ export function CompaniesPage() {
   ];
 
   return (
-    <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Company Management" description="Companies using this ERP. Each company's data is isolated by the database." />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-        <StatCard label="Companies" value={companies.length.toString()} icon={<Building2 size={20} />} accent="brand" />
-        <StatCard label="Active" value={companies.filter(c => c.status === 'Active').length.toString()} icon={<Building2 size={20} />} accent="success" />
-        <StatCard label="Inactive" value={companies.filter(c => c.status !== 'Active').length.toString()} icon={<Building2 size={20} />} accent="neutral" />
+    <div className="p-3 sm:p-4 lg:px-4 lg:pt-1.5 lg:pb-4 bg-grid min-h-full space-y-2">
+      <div className="lg:hidden">
+        <PageHeader title="Company Management" description="Companies using this ERP. Each company's data is isolated by the database." />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+          <StatCard label="Companies" value={companies.length.toString()} icon={<Building2 size={20} />} accent="brand" />
+          <StatCard label="Active" value={activeCount.toString()} icon={<Building2 size={20} />} accent="success" />
+          <StatCard label="Inactive" value={inactiveCount.toString()} icon={<Building2 size={20} />} accent="neutral" />
+        </div>
       </div>
       <DataTable
-        data={rows}
+        data={searchedRows}
         columns={columns}
         searchKeys={['company_name', 'code']}
         onAdd={() => { setForm(emptyCompanyForm); setFormError(null); setShowForm(true); }}
         addLabel="Create Company"
+        hideToolbar
       />
 
       <Modal

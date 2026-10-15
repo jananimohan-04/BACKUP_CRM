@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   FileText, ClipboardList, BarChart3, PieChart, ChevronRight, ChevronDown, CalendarDays, Info,
-  Download, Printer, FileDown, AlertTriangle, CheckCircle2, Loader2, Building2,
+  Download, Printer, FileDown, AlertTriangle, CheckCircle2, Loader2, Building2, Play,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
+import { Button } from '@/components/ui/Card';
 import {
   accountingApi, childrenMap, type BalanceSheet, type FinancialYear, type ReportRow,
 } from '@/lib/accounting';
@@ -137,19 +139,19 @@ export function BalanceSheetPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load once per company
   }, [company?.id]);
 
-  const handleYearChange = (id: string) => {
+  const handleYearChange = useCallback((id: string) => {
     const next = years.find(y => y.id === id) ?? null;
     setFyId(id);
     if (!next) return;
     const date = defaultAsOf(next);
     setAsOf(date);
     generate(next, date);
-  };
+  }, [years, generate]);
 
-  const handleDateChange = (date: string) => {
+  const handleDateChange = useCallback((date: string) => {
     setAsOf(date);
     if (date) generate(fy, date);
-  };
+  }, [fy, generate]);
 
   const handleViewChange = (v: ViewMode) => {
     setView(v);
@@ -323,6 +325,90 @@ export function BalanceSheetPage() {
     }
   };
 
+  const csvRef = useRef<() => void>(() => {});
+  const printRef = useRef<() => void>(() => {});
+  csvRef.current = handleCsv;
+  printRef.current = handlePrint;
+  const hasReport = !!report;
+
+  const { setHeader, setTabActions, setHeaderCenter } = useHeaderKpis();
+
+  useEffect(() => {
+    if (!company) {
+      setHeader(null);
+      setHeaderCenter(null);
+      setTabActions(null);
+      return;
+    }
+
+    setHeader({ title: 'Balance Sheet' });
+    setHeaderCenter(
+      <div className="flex items-center gap-2">
+        <select
+          aria-label="Financial year"
+          className="h-7 px-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-orange-400"
+          value={fyId}
+          onChange={e => handleYearChange(e.target.value)}
+          disabled={loading || years.length === 0}
+        >
+          {years.length === 0 && <option value="">Loading…</option>}
+          {years.map(y => <option key={y.id} value={y.id}>{y.name}{y.status === 'Closed' ? ' (closed)' : ''}</option>)}
+        </select>
+        <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-md px-1.5 h-7 shadow-sm">
+          <span className="text-[11px] font-medium text-slate-500">As on</span>
+          <input
+            aria-label="As on date"
+            type="date"
+            className="text-xs text-slate-700 bg-transparent focus:outline-none"
+            value={asOf}
+            min={fy?.start_date}
+            max={fy?.end_date}
+            onChange={e => handleDateChange(e.target.value)}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => generate(fy, asOf)}
+          disabled={loading || !fy}
+          className="h-7 px-2.5 text-xs font-bold text-white bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-500 hover:to-orange-700 rounded-md shadow-sm flex items-center gap-1 active:scale-[0.98] transition disabled:opacity-40 cursor-pointer"
+        >
+          {loading ? <Loader2 size={12} className="animate-spin text-white" /> : <Play size={11} className="fill-white" />}
+          <span>Generate</span>
+        </button>
+        {fy && <span className="text-[11px] text-slate-400 hidden xl:inline font-medium">({formatDate(fy.start_date)} – {formatDate(fy.end_date)})</span>}
+      </div>
+    );
+    setTabActions(
+      <div className="flex items-center gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<Download size={14} />}
+          onClick={() => csvRef.current()}
+          disabled={!hasReport}
+          className="h-7 py-1 text-xs px-2.5 shadow-sm"
+        >
+          CSV
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<Printer size={14} />}
+          onClick={() => printRef.current()}
+          disabled={!hasReport}
+          className="h-7 py-1 text-xs px-2.5 shadow-sm"
+        >
+          Print
+        </Button>
+      </div>
+    );
+    return () => {
+      setHeader(null);
+      setHeaderCenter(null);
+      setTabActions(null);
+    };
+  }, [company, fyId, asOf, years, loading, hasReport, fy, setHeader, setHeaderCenter, setTabActions, handleYearChange, handleDateChange, generate]);
+
   // ---- Render -----------------------------------------------------------------------------
   if (!company) {
     return (
@@ -338,18 +424,18 @@ export function BalanceSheetPage() {
 
   const t = report?.totals;
   const cards = [
-    { label: 'Total Assets', icon: FileText, tint: 'bg-emerald-100 text-emerald-600', value: t?.assets,
+    { label: 'Total Assets', icon: FileText, tint: 'bg-emerald-50 text-emerald-600 border border-emerald-100', value: t?.assets,
       note: t ? `Non-current ${formatINR(t.non_current_assets)} · Current ${formatINR(t.current_assets)}` : '' },
-    { label: 'Total Liabilities', icon: ClipboardList, tint: 'bg-sky-100 text-sky-600', value: t?.liabilities,
+    { label: 'Total Liabilities', icon: ClipboardList, tint: 'bg-sky-50 text-sky-600 border border-sky-100', value: t?.liabilities,
       note: t ? `Non-current ${formatINR(t.non_current_liabilities)} · Current ${formatINR(t.current_liabilities)}` : '' },
-    { label: 'Total Equity', icon: BarChart3, tint: 'bg-orange-100 text-orange-600', value: t?.equity,
+    { label: 'Total Equity', icon: BarChart3, tint: 'bg-orange-50 text-orange-600 border border-orange-100', value: t?.equity,
       note: t ? `Incl. period profit ${formatINR(t.profit_current_period, { negative: 'parentheses' })}` : '' },
   ];
 
   return (
-    <div className="p-4 lg:p-6 min-h-full bg-slate-50/60">
+    <div className="p-2 sm:p-4 lg:px-6 lg:pt-2 lg:pb-6 min-h-full bg-slate-50/60">
       {/* Header */}
-      <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4 mb-5">
+      <div className="lg:hidden flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4 mb-5">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Balance Sheet</h1>
           <p className="text-sm text-slate-500 mt-1">Financial position of your business</p>
@@ -405,26 +491,26 @@ export function BalanceSheetPage() {
       )}
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-3">
         {cards.map(c => (
-          <div key={c.label} className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 flex items-center gap-5">
-            <div className={`w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 ${c.tint}`}><c.icon size={24} /></div>
-            <div className="min-w-0">
-              <p className="text-sm text-slate-600">{c.label}</p>
-              {loading || !report ? <div className="h-7 w-36 mt-1 rounded bg-slate-100 animate-pulse" />
-                : <p className="text-2xl font-bold text-slate-900 tracking-tight">{formatINR(c.value, { negative: 'parentheses' })}</p>}
-              {report && !loading && <p className="text-[11px] text-slate-400 mt-0.5 truncate">{c.note}</p>}
+          <div key={c.label} className="bg-white border border-slate-200/90 rounded-lg shadow-xs px-3 py-2 flex items-center gap-2.5">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${c.tint}`}><c.icon size={16} /></div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-medium text-slate-500 leading-tight truncate">{c.label}</p>
+              {loading || !report ? <div className="h-4 w-24 my-0.5 rounded bg-slate-100 animate-pulse" />
+                : <p className="text-sm font-bold text-slate-900 tracking-tight leading-tight">{formatINR(c.value, { negative: 'parentheses' })}</p>}
+              {report && !loading && <p className="text-[10px] text-slate-400 mt-0.5 truncate leading-none">{c.note}</p>}
             </div>
           </div>
         ))}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 flex items-center gap-5">
-          <div className="w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 bg-violet-100 text-violet-600"><PieChart size={24} /></div>
-          <div className="min-w-0">
-            <p className="text-sm text-slate-600">Current Ratio</p>
-            {loading || !report ? <div className="h-7 w-20 mt-1 rounded bg-slate-100 animate-pulse" />
-              : <p className="text-2xl font-bold text-slate-900">{report.current_ratio ?? '—'}</p>}
+        <div className="bg-white border border-slate-200/90 rounded-lg shadow-xs px-3 py-2 flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-violet-50 text-violet-600 border border-violet-100"><PieChart size={16} /></div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-medium text-slate-500 leading-tight truncate">Current Ratio</p>
+            {loading || !report ? <div className="h-4 w-12 my-0.5 rounded bg-slate-100 animate-pulse" />
+              : <p className="text-sm font-bold text-slate-900 tracking-tight leading-tight">{report.current_ratio ?? '—'}</p>}
             {report && !loading && (
-              <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+              <p className="text-[10px] text-slate-400 mt-0.5 truncate leading-none">
                 {report.current_ratio ? 'Current assets ÷ current liabilities' : isZero(report.totals.current_liabilities) ? 'No current liabilities' : 'Not available'}
               </p>
             )}

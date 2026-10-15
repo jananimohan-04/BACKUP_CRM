@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BarChart3, Download, Factory, Boxes, Gauge, TrendingUp } from 'lucide-react';
+import { BarChart3, Download, Factory, Boxes, Gauge, TrendingUp, Play } from 'lucide-react';
 import { Badge, Button, Card } from '@/components/ui/Card';
 import { FormField, inputClass } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { exportCsv } from '@/lib/reportExport';
 import { formatINR, todayISO } from '@/lib/format';
 import { useAuth } from '@/contexts/AuthContext';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 
 type Section = 'Overview' | 'Sales' | 'Production' | 'Inventory' | 'Machine Utilization' | 'Profitability' | 'Custom Reports';
 type ReportData = {
@@ -96,16 +97,99 @@ function ReportsPage({ initialSection = 'Overview' as Section }) {
     ['Sales Trend Month','Invoiced','Invoices'],...trend.map(x=>[x.month,x.sales,x.orders]),[],['Product','Quantity','Sales Value'],...products.map(x=>[x.name,x.qty,x.value]),[],['Recent Sales Order','Date','Company','Value','Status'],...filteredOrders.slice(0,20).map(x=>[x.order_no,x.order_date,x.customer,x.total_value??x.value,x.status]),[],['Work Order','Date','Part','Quantity','Completed','Rejected','Status'],...filteredWos.slice(0,20).map(x=>[x.wo_no,x.created_at,x.part_name,x.quantity,x.completed,x.rejected,x.status]),[],['Inventory Category','Items','Stock Value'],...categoryValues.map((x:any)=>[x.name,x.items,x.value]),[],['Machine','Status','Utilization %'],...utilizationRows.map(x=>[x.code,x.status,x.utilizationValue]),[],['P&L Account','Type','Amount'],...(data.pnl?.rows||[]).map((x:any)=>[x.name,x.account_type,x.amount]),
   ]);
 
-  return <div className="p-4 lg:p-6 bg-grid min-h-full space-y-4">
-    <PageHeader title="Reports" description="Real-time insights from sales, production, inventory and accounting records." actions={<Button variant="secondary" size="sm" icon={<Download size={14}/>} onClick={exportReport} disabled={loading}><span>Export Report</span></Button>} />
+  const exportReportRef = useRef(exportReport);
+  exportReportRef.current = exportReport;
+  const loadRef = useRef(load);
+  loadRef.current = load;
+
+  const { setHeader, setTabActions, setHeaderCenter } = useHeaderKpis();
+
+  useEffect(() => {
+    setHeader({ title: 'Reports' });
+    setHeaderCenter(
+      <div className="flex items-center gap-1.5 min-w-0">
+        <input
+          type="date"
+          aria-label="Date From"
+          title="Date From"
+          className="h-7 px-2 text-xs text-slate-700 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-brand-500"
+          value={from}
+          onChange={e => setFrom(e.target.value)}
+        />
+        <input
+          type="date"
+          aria-label="Date To"
+          title="Date To"
+          className="h-7 px-2 text-xs text-slate-700 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-brand-500"
+          value={to}
+          onChange={e => setTo(e.target.value)}
+        />
+        <select
+          aria-label="Company"
+          title="Company"
+          className="h-7 px-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-brand-500 max-w-[150px] truncate"
+          value={customer}
+          onChange={e => setCustomer(e.target.value)}
+        >
+          <option value="">All Companies</option>
+          {data.customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select
+          aria-label="Machine"
+          title="Machine"
+          className="h-7 px-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-brand-500 max-w-[150px] truncate"
+          value={machine}
+          onChange={e => setMachine(e.target.value)}
+        >
+          <option value="">All Machines</option>
+          {data.machines.map(m => <option key={m.id} value={m.code}>{m.code} · {m.name}</option>)}
+        </select>
+        <button
+          type="button"
+          onClick={() => void loadRef.current()}
+          disabled={loading}
+          className="h-7 px-2.5 text-xs font-bold text-white bg-gradient-to-b from-brand-600 to-brand-700 hover:from-brand-500 hover:to-brand-700 rounded-md shadow-sm flex items-center gap-1 active:scale-[0.98] transition disabled:opacity-50 cursor-pointer shrink-0"
+        >
+          <Play size={11} className="fill-white" />
+          <span>{loading ? 'Generating…' : 'Generate Report'}</span>
+        </button>
+      </div>
+    );
+    setTabActions(
+      <div className="flex items-center gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<Download size={14} />}
+          onClick={() => exportReportRef.current()}
+          disabled={loading}
+          className="h-7 py-1 text-xs px-2.5 shadow-sm"
+        >
+          Export Report
+        </Button>
+      </div>
+    );
+    return () => {
+      setHeader(null);
+      setHeaderCenter(null);
+      setTabActions(null);
+    };
+  }, [setHeader, setHeaderCenter, setTabActions, from, to, customer, machine, data.customers, data.machines, loading]);
+
+  return <div className="px-4 lg:px-6 pt-2 pb-4 lg:pb-6 bg-grid min-h-full space-y-2">
+    <div className="lg:hidden">
+      <PageHeader title="Reports" description="Real-time insights from sales, production, inventory and accounting records." actions={<Button variant="secondary" size="sm" icon={<Download size={14}/>} onClick={exportReport} disabled={loading}><span>Export Report</span></Button>} />
+    </div>
     {error && <div className="rounded border border-rose-200 bg-rose-50 p-2 text-sm text-rose-700">Unable to generate report. Please try again. <span className="text-xs">{error}</span></div>}
-    <Card className="p-3"><div className="grid grid-cols-2 lg:grid-cols-5 gap-3 items-end">
-      <FormField label="Date From"><input type="date" className={inputClass} value={from} onChange={e=>setFrom(e.target.value)}/></FormField>
-      <FormField label="Date To"><input type="date" className={inputClass} value={to} onChange={e=>setTo(e.target.value)}/></FormField>
-      <FormField label="Company"><select className={inputClass} value={customer} onChange={e=>setCustomer(e.target.value)}><option value="">All Companies</option>{data.customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></FormField>
-      <FormField label="Machine"><select className={inputClass} value={machine} onChange={e=>setMachine(e.target.value)}><option value="">All Machines</option>{data.machines.map(m=><option key={m.id} value={m.code}>{m.code} · {m.name}</option>)}</select></FormField>
-      <Button onClick={()=>void load()} disabled={loading}>{loading?'Generating…':'Generate Report'}</Button>
-    </div></Card>
+    <div className="lg:hidden">
+      <Card className="p-3"><div className="grid grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+        <FormField label="Date From"><input type="date" className={inputClass} value={from} onChange={e=>setFrom(e.target.value)}/></FormField>
+        <FormField label="Date To"><input type="date" className={inputClass} value={to} onChange={e=>setTo(e.target.value)}/></FormField>
+        <FormField label="Company"><select className={inputClass} value={customer} onChange={e=>setCustomer(e.target.value)}><option value="">All Companies</option>{data.customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></FormField>
+        <FormField label="Machine"><select className={inputClass} value={machine} onChange={e=>setMachine(e.target.value)}><option value="">All Machines</option>{data.machines.map(m=><option key={m.id} value={m.code}>{m.code} · {m.name}</option>)}</select></FormField>
+        <Button onClick={()=>void load()} disabled={loading}>{loading?'Generating…':'Generate Report'}</Button>
+      </div></Card>
+    </div>
     <div className="flex gap-1 overflow-x-auto border-b">{sections.map(s=><button key={s} onClick={()=>{setSection(s);const path:Record<Section,string>={Overview:'/reports/production',Sales:'/reports/sales',Production:'/reports/production',Inventory:'/reports/inventory','Machine Utilization':'/reports/machine-utilization',Profitability:'/reports/cost-analysis','Custom Reports':'/reports/quality'};navigate(path[s]);}} className={'px-4 py-2 text-xs font-semibold border-b-2 whitespace-nowrap '+(section===s?'border-brand-600 text-brand-700':'border-transparent text-slate-500')}>{s}</button>)}</div>
     {loading ? <Card className="p-12 text-center text-sm text-slate-500"><BarChart3 className="inline mr-2" size={18}/>Generating report from current ERP records…</Card> : <>
       <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">

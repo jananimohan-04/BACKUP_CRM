@@ -1,20 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
-import { LifeBuoy, PlusCircle, Ticket as TicketIcon, LayoutList } from 'lucide-react';
+import { LifeBuoy, PlusCircle, Ticket as TicketIcon, LayoutList, PlayCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Modal } from '@/components/ui/Modal';
 import { supportApi, moduleLabel, type SupportTicket } from '@/lib/support';
 import { supportModules } from '@/lib/support';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { RaiseTicket, TicketSubmitted } from './RaiseTicket';
 import { TicketList } from './TicketList';
 import { TicketDetail } from './TicketDetail';
+import { DemoVideos } from './DemoVideos';
 
-type Tab = 'raise' | 'mine' | 'all';
+type Tab = 'raise' | 'mine' | 'all' | 'videos';
 
 function useQueryTab(initial: Tab): [Tab, (t: Tab) => void] {
   const [tab, setTab] = useState<Tab>(() => {
     const q = new URLSearchParams(window.location.search).get('tab');
-    return q === 'mine' || q === 'all' ? (q as Tab) : initial;
+    return q === 'mine' || q === 'all' || q === 'videos' ? (q as Tab) : initial;
   });
   const go = (t: Tab) => {
     setTab(t);
@@ -27,7 +29,7 @@ function useQueryTab(initial: Tab): [Tab, (t: Tab) => void] {
 
 /**
  * Support Center: Raise Ticket, My Tickets, and (for admins) the
- * cross-company All Tickets inbox. Demo video library follows next.
+ * cross-company All Tickets inbox, and the Demo Videos library.
  */
 export function SupportCenterPage() {
   const { company, profile, isSuperAdmin, isCompanyAdmin, canDo } = useAuth();
@@ -93,34 +95,79 @@ export function SupportCenterPage() {
       ? company.company_name
       : companyNames[t.company_id] || `Company ${t.company_id.slice(0, 8)}`;
 
-  return (
-    <div className="p-4 lg:p-6 space-y-4 bg-slate-50 min-h-full">
-      <div>
-        <h1 className="flex items-center gap-2 text-xl font-bold text-slate-800">
-          <LifeBuoy size={22} className="text-cyan-600" /> Support Center
-        </h1>
-        <p className="text-sm text-slate-500 mt-0.5">Raise tickets, track progress, and learn features — one place for help.</p>
-      </div>
+  const { setHeader, setTabs, setTabActions } = useHeaderKpis();
 
-      <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm w-fit">
-        {canRaise && (
-          <button type="button" onClick={() => setTab('raise')}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${tab === 'raise' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
-            <PlusCircle size={15} /> Raise Ticket
+  useEffect(() => {
+    setHeader({ title: 'Support Center' });
+    const headerTabs: { label: string; active: boolean; onClick: () => void }[] = [];
+    if (canRaise) {
+      headerTabs.push({
+        label: '+ Raise Ticket',
+        active: tab === 'raise',
+        onClick: () => setTab('raise'),
+      });
+    }
+    headerTabs.push({
+      label: `My Tickets (${myTickets.length})`,
+      active: tab === 'mine',
+      onClick: () => setTab('mine'),
+    });
+    if (isAdmin) {
+      headerTabs.push({
+        label: `All Tickets (${tickets.length})`,
+        active: tab === 'all',
+        onClick: () => setTab('all'),
+      });
+    }
+    headerTabs.push({
+      label: 'Demo Videos',
+      active: tab === 'videos',
+      onClick: () => setTab('videos'),
+    });
+    setTabs(headerTabs);
+    setTabActions(null);
+
+    return () => {
+      setHeader(null);
+      setTabs([]);
+      setTabActions(null);
+    };
+  }, [setHeader, setTabs, setTabActions, tab, canRaise, isAdmin, myTickets.length, tickets.length]);
+
+  return (
+    <div className="p-3 sm:p-4 lg:px-4 lg:pt-1.5 lg:pb-4 space-y-3 bg-slate-50 min-h-full">
+      <div className="lg:hidden">
+        <div>
+          <h1 className="flex items-center gap-2 text-xl font-bold text-slate-800">
+            <LifeBuoy size={22} className="text-cyan-600" /> Support Center
+          </h1>
+          <p className="text-sm text-slate-500 mt-0.5">Raise tickets, track progress, and learn features — one place for help.</p>
+        </div>
+
+        <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm w-fit mt-3">
+          {canRaise && (
+            <button type="button" onClick={() => setTab('raise')}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${tab === 'raise' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
+              <PlusCircle size={15} /> Raise Ticket
+            </button>
+          )}
+          <button type="button" onClick={() => setTab('mine')}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${tab === 'mine' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
+            <TicketIcon size={15} /> My Tickets
+            <span className={`rounded-full px-1.5 text-[11px] font-bold tabular-nums ${tab === 'mine' ? 'bg-white/25' : 'bg-slate-100 text-slate-600'}`}>{myTickets.length}</span>
           </button>
-        )}
-        <button type="button" onClick={() => setTab('mine')}
-          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${tab === 'mine' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
-          <TicketIcon size={15} /> My Tickets
-          <span className={`rounded-full px-1.5 text-[11px] font-bold tabular-nums ${tab === 'mine' ? 'bg-white/25' : 'bg-slate-100 text-slate-600'}`}>{myTickets.length}</span>
-        </button>
-        {isAdmin && (
-          <button type="button" onClick={() => setTab('all')}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${tab === 'all' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
-            <LayoutList size={15} /> All Tickets
-            <span className={`rounded-full px-1.5 text-[11px] font-bold tabular-nums ${tab === 'all' ? 'bg-white/25' : 'bg-slate-100 text-slate-600'}`}>{tickets.length}</span>
+          {isAdmin && (
+            <button type="button" onClick={() => setTab('all')}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${tab === 'all' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
+              <LayoutList size={15} /> All Tickets
+              <span className={`rounded-full px-1.5 text-[11px] font-bold tabular-nums ${tab === 'all' ? 'bg-white/25' : 'bg-slate-100 text-slate-600'}`}>{tickets.length}</span>
+            </button>
+          )}
+          <button type="button" onClick={() => setTab('videos')}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${tab === 'videos' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
+            <PlayCircle size={15} /> Demo Videos
           </button>
-        )}
+        </div>
       </div>
 
       {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
@@ -132,6 +179,12 @@ export function SupportCenterPage() {
           ) : (
             <RaiseTicket onSubmitted={(no) => { setJustRaised(no); void load(); }} />
           )}
+        </div>
+      )}
+
+      {tab === 'videos' && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <DemoVideos />
         </div>
       )}
 

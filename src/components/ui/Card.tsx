@@ -40,6 +40,7 @@ export function StatCard({
   trend,
   trendUp,
   accent = 'brand',
+  compact = false,
 }: {
   label: string;
   value: string;
@@ -47,6 +48,7 @@ export function StatCard({
   trend?: string;
   trendUp?: boolean;
   accent?: 'brand' | 'accent' | 'success' | 'warning' | 'error' | 'navy' | 'neutral' | 'info';
+  compact?: boolean;
 }) {
   const accentMap: Record<string, string> = {
     brand: 'bg-gradient-to-br from-brand-50 to-brand-100 text-brand-600 border-brand-200 shadow-inner',
@@ -58,6 +60,21 @@ export function StatCard({
     neutral: 'bg-gradient-to-br from-slate-50 to-slate-100 text-slate-600 border-slate-200 shadow-inner',
     info: 'bg-gradient-to-br from-blue-50 to-blue-100 text-blue-600 border-blue-200 shadow-inner',
   };
+
+  if (compact) {
+    return (
+      <Card className="px-3 py-2 flex items-center justify-between gap-2.5 shadow-xs border border-slate-200/90 hover:shadow-sm transition-all duration-200 group overflow-hidden">
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wider truncate leading-tight mb-0.5">{label}</p>
+          <p className="text-base font-bold text-slate-900 tracking-tight leading-tight group-hover:text-brand-600 transition-colors">{value}</p>
+        </div>
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center border shrink-0 ${accentMap[accent]} [&>svg]:w-4 [&>svg]:h-4`}>
+          {icon}
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="p-5 hover:shadow-premium-hover hover:-translate-y-1 transition-all duration-300 group overflow-hidden relative">
       <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-white/40 to-transparent rounded-full -translate-y-1/2 translate-x-1/2 pointer-events-none" />
