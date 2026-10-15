@@ -438,8 +438,47 @@ export function ProjectCostingPage() {
         ? `${purchaseKinds.join(' + ')} inward`
         : null;
 
+      // Operations scheduled / logged on the work order (Production, Scheduling, Machine Log) live in
+      // cnc_work_order_operations, while the report RPC only reads job cards. Add them so machine time
+      // is costed too; an operation that already has a job card is not counted twice.
+      let mergedOps: any[] = baseReport.operations || [];
+      // Real machine time: a job card records when it started and when it was completed (the report
+      // function doesn't return those), so attach the elapsed minutes to each job card operation.
+      const woNos = (baseReport.work_orders || []).map((w: any) => w.wo_no).filter(Boolean);
+      if (woNos.length && mergedOps.length) {
+        const { data: spans, error: spanErr } = await supabase
+          .from('cnc_job_cards').select('id, actual_start, completed_at').in('work_order', woNos);
+        if (spanErr) console.error('Project costing: job card run times unavailable', spanErr);
+        const minutesById = new Map<string, number>();
+        for (const j of spans ?? []) {
+          const st = j.actual_start ? new Date(j.actual_start).getTime() : NaN;
+          const en = j.completed_at ? new Date(j.completed_at).getTime() : Date.now();
+          if (Number.isFinite(st) && en > st) minutesById.set(String(j.id), Math.round((en - st) / 60000));
+        }
+        mergedOps = mergedOps.map((o: any) => (minutesById.has(String(o.id)) ? { ...o, actual_minutes: String(minutesById.get(String(o.id))) } : o));
+      }
+      // work_order_id is a uuid column; a non-uuid id would make the database reject the whole request.
+      const isUuid = (v: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v ?? ''));
+      const woIds = (baseReport.work_orders || []).map((w: any) => w.id).filter(isUuid);
+      if (woIds.length) {
+        const { data: woOps, error: woOpsErr } = await supabase
+          .from('cnc_work_order_operations').select('*').in('work_order_id', woIds).order('operation_sequence');
+        if (woOpsErr) console.error('Project costing: work order operations unavailable', woOpsErr);
+        const haveJob = new Set(mergedOps.map((o: any) => String(o.operation ?? '').trim().toLowerCase()));
+        const extra = (woOps ?? [])
+          .filter((o: any) => !haveJob.has(String(o.process_name ?? '').trim().toLowerCase()))
+          .map((o: any) => ({
+            id: o.id, job_no: null, operation: o.process_name || o.process_code, machine: o.machine, operator: o.operator,
+            qty_planned: String(o.planned_qty ?? 0), qty_completed: String(o.completed_qty ?? 0), qty_rejected: '0',
+            cycle_time: String(o.est_cycle_time ?? 0), setup_time: String(o.setup_time ?? 0),
+            actual_minutes: String(o.actual_minutes ?? 0), status: o.status,
+          }));
+        mergedOps = [...mergedOps, ...extra];
+      }
+
       const finalDetail: CostingDetail = {
         ...baseReport,
+        operations: mergedOps,
         materials: allMaterials,
         services: [...(baseReport.services || []), ...serviceRows],
         categories: updatedCategories,
@@ -556,11 +595,19 @@ export function ProjectCostingPage() {
   // = production operations). Operations without a matching master rate show
   // hours only and are excluded from the total.
   const processOps = useMemo(() => {
-    const byName = new Map((procRates ?? []).map((p: any) => [String(p.process_name ?? '').toLowerCase(), p]));
+    // Names are compared ignoring case and extra spaces; a process code also counts as a match.
+    const norm = (v: unknown) => String(v ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+    const byName = new Map<string, any>();
+    for (const p of procRates ?? []) {
+      if (norm(p.process_code)) byName.set(norm(p.process_code), p);
+    }
+    for (const p of procRates ?? []) byName.set(norm(p.process_name), p);
     return (report?.operations || []).map((x: any) => {
-      const p = byName.get(String(x.operation ?? '').toLowerCase());
+      const p = byName.get(norm(x.operation));
       const qty = Number(x.qty_completed) > 0 ? Number(x.qty_completed) : Number(x.qty_planned) || 0;
-      const hours = Math.max(0, ((Number(x.setup_time) || 0) + qty * (Number(x.cycle_time) || 0)) / 60);
+      // Logged machine minutes win over the estimate when the operation has been run.
+      const logged = Number(x.actual_minutes) || 0;
+      const hours = Math.max(0, (logged > 0 ? logged : (Number(x.setup_time) || 0) + qty * (Number(x.cycle_time) || 0)) / 60);
       const rate = Number(p?.cost_per_hour) || 0;
       const compSetup = (Number(p?.cost_per_component) || 0) + (Number(p?.setup_cost) || 0);
       return {
@@ -678,6 +725,10 @@ export function ProjectCostingPage() {
                       <div className="text-[10px] uppercase tracking-wide text-slate-500">Planned Cost</div>
                       <div className="text-sm font-bold">{money(project?.planned_cost)}</div>
                     </div>
+                    <div title="Operations x Process Master rates (logged minutes when recorded, else estimated from cycle time)">
+                      <div className="text-[10px] uppercase tracking-wide text-slate-500">Machine Cost (Est.)</div>
+                      <div className="text-sm font-bold">{processOpsTotal > 0 ? money(processOpsTotal) : '—'}</div>
+                    </div>
                     <div title={project?.cost_source || 'No cost source recorded'}>
                       <div className="text-[10px] uppercase tracking-wide text-slate-500">Recorded Actual Cost</div>
                       <div className="text-sm font-bold">{money(totalActual)}</div>
@@ -787,8 +838,9 @@ export function ProjectCostingPage() {
                                 <td className="p-2 font-medium text-slate-800">
                                   {x.operation || '—'}
                                   {!x.matched && (
-                                    <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                                      No master rate
+                                    <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                                      title="Costing needs an operation name that matches a process in Process Master with a cost per hour">
+                                      {x.operation ? 'Not in Process Master' : 'No operation name'}
                                     </span>
                                   )}
                                 </td>
