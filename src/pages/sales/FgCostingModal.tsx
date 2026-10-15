@@ -892,16 +892,11 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
 
   const [pickCompany, setPickCompany] = useState('');
   const [pickProduct, setPickProduct] = useState('');
-  const [compDropdownOpen, setCompDropdownOpen] = useState(false);
   const [prodDropdownOpen, setProdDropdownOpen] = useState(false);
-  const compRef = useRef<HTMLDivElement>(null);
   const prodRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleOutside = (e: MouseEvent) => {
-      if (compRef.current && !compRef.current.contains(e.target as Node)) {
-        setCompDropdownOpen(false);
-      }
       if (prodRef.current && !prodRef.current.contains(e.target as Node)) {
         setProdDropdownOpen(false);
       }
@@ -911,12 +906,6 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   }, []);
 
   if (card?.raw?.__pick) {
-    const companies = Array.from(new Set(
-      [...(pickCompanies.length ? pickCompanies : pickOptions.map((o) => o.company))]
-        .map((c) => String(c || '').trim())
-        .filter(Boolean)
-    )).sort((a, b) => a.localeCompare(b));
-
     const key = (v: string) => String(v || '').trim().toLowerCase();
     const queryComp = key(pickCompany);
 
@@ -928,7 +917,6 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
 
     const products = Array.from(new Set(matchedOptions.map((o) => o.product).filter(Boolean))).sort((a, b) => a.localeCompare(b));
 
-    const filteredCompanies = companies.filter((c) => !queryComp || c.toLowerCase().includes(queryComp));
     const filteredProducts = products.filter((p) => !pickProduct.trim() || p.toLowerCase().includes(key(pickProduct)));
 
     // Product → company: when the picked product belongs to exactly one
@@ -947,58 +935,9 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
         <div className={`w-fit rounded-xl border p-2.5 ${tint('Finished Goods').panel}`}>
           <div className="flex flex-wrap items-center gap-2">
             {titleSlot ?? <h3 className="text-[10px] font-bold uppercase tracking-widest text-brand-600">Section 1 — Transaction Details</h3>}
-            <div className="flex items-center gap-1.5 relative" ref={compRef}>
+            <div className="flex items-center gap-1.5">
               <span className={inlineLbl}>Company *</span>
-              <div className="relative">
-                <input
-                  className={`${compactInput} w-[15rem] pr-6`}
-                  list="fg-pick-companies"
-                  placeholder="Type or select company"
-                  value={pickCompany}
-                  onFocus={() => setCompDropdownOpen(true)}
-                  onChange={(e) => {
-                    setPickCompany(e.target.value);
-                    setPickProduct('');
-                    setCompDropdownOpen(true);
-                  }}
-                />
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
-                  onClick={() => setCompDropdownOpen((o) => !o)}
-                >
-                  <ChevronDown size={14} />
-                </button>
-                {compDropdownOpen && (
-                  <div className="absolute left-0 top-full mt-1 w-[18rem] z-50 bg-white border border-slate-200 rounded-lg shadow-xl max-h-56 overflow-y-auto py-1">
-                    {filteredCompanies.length > 0 ? (
-                      filteredCompanies.map((c) => (
-                        <div
-                          key={c}
-                          className="px-3 py-1.5 text-xs text-slate-700 hover:bg-brand-50 hover:text-brand-800 cursor-pointer font-medium"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            setPickCompany(c);
-                            setPickProduct('');
-                            setCompDropdownOpen(false);
-                            // If this company only has 1 product, auto-fill it
-                            const prods = Array.from(new Set(pickOptions.filter((o) => key(o.company) === key(c)).map((o) => o.product).filter(Boolean)));
-                            if (prods.length === 1) setPickProduct(prods[0]);
-                          }}
-                        >
-                          {c}
-                        </div>
-                      ))
-                    ) : (
-                      <div className="px-3 py-2 text-xs text-slate-400 italic">
-                        No companies with pending items before Finished Goods
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              <datalist id="fg-pick-companies">{companies.map((c) => <option key={c} value={c} />)}</datalist>
+              <span className="text-sm font-bold text-slate-800 min-w-[8rem]" data-testid="fg-pick-company">{pickCompany || '—'}</span>
             </div>
             <div className="flex items-center gap-1.5 relative" ref={prodRef}>
               <span className={inlineLbl}>Product *</span>
@@ -1026,20 +965,41 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                 {prodDropdownOpen && (
                   <div className="absolute left-0 top-full mt-1 w-[18rem] z-50 bg-white border border-slate-200 rounded-lg shadow-xl max-h-56 overflow-y-auto py-1">
                     {filteredProducts.length > 0 ? (
-                      filteredProducts.map((p) => (
-                        <div
-                          key={p}
-                          className="px-3 py-1.5 text-xs text-slate-700 hover:bg-brand-50 hover:text-brand-800 cursor-pointer font-medium"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            setPickProduct(p);
-                            autoCompanyForProduct(p);
-                            setProdDropdownOpen(false);
-                          }}
-                        >
-                          {p}
-                        </div>
-                      ))
+                      (() => {
+                        // One row per company + product, so the same product under
+                        // different companies stays distinguishable and always
+                        // resolves its company on pick.
+                        const seen = new Set<string>();
+                        const rows: { key: string; company: string; product: string }[] = [];
+                        filteredProducts.forEach((p) => {
+                          const cos = Array.from(new Set(matchedOptions.filter((o) => o.product === p).map((o) => String(o.company || '').trim()).filter(Boolean)));
+                          (cos.length > 0 ? cos : ['']).forEach((co) => {
+                            const k = `${co}||${p}`;
+                            if (seen.has(k)) return;
+                            seen.add(k);
+                            rows.push({ key: k, company: co, product: p });
+                          });
+                        });
+                        return rows.map((r) => {
+                          const label = r.company ? `${r.company} · ${r.product}` : r.product;
+                          return (
+                            <div
+                              key={r.key}
+                              title={label}
+                              className="px-3 py-1.5 text-xs text-slate-700 hover:bg-brand-50 hover:text-brand-800 cursor-pointer font-medium"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setPickProduct(r.product);
+                                if (r.company) setPickCompany(r.company);
+                                else autoCompanyForProduct(r.product);
+                                setProdDropdownOpen(false);
+                              }}
+                            >
+                              {label}
+                            </div>
+                          );
+                        });
+                      })()
                     ) : (
                       <div className="px-3 py-2 text-xs text-slate-400 italic">
                         {pickCompany.trim() ? "No products found for this company before Finished Goods" : "Select a company first"}
@@ -1050,7 +1010,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
               </div>
               <datalist id="fg-pick-products">{products.map((p) => <option key={p} value={p} />)}</datalist>
             </div>
-            <p className="text-[11px] text-slate-400">Pick a product from an order, or type a new one.</p>
+            <p className="text-[11px] text-slate-400">Pick a product — its company fills in automatically.</p>
             <Button variant="secondary" size="sm" icon={<X size={14} />} onClick={onClose}>Cancel</Button>
             <Button size="sm" disabled={!pickCompany.trim() || !pickProduct.trim()} onClick={() => onPick?.(pickCompany.trim(), pickProduct.trim())} className="!bg-teal-600 hover:!bg-teal-500 text-white shadow-md shadow-teal-500/25 !border-teal-600">Continue</Button>
             {searchSlot}

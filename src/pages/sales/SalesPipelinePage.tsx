@@ -51,7 +51,7 @@ async function uploadEnquiryProductFile(companyId: string, file: File) {
 const resetSoForm = () => ({
   orderNo: `SO-2026-${Math.floor(1000 + Math.random() * 9000)}`,
   customer: '', orderDate: new Date().toISOString().split('T')[0],
-  deliveryDate: new Date().toISOString().split('T')[0], customerPoNo: '',
+  deliveryDate: '', customerPoNo: '',
   items: [{ id: crypto.randomUUID(), partName: '', quantity: '', rejectedQty: '', itemStatus: 'Confirmed', unitPrice: '', gst: '18' }],
 });
 
@@ -100,10 +100,14 @@ export const baseUniqueNo = (s: any): string =>
   String(s || '').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, '');
 
 /**
- * Formats a Date object or order timestamp into a clean "DD-MM-YYYY hh:mm AM/PM".
+ * Formats a Date object or order timestamp into railway time: "DD-MM-YYYY HH:mm"
+ * (24-hour clock, no AM/PM). Stored lead-number IDs keep their own 12-hour
+ * suffix - only this product-display stamp is 24-hour. Old 12-hour stamps in
+ * the database keep working: every detect/strip/match regex treats AM/PM as
+ * optional, so old and new stamps compare and dedupe the same way.
  */
 export function formatOrderDateTimeStamp(order?: any, fallbackDate?: Date): string {
-  // 1. From lead_no stamp if present: e.g. 1010-14Oct26-1105AM
+  // 1. From lead_no stamp if present: e.g. 1010-14Oct26-1105AM -> 24-hour rendering.
   const stamped = String(order?.lead_no || order?.stamped_lead_no || '');
   const m = /-(\d{2})([A-Za-z]{3})(\d{2})-(\d{2})(\d{2})(AM|PM)$/.exec(stamped);
   if (m) {
@@ -111,7 +115,8 @@ export function formatOrderDateTimeStamp(order?: any, fallbackDate?: Date): stri
     const year = Number(yy) < 50 ? `20${yy}` : `19${yy}`;
     const monMap: Record<string, string> = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
     const month = monMap[mon] || '01';
-    return `${dd}-${month}-${year} ${hh}:${mm} ${ap}`;
+    const h24 = String((Number(hh) % 12) + (ap === 'PM' ? 12 : 0)).padStart(2, '0');
+    return `${dd}-${month}-${year} ${h24}:${mm}`;
   }
 
   // 2. From created_at or order_date
@@ -129,10 +134,9 @@ export function formatOrderDateTimeStamp(order?: any, fallbackDate?: Date): stri
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const yyyy = d.getFullYear();
-  const hh = String(d.getHours() % 12 || 12).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
   const min = String(d.getMinutes()).padStart(2, '0');
-  const ap = d.getHours() >= 12 ? 'PM' : 'AM';
-  return `${dd}-${mm}-${yyyy} ${hh}:${min} ${ap}`;
+  return `${dd}-${mm}-${yyyy} ${hh}:${min}`;
 }
 
 /**
@@ -4622,6 +4626,12 @@ export function SalesPipelinePage() {
     const saveStandaloneSalesOrder = async () => {
     if (savingSo) return; // the form stays on screen after saving, so guard double clicks
     if (!String(soForm.customer || '').trim()) { alert('Enter the company.'); return; }
+    if (!soForm.orderDate) { alert('Enter the order date.'); return; }
+    if (!soForm.deliveryDate) { alert('Enter the delivery date.'); return; }
+    if (soForm.orderDate && soForm.deliveryDate && soForm.deliveryDate <= soForm.orderDate) {
+      alert('Delivery date must be after order date.');
+      return;
+    }
     const entered = ((soForm.items || []) as any[])
       .map((it: any) => ({ ...it, partName: String(it.partName || '').trim() }))
       .filter((it: any) => it.partName);
@@ -5143,7 +5153,19 @@ export function SalesPipelinePage() {
   // open. Every field, the company search/autocomplete, the dynamic product rows, the
   // drawing uploads and saveStandaloneSalesOrder are unchanged — only the modal chrome
   // (backdrop, positioning, close button and footer) is gone.
-  const renderSalesOrderEntryForm = (opts?: { onBack?: () => void; searchSlot?: ReactNode; popup?: boolean }) => (
+  const renderSalesOrderEntryForm = (opts?: { onBack?: () => void; searchSlot?: ReactNode; popup?: boolean }) => {
+    const isSoDeliveryDateInvalid = Boolean(
+      soForm.orderDate && soForm.deliveryDate && soForm.deliveryDate <= soForm.orderDate
+    );
+    const minDeliveryDate = soForm.orderDate ? (() => {
+      const parts = String(soForm.orderDate).split('-');
+      if (parts.length !== 3) return undefined;
+      const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]) + 1);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    })() : undefined;
+
+    return (
     <section className={`rounded-xl border shadow-sm ${tint('Sales Order').panel}`} data-testid="so-entry-form">
       <div className="space-y-2.5 p-3">
         {soSaveNotice && (
@@ -5188,7 +5210,30 @@ export function SalesPipelinePage() {
             <FormField label="Order Date" required inline><input type="date" className={`${compactInput} w-[8.25rem]`} value={soForm.orderDate || ''} onChange={e=>setSoForm({...soForm, orderDate: e.target.value})} /></FormField>
           </div>
           <div className="shrink-0">
-            <FormField label="Delivery Date" required inline><input type="date" className={`${compactInput} w-[8.25rem]`} value={soForm.deliveryDate || ''} onChange={e=>setSoForm({...soForm, deliveryDate: e.target.value})} /></FormField>
+            <FormField label="Delivery Date" required inline>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="date"
+                  className={`${compactInput} w-[8.25rem] transition-colors ${
+                    isSoDeliveryDateInvalid
+                      ? '!border-red-500 !text-red-600 !bg-red-50 font-semibold focus:!border-red-600 focus:!ring-red-200'
+                      : ''
+                  }`}
+                  value={soForm.deliveryDate || ''}
+                  min={minDeliveryDate}
+                  title={isSoDeliveryDateInvalid ? 'Delivery date must be after order date' : undefined}
+                  onChange={e => setSoForm({ ...soForm, deliveryDate: e.target.value })}
+                />
+                {isSoDeliveryDateInvalid && (
+                  <span
+                    className="text-[11px] font-bold text-red-600 whitespace-nowrap"
+                    title="Delivery date must be after order date"
+                  >
+                    Must be after order date
+                  </span>
+                )}
+              </div>
+            </FormField>
           </div>
           <div className="shrink-0">
             <FormField label="PO No" inline><input className={`${compactInput} w-[7.5rem]`} placeholder="Customer PO" value={soForm.customerPoNo || ''} onChange={e=>setSoForm({...soForm, customerPoNo: e.target.value})} /></FormField>
@@ -5205,7 +5250,7 @@ export function SalesPipelinePage() {
             {!opts?.popup && (
               <>
             <Button variant="secondary" size="sm" onClick={() => { setSoForm(resetSoForm()); setSoSaveNotice(null); }}>Clear / Reset</Button>
-            <Button size="sm" onClick={saveStandaloneSalesOrder} disabled={savingSo} className={MODULE_THEMES['Sales Order'].btnPrimary}>{savingSo ? 'Saving...' : 'Save Order'}</Button>
+            <Button size="sm" onClick={saveStandaloneSalesOrder} disabled={savingSo || isSoDeliveryDateInvalid} className={MODULE_THEMES['Sales Order'].btnPrimary}>{savingSo ? 'Saving...' : 'Save Order'}</Button>
               </>
             )}
             {opts?.searchSlot && (
@@ -5312,6 +5357,7 @@ export function SalesPipelinePage() {
       </div>
     </section>
   );
+};
 
 
   // -- New Delivery Challan entry form ------------------------------------

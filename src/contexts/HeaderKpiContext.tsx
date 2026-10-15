@@ -24,6 +24,12 @@ export interface HeaderKpi {
   dotClass?: string;
 }
 
+export interface HeaderTab {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}
+
 interface HeaderKpiContextValue {
   kpis: HeaderKpi[];
   setKpis: (kpis: HeaderKpi[]) => void;
@@ -31,6 +37,13 @@ interface HeaderKpiContextValue {
    *  Pages that set it hide their own PageHeader to avoid duplication. */
   header: { title: string; subtitle?: string } | null;
   setHeader: (h: { title: string; subtitle?: string } | null) => void;
+  /** Opt-in page tabs rendered inline in the top bar. Pages that set them hide
+   *  their own tab row on large screens to avoid duplication. */
+  tabs: HeaderTab[];
+  setTabs: (tabs: HeaderTab[]) => void;
+  /** Opt-in action buttons (e.g. Create button) rendered alongside tabs in the top bar. */
+  tabActions: React.ReactNode;
+  setTabActions: (actions: React.ReactNode) => void;
   /** Company-wise filter for the records ('down datas') across the top 8 pages. */
   companyFilter: string;
   setCompanyFilter: (company: string) => void;
@@ -71,8 +84,22 @@ export function HeaderKpiProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const [tabs, setTabsState] = useState<HeaderTab[]>([]);
+
+  // Same guard as setKpis (onClick identity ignored): only rewrite when the
+  // visible labels or the active flag actually changed.
+  const setTabs = useCallback((next: HeaderTab[]) => {
+    setTabsState(prev => {
+      if (prev.length === next.length && prev.every((t, i) =>
+        t.label === next[i].label && t.active === next[i].active)) return prev;
+      return next;
+    });
+  }, []);
+
+  const [tabActions, setTabActions] = useState<React.ReactNode>(null);
+
   return (
-    <HeaderKpiContext.Provider value={{ kpis, setKpis, header, setHeader, companyFilter, setCompanyFilter, companyOptions, setCompanyOptions }}>
+    <HeaderKpiContext.Provider value={{ kpis, setKpis, header, setHeader, tabs, setTabs, tabActions, setTabActions, companyFilter, setCompanyFilter, companyOptions, setCompanyOptions }}>
       {children}
     </HeaderKpiContext.Provider>
   );
@@ -83,6 +110,10 @@ const defaultHeaderKpiContext: HeaderKpiContextValue = {
   setKpis: () => {},
   header: null,
   setHeader: () => {},
+  tabs: [],
+  setTabs: () => {},
+  tabActions: null,
+  setTabActions: () => {},
   companyFilter: 'All Companies',
   setCompanyFilter: () => {},
   companyOptions: [],

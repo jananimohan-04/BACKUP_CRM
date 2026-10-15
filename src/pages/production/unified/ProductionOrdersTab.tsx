@@ -1,12 +1,11 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { formatDate } from '@/lib/format';
-import { StatCard, Badge, Button, ProgressBar, statusToVariant, priorityToVariant } from '@/components/ui/Card';
+import { Badge, Button, ProgressBar, statusToVariant, priorityToVariant } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
-import { PageHeader } from '@/components/ui/PageHeader';
 import { Modal, FormField, FormSection, inputClass } from '@/components/ui/Modal';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import {
-  ClipboardList, CalendarClock, Cog, CheckCircle,
   Plus, Eye, Pencil, X, ChevronUp, ChevronDown, Trash2, GitBranch,
 } from 'lucide-react';
 import { WorkOrderDetail } from './WorkOrderDetail';
@@ -57,6 +56,7 @@ const newOpKey = () =>
     : `op-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
 export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]; refresh: () => void }) {
+  const { setTabActions } = useHeaderKpis();
   const [salesOrders, setSalesOrders] = useState<any[]>([]);
   const [processes, setProcesses] = useState<any[]>([]);
   const [processesMissing, setProcessesMissing] = useState(false);
@@ -227,14 +227,23 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
   );
 
   // ---------- create / edit ----------
-  const openCreate = () => {
+  const openCreate = useCallback(() => {
     setEditWO(null);
     setWoForm({ ...EMPTY_WO_FORM, startDate: new Date().toISOString().slice(0, 10) });
     setOpDrafts([]);
     setRoutingRef(null);
     setFormErrors({});
     setShowForm(true);
-  };
+  }, []);
+
+  useEffect(() => {
+    setTabActions(
+      <Button icon={<Plus size={14} />} onClick={openCreate} size="sm" className="h-7 py-1 text-xs px-2.5 shadow-sm">
+        Create Production Order
+      </Button>
+    );
+    return () => setTabActions(null);
+  }, [openCreate, setTabActions]);
 
   const openEdit = (wo: any) => {
     setEditWO(wo);
@@ -675,15 +684,15 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
 
   return (
     <div>
-      <PageHeader
-        title="Production"
-        description="Plan, release and track manufacturing work orders."
-        actions={
+      <div className="flex lg:hidden flex-wrap items-center gap-x-3 gap-y-1 mb-3">
+        <h1 className="text-xl font-bold text-slate-800 whitespace-nowrap">Production</h1>
+        <p className="text-sm text-slate-500 whitespace-nowrap">Plan, release and track manufacturing work orders.</p>
+        <div className="ml-auto">
           <Button icon={<Plus size={15} />} onClick={openCreate}>
             Create Production Order
           </Button>
-        }
-      />
+        </div>
+      </div>
 
       {opsMissing && (
         <div className="mb-4 px-4 py-3 rounded-xl border border-amber-200 bg-amber-50 text-sm text-amber-800">
@@ -701,17 +710,24 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-        <StatCard label="Total Work Orders" value={String(stats.total)} icon={<ClipboardList size={20} />} accent="navy" />
-        <StatCard label="Planned" value={String(stats.planned)} icon={<CalendarClock size={20} />} accent="neutral" />
-        <StatCard label="In Progress" value={String(stats.inProgress)} icon={<Cog size={20} />} accent="brand" />
-        <StatCard label="Completed" value={String(stats.completed)} icon={<CheckCircle size={20} />} accent="success" />
-      </div>
-
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-5 py-4 mb-4">
-        <div className="flex flex-wrap lg:flex-nowrap items-end gap-3">
-          <div className="flex-[1.4] min-w-[180px] lg:min-w-0">
-            <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Search</label>
+      {/* Stats + filters share one line with no scrolling (compact widths throughout). */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-3 py-2 mb-4">
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-thin">
+          <div className="flex items-center gap-2 shrink-0">
+            {[
+              { l: 'Total', v: stats.total, c: 'text-slate-800' },
+              { l: 'Planned', v: stats.planned, c: 'text-slate-600' },
+              { l: 'In Progress', v: stats.inProgress, c: 'text-brand-600' },
+              { l: 'Completed', v: stats.completed, c: 'text-emerald-600' },
+            ].map((s) => (
+              <span key={s.l} className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                {s.l} <b className={`text-[13px] tabular-nums ${s.c}`}>{s.v}</b>
+              </span>
+            ))}
+          </div>
+          <span className="h-6 w-px bg-slate-200 shrink-0" aria-hidden="true" />
+          <div className="flex items-center gap-1.5 shrink-0 min-w-[8rem] flex-[2]">
+            <span className="text-[10px] font-bold text-slate-500 uppercase whitespace-nowrap">Search</span>
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -719,34 +735,34 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
               className={inputClass}
             />
           </div>
-          <div className="flex-1 min-w-[150px] lg:min-w-0">
-            <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Company</label>
-            <select value={customerFilter} onChange={(e) => setCustomerFilter(e.target.value)} className={inputClass}>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] font-bold text-slate-500 uppercase whitespace-nowrap">Company</span>
+            <select value={customerFilter} onChange={(e) => setCustomerFilter(e.target.value)} className={`${inputClass} w-28`}>
               <option>All Companies</option>
               {customers.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
-          <div className="flex-1 min-w-[150px] lg:min-w-0">
-            <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Product</label>
-            <select value={productFilter} onChange={(e) => setProductFilter(e.target.value)} className={inputClass}>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] font-bold text-slate-500 uppercase whitespace-nowrap">Product</span>
+            <select value={productFilter} onChange={(e) => setProductFilter(e.target.value)} className={`${inputClass} w-28`}>
               <option>All Products</option>
               {products.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
-          <div className="w-36 shrink-0">
-            <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Status</label>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inputClass}>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] font-bold text-slate-500 uppercase whitespace-nowrap">Status</span>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={`${inputClass} w-28`}>
               <option>All Statuses</option>
               {statusOptions.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
-          <div className="w-40 shrink-0">
-            <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Start From</label>
-            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className={inputClass} />
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] font-bold text-slate-500 uppercase whitespace-nowrap">From</span>
+            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className={`${inputClass} w-32`} />
           </div>
-          <div className="w-40 shrink-0">
-            <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Start To</label>
-            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className={inputClass} />
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] font-bold text-slate-500 uppercase whitespace-nowrap">To</span>
+            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className={`${inputClass} w-32`} />
           </div>
           {filtersActive && (
             <button

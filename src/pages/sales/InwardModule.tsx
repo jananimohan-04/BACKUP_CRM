@@ -15,6 +15,7 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
+  const [partNameFilter, setPartNameFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All Status');
   const isExpense = (r: any) => String(r.category || '').trim().toUpperCase() === 'EXPENSES';
 
@@ -51,10 +52,25 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [records]);
 
+  // Distinct part names present in the data
+  const partNames = useMemo(() => {
+    const set = new Set<string>();
+    records.forEach(r => {
+      const p = (r.part_name || '').trim();
+      if (p) set.add(p);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [records]);
+
   // If the selected category disappears from the data, fall back to All.
   useEffect(() => {
     if (categoryFilter !== 'All' && !categories.includes(categoryFilter)) setCategoryFilter('All');
   }, [categories, categoryFilter]);
+
+  // If the selected part name disappears from the data, fall back to All.
+  useEffect(() => {
+    if (partNameFilter !== 'All' && !partNames.includes(partNameFilter)) setPartNameFilter('All');
+  }, [partNames, partNameFilter]);
 
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
 
@@ -152,14 +168,16 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
       (r.customer || '').trim().toLowerCase() === companyFilter.trim().toLowerCase();
     const matchesCategory = categoryFilter === 'All' ||
       String(r.category || 'GOODS PURCHASE').trim().toUpperCase() === categoryFilter;
+    const matchesPartName = !partNameFilter || partNameFilter === 'All' ||
+      (r.part_name || '').trim().toLowerCase() === partNameFilter.trim().toLowerCase();
     const matchesStatus = !statusFilter || statusFilter === 'All Status' ||
       (r.status || '').trim().toLowerCase() === statusFilter.trim().toLowerCase();
-    return matchesSearch && matchesCompany && matchesCategory && matchesStatus;
+    return matchesSearch && matchesCompany && matchesCategory && matchesPartName && matchesStatus;
   });
 
   const colCount = 8;
 
-  const pager = usePager(filteredRecords, `${search}||${companyFilter}||${categoryFilter}||${statusFilter}`);
+  const pager = usePager(filteredRecords, `${search}||${companyFilter}||${categoryFilter}||${partNameFilter}||${statusFilter}`);
 
   // Shared so the two row templates cannot drift apart.
   const actionCell = (record: any) => (
@@ -193,6 +211,16 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
       >
         <option value="All">All Categories</option>
         {categories.map(c => <option key={c} value={c}>{c}</option>)}
+      </select>
+      <select
+        aria-label="Filter by part name"
+        title="Filter by part name"
+        value={partNameFilter}
+        onChange={e => setPartNameFilter(e.target.value)}
+        className="py-1 px-2 text-xs font-medium border border-slate-300 rounded-md focus:outline-none focus:border-brand-500 bg-white shadow-sm max-w-[11rem] text-slate-600 truncate"
+      >
+        <option value="All">All Part Names</option>
+        {partNames.map(p => <option key={p} value={p}>{p}</option>)}
       </select>
     </div>
   );
@@ -258,7 +286,23 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
                     </select>
                   </div>
                 </th>
-                <th className="py-2 px-3 font-semibold">Part Name</th>
+                <th className="py-2 px-3 font-semibold">
+                  <div className="flex items-center gap-1.5 flex-nowrap">
+                    <span className="whitespace-nowrap">Part Name</span>
+                    <select
+                      aria-label="Filter by Part Name"
+                      title="Filter by Part Name"
+                      value={partNameFilter}
+                      onChange={e => setPartNameFilter(e.target.value)}
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[130px] truncate shadow-xs"
+                    >
+                      <option value="All">All</option>
+                      {partNames.map(p => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
                 <th className="py-2 px-3 font-semibold">Quantity</th>
                 <th className="py-2 px-3 font-semibold">Total Amount</th>
                 <th className="py-2 px-3 font-semibold">

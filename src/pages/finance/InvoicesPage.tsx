@@ -15,6 +15,19 @@ import { downloadSalesInvoice, fetchCompanyPrintDetails } from '@/lib/brandedDoc
 
 const PAGE = 10;
 const cash = (v: string | number | null | undefined) => formatINR(v, { decimals: 'auto' });
+// Due Days <-> Due Date helpers (invoice_date is an ISO yyyy-mm-dd string).
+const addDaysISO = (iso: string, n: number): string => {
+  const d = new Date(`${iso}T00:00:00`);
+  if (isNaN(d.getTime()) || !Number.isFinite(n)) return '';
+  d.setDate(d.getDate() + Math.trunc(n));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+const diffDaysISO = (from: string, to: string): string => {
+  const a = new Date(`${from}T00:00:00`);
+  const b = new Date(`${to}T00:00:00`);
+  if (isNaN(a.getTime()) || isNaN(b.getTime())) return '';
+  return String(Math.round((b.getTime() - a.getTime()) / 86400000));
+};
 const emptySummary: InvoiceSummary = { total_invoices: 0, total_value: '0', total_received: '0', outstanding: '0', overdue_count: 0, overdue_amount: '0', by_status: {}, ageing: { current: '0', d31_60: '0', d61_90: '0', d90_plus: '0' }, top_customers: [], monthly: [] };
 
 export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
@@ -46,7 +59,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
   const [savedNote, setSavedNote] = useState('');
   const [payOpen, setPayOpen] = useState(false);
   const [editId, setEditId] = useState('');
-  const [form, setForm] = useState<any>({ invoice_type: 'Sales Invoice', invoice_date: todayISO(), customer_name: '', customer_id: '', due_date: '', po_no: '', dc_no: '', delivery_id: '', payment_terms: '' });
+  const [form, setForm] = useState<any>({ invoice_type: 'Sales Invoice', invoice_date: todayISO(), customer_name: '', customer_id: '', due_days: '', po_no: '', dc_no: '', delivery_id: '', payment_terms: '' });
   const [lines, setLines] = useState<any[]>([{ description: '', quantity: '', unit: '', rate: '', gst_rate: '', discount_pct: '0' }]);
   const [payment, setPayment] = useState<any>({ account_id: '', amount: '', txn_date: todayISO(), mode: '', reference_no: '' });
 
@@ -92,7 +105,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
       const unitRate = Number(order?.quantity || 0) > 0 ? Number(order?.value || 0) / Number(order?.quantity) : 0;
       setSelected(null);
       setEditId('');
-      setForm({ invoice_type: 'Sales Invoice', invoice_date: delivery.delivery_date || todayISO(), customer_name: delivery.customer_name || '', customer_id: delivery.customer_id || '', billing_address: delivery.delivery_address || '', due_date: '', po_no: '', dc_no: delivery.delivery_no || '', delivery_id: delivery.id, sales_order_id: delivery.sales_order_id || '', payment_terms: '' });
+      setForm({ invoice_type: 'Sales Invoice', invoice_date: delivery.delivery_date || todayISO(), customer_name: delivery.customer_name || '', customer_id: delivery.customer_id || '', billing_address: delivery.delivery_address || '', due_days: '', po_no: '', dc_no: delivery.delivery_no || '', delivery_id: delivery.id, sales_order_id: delivery.sales_order_id || '', payment_terms: '' });
       setLines([{ description: delivery.part_name || '', quantity: String(qty), unit: '', rate: String(unitRate), gst_rate: '', discount_pct: '0' }]);
       setFormOpen(true);
     })().catch(e => { if (active) setError(e instanceof Error ? e.message : 'Unable to load the delivery challan.'); });
@@ -126,7 +139,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
   };
   const startNew = () => {
     setEditId('');
-    setForm({ invoice_type: 'Sales Invoice', invoice_date: todayISO(), customer_name: '', customer_id: '', due_date: '', po_no: '', dc_no: '', delivery_id: '', payment_terms: '' });
+    setForm({ invoice_type: 'Sales Invoice', invoice_date: todayISO(), customer_name: '', customer_id: '', due_days: '', po_no: '', dc_no: '', delivery_id: '', payment_terms: '' });
     setLines([{ description: '', quantity: '', unit: '', rate: '', gst_rate: '', discount_pct: '0' }]);
     setFormOpen(true);
   };
@@ -134,7 +147,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     if (!selected || Number(selected.received) !== 0 || selected.cancelled) return;
     const item = selected.items?.[0];
     setEditId(selected.id);
-    setForm({ id: selected.id, invoice_no: selected.invoice_no, invoice_type: selected.invoice_type, invoice_date: selected.invoice_date || todayISO(), due_date: selected.due_date || '', customer_name: selected.customer_name || '', customer_id: selected.customer_id || '', po_no: selected.po_no || '', dc_no: selected.dc_no || '', payment_terms: selected.payment_terms || '' });
+    setForm({ id: selected.id, invoice_no: selected.invoice_no, invoice_type: selected.invoice_type, invoice_date: selected.invoice_date || todayISO(), due_date: selected.due_date || '', due_days: (selected.invoice_date && selected.due_date) ? diffDaysISO(selected.invoice_date, selected.due_date) : '', customer_name: selected.customer_name || '', customer_id: selected.customer_id || '', po_no: selected.po_no || '', dc_no: selected.dc_no || '', payment_terms: selected.payment_terms || '' });
     const quantity = Math.max(1, Number(selected.quantity || 1));
     const taxable = Number(selected.taxable_value || selected.basic_value || 0);
     const taxRate = taxable > 0 ? (Number(selected.cgst || 0) + Number(selected.sgst || 0) + Number(selected.igst || 0)) * 100 / taxable : 0;
@@ -146,7 +159,11 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     setBusy(true); setError('');
     try {
       const items = lines.map(line => ({ ...line, quantity: Number(line.quantity), rate: Number(line.rate), gst_rate: line.gst_rate === '' ? null : Number(line.gst_rate), discount_pct: Number(line.discount_pct || 0) }));
-      const result = await financeApi.saveInvoice({ ...form, quantity: items.reduce((sum, item) => sum + item.quantity, 0), part_name: items.map(item => item.description).join(', ') }, items);
+      // Due Days wins when set; otherwise the stored due date (edit flow) is kept as-is.
+      const dueDate = String(form.due_days ?? '').trim() !== '' && form.invoice_date
+        ? addDaysISO(form.invoice_date, Number(form.due_days))
+        : (form.due_date || '');
+      const result = await financeApi.saveInvoice({ ...form, due_date: dueDate, quantity: items.reduce((sum, item) => sum + item.quantity, 0), part_name: items.map(item => item.description).join(', ') }, items);
       await reload(1);
       if (editId) {
         // Editing an existing invoice still happens in the popup, which closes on save.
@@ -302,7 +319,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
         <FormField label="Delivery Challan" inline><select className={`${compactInput} w-[16rem]`} value={form.delivery_id||''} onChange={e=>chooseDelivery(e.target.value)}><option value="">Not linked</option>{deliveries.map(d=><option key={d.id} value={d.id}>{d.delivery_no||d.id} · {d.customer_name||''}</option>)}</select></FormField>
         <FormField label="Company" required inline><select className={`${compactInput} w-[15rem]`} value={form.customer_id||''} onChange={e=>{const c=customers.find(x=>x.id===e.target.value);setForm({...form,customer_id:e.target.value,customer_name:c?.name||''})}}><option value="">Select company</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></FormField>
         <FormField label="Invoice Date" inline><input type="date" className={`${compactInput} w-[10.5rem]`} value={form.invoice_date} onChange={e=>setForm({...form,invoice_date:e.target.value})}/></FormField>
-        <FormField label="Due Date" inline><input type="date" className={`${compactInput} w-[10.5rem]`} value={form.due_date||''} onChange={e=>setForm({...form,due_date:e.target.value})}/></FormField>
+        <FormField label="Due Days" inline><input type="number" min={0} className={`${compactInput} w-[6rem]`} value={form.due_days||''} onChange={e=>setForm({...form,due_days:e.target.value})} placeholder="Days"/>{form.due_days !== '' && form.invoice_date && addDaysISO(form.invoice_date, Number(form.due_days)) ? <span className="text-[11px] text-slate-500 whitespace-nowrap">due {addDaysISO(form.invoice_date, Number(form.due_days)).split('-').reverse().join('-')}</span> : null}</FormField>
         <FormField label="PO No" inline><input className={`${compactInput} w-[9rem]`} value={form.po_no||''} onChange={e=>setForm({...form,po_no:e.target.value})}/></FormField>
         <FormField label="Payment Terms" inline><input className={`${compactInput} w-[11rem]`} value={form.payment_terms||''} onChange={e=>setForm({...form,payment_terms:e.target.value})}/></FormField>
       </div>

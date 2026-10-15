@@ -84,6 +84,7 @@ import { QuantityTrackingPage } from './pages/reports/QuantityTrackingPage';
 import {
   UsersPage, CompaniesPage, SettingsPage, AuditLogsPage, AccessPage
 } from './pages/admin/AdminPages';
+import { SupportCenterPage } from './pages/support/SupportCenterPage';
 import { RequireModule, moduleForPage } from '@/components/auth/RequireModule';
 import { getPageTheme } from './lib/pageThemes';
 
@@ -264,6 +265,7 @@ function MainLayout() {
             <Route path="/admin/permissions" element={<Navigate to="/admin/access" replace />} />
             <Route path="/admin/settings" element={<SettingsPage />} />
             <Route path="/admin/audit-logs" element={<AuditLogsPage />} />
+            <Route path="/support/center" element={<SupportCenterPage />} />
 
             {/* Fallback */}
             <Route path="*" element={<PlaceholderPage title="Page Not Found" />} />

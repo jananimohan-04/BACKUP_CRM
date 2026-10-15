@@ -44,7 +44,7 @@ export function Topbar({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const { kpis, header } = useHeaderKpis();
+  const { kpis, header, tabs, tabActions } = useHeaderKpis();
   // Live clock: date + time, ticking every second.
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -63,10 +63,27 @@ export function Topbar({
 
       {/* Opt-in page title — same line as date/profile (page hides its own header) */}
       {header && (
-        <div className="flex items-center gap-2 shrink min-w-0 max-w-[45%]">
-          <h1 className="text-sm font-bold text-slate-800 truncate">{header.title}</h1>
+        <div className="flex items-center gap-2 shrink-0">
+          <h1 className="text-sm font-bold text-slate-800 whitespace-nowrap">{header.title}</h1>
           {header.subtitle && <span className="text-[11px] text-slate-400 truncate hidden md:inline">{header.subtitle}</span>}
+          {tabs.length > 0 && <span className="h-5 w-px bg-slate-300 mx-1 hidden lg:inline" aria-hidden="true" />}
         </div>
+      )}
+
+      {/* Opt-in page tabs — same line as date/profile (desktop only). */}
+      {tabs.length > 0 && (
+        <nav aria-label="Page tabs" className="hidden lg:flex items-center gap-1 min-w-0 overflow-x-auto shrink">
+          {tabs.map(t => (
+            <button
+              key={t.label}
+              type="button"
+              onClick={t.onClick}
+              className={`px-2 py-1 text-xs font-semibold rounded-md whitespace-nowrap transition-colors shrink-0 ${t.active ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
       )}
 
       {/* Sales Pipeline KPIs — inline strip sharing the header row (page supplies the data) */}
@@ -104,16 +121,25 @@ export function Topbar({
         );
       })()}
 
-      {/* Company: shown read-only for normal users */}
-      {company && !isSuperAdmin && (
-        <div className="hidden md:flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-200 rounded-md text-xs font-bold text-slate-700">
-          <Building2 size={14} className="text-slate-400" />
-          {company.company_name}
-        </div>
-      )}
+      {/* Right-aligned actions & utilities (pushed to the right) */}
+      <div className="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
+        {/* Opt-in tab actions (e.g. + Create Production Order) */}
+        {tabActions && (
+          <div className="hidden lg:flex items-center shrink-0">
+            {tabActions}
+          </div>
+        )}
 
-      {/* Date + profile box */}
-      <div className="relative shrink-0" ref={profileRef}>
+        {/* Company: shown read-only for normal users */}
+        {company && !isSuperAdmin && (
+          <div className="hidden md:flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-200 rounded-md text-xs font-bold text-slate-700">
+            <Building2 size={14} className="text-slate-400" />
+            {company.company_name}
+          </div>
+        )}
+
+        {/* Date + profile box */}
+        <div className="relative shrink-0" ref={profileRef}>
         <button
           onClick={() => setShowProfile(!showProfile)}
           className="flex items-center gap-1.5 px-2 py-1.5 hover:bg-slate-100 rounded-md transition-colors border border-slate-200 bg-white shadow-sm shrink-0"
@@ -173,6 +199,7 @@ export function Topbar({
             </div>
           </div>
         )}
+        </div>
       </div>
     </header>
   );

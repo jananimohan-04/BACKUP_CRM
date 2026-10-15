@@ -71,6 +71,8 @@ export const MODULE_CATALOG: ModuleDef[] = [
   { key: 'admin-access', label: 'Access Management', category: 'Administration', actions: [...V], pages: ['admin/access', 'admin/roles', 'admin/permissions'] },
   { key: 'settings', label: 'Settings', category: 'Administration', actions: [...V], pages: ['admin/settings'] },
   { key: 'audit-logs', label: 'Audit Logs', category: 'Administration', actions: [...V], pages: ['admin/audit-logs'] },
+
+  { key: 'support', label: 'Support Center', category: 'Administration', actions: ['view', 'create', 'edit', 'delete', 'approve', 'export'], pages: ['support/center'] },
 ];
 
 export const MODULE_KEYS = MODULE_CATALOG.map((m) => m.key);

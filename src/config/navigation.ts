@@ -17,6 +17,7 @@ import {
   Scale,
   Landmark,
   Wallet,
+  LifeBuoy,
   type LucideIcon,
 } from 'lucide-react';
 import type { ErpRole } from '@/contexts/AuthContext';
@@ -99,6 +100,12 @@ export const navSections: NavSection[] = [
       { label: 'Access Management', icon: Users, page: 'admin/access', roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'], iconClass: 'text-emerald-400', module: 'admin-access' },
       { label: 'Company Management', icon: Building2, page: 'admin/companies', roles: ['SUPER_ADMIN'], iconClass: 'text-indigo-400', module: 'admin-companies' },
       { label: 'Settings', icon: Settings, page: 'admin/settings', iconClass: 'text-gray-400', module: 'settings' },
+    ],
+  },
+  {
+    label: 'Support',
+    items: [
+      { label: 'Support Center', icon: LifeBuoy, page: 'support/center', iconClass: 'text-cyan-300', module: 'support' },
     ],
   },
 ];

@@ -3,11 +3,13 @@ import { Shield, Zap, Award } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 // TEMPORARY (local dev only): password sign-in is shown only when running the dev server
-// against localhost, because the local Supabase has no Google OAuth credentials.
-// Hosted builds keep the Google-only screen. TODO: remove once local Google OAuth works.
+// against the LOCAL Supabase, because it has no Google OAuth credentials. Against the hosted
+// project (and in every hosted build) the screen is Google-only, exactly like production.
+// TODO: remove once local Google OAuth works.
 const isLocalDev =
   import.meta.env.DEV &&
-  ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  ['localhost', '127.0.0.1'].includes(window.location.hostname) &&
+  /^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(String(import.meta.env.VITE_SUPABASE_URL ?? ''));
 
 export function LoginScreen() {
   const { signInWithGoogle, signInWithPassword, errorMessage } = useAuth();

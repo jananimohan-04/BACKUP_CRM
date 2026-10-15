@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Card';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 
 import { SummaryCards } from './SummaryCards';
 import { ProductionOrdersTab } from './ProductionOrdersTab';
@@ -19,6 +20,18 @@ export function ProductionMainPage() {
   const [activeTab, setActiveTab] = useState('Production Orders');
   const [loading, setLoading] = useState(true);
   const [workOrders, setWorkOrders] = useState<any[]>([]);
+
+  // Publish the title and tabs into the top bar (same line as date/profile); the local
+  // tab row below stays only for smaller screens. Cleared on unmount.
+  const { setTabs, setHeader } = useHeaderKpis();
+  useEffect(() => {
+    setHeader({ title: 'Production' });
+    setTabs(TABS.map(label => ({ label, active: label === activeTab, onClick: () => setActiveTab(label) })));
+    return () => {
+      setTabs([]);
+      setHeader(null);
+    };
+  }, [activeTab, setTabs, setHeader]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -42,7 +55,7 @@ export function ProductionMainPage() {
   return (
     <div className="p-4 lg:p-6 bg-slate-50 min-h-full">
       {!isOrders && (
-        <>
+        <div className="lg:hidden">
           <PageHeader
             title="Production"
             description="Plan, track and manage production from project to part to finished goods."
@@ -55,12 +68,12 @@ export function ProductionMainPage() {
               </div>
             }
           />
-          <SummaryCards workOrders={workOrders} />
-        </>
+        </div>
       )}
+      {!isOrders && <SummaryCards workOrders={workOrders} />}
 
-      {/* Tabs */}
-      <div className="flex items-center gap-4 border-b border-slate-200 mb-3 overflow-x-auto">
+      {/* Tabs (below-lg screens only — desktop shows them in the top bar) */}
+      <div className="flex lg:hidden items-center gap-4 border-b border-slate-200 mb-3 overflow-x-auto">
         {TABS.map(tab => (
           <button
             key={tab}
