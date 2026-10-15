@@ -4291,7 +4291,7 @@ export function SalesPipelinePage() {
       const seen = new Set<string>();
       for (const { it } of flatItems) {
         const id = inwardLineIdentity(it);
-        if (id === 'nm:') continue;
+        if (id === 'nm:' || String(it.productKey) === 'expense') continue;
         if (seen.has(id)) { alert(`"${it.productName}" is added twice in this inward entry. Keep one line and adjust its quantity.`); return; }
         seen.add(id);
       }
@@ -4925,14 +4925,14 @@ export function SalesPipelinePage() {
     } else {
       const leg = inwardLegacyOptions(group).find((o: any) => normStr(o.name) === normStr(v));
       if (leg) {
-        const dupe = dupeOf(`nm:${normStr(leg.name)}`);
+        // Expense entries (free-text lines) may repeat an item; only catalogue purchases stay single-line.
+        const dupe = opts?.allowFreeText ? undefined : dupeOf(`nm:${normStr(leg.name)}`);
         if (dupe) { alert(`"${leg.name}" is already on line ${dupe.jj + 1}. Change the quantity there instead of adding it twice.`); return; }
         const patch: any = { productName: leg.name, productKey: leg.key, partId: '', partCode: '', enquiryId: leg.enquiryId || '', projectName: leg.leadNo || '' };
         if (leg.customer && !String(group.partyName || '').trim()) group.partyName = leg.customer;
         items[ii] = { ...prev, ...patch };
       } else if (opts?.allowFreeText) {
-        const dupe = dupeOf(`nm:${normStr(v)}`);
-        if (v.trim() && dupe) { alert(`"${v.trim()}" is already on line ${dupe.jj + 1}. Change the quantity there instead of adding it twice.`); return; }
+        // Expense items are bought repeatedly (e.g. a battery on several days), so the same name may be entered again.
         items[ii] = { ...prev, productName: v, productKey: v.trim() ? 'expense' : '', partId: '', partCode: '', enquiryId: '', projectName: v };
       } else {
         // Catalogue purchase: typed text that matches nothing stays visible so
