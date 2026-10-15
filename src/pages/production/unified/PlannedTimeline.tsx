@@ -187,7 +187,7 @@ export function PlannedTimeline() {
     setLoading(true);
     const [p, w, o, m, pr, jc] = await Promise.all([
       supabase.from('cnc_operation_plans').select('*').order('plan_date').order('start_time'),
-      supabase.from('cnc_work_orders').select('id,wo_no,part_name,customer,status,quantity').not('status', 'in', '("Completed","Dispatched","Cancelled")'),
+      supabase.from('cnc_work_orders').select('id,wo_no,part_name,customer,status,quantity,completed,created_at').order('created_at', { ascending: false }).not('status', 'in', '("Completed","Dispatched","Cancelled")'),
       supabase.from('cnc_work_order_operations').select('*'),
       supabase.from('cnc_machines').select('code'),
       supabase.from('cnc_processes').select('machine_type'),
@@ -195,7 +195,17 @@ export function PlannedTimeline() {
     ]);
     setMissing(!!p.error && isMissingTable(p.error));
     setRows(p.error ? [] : ((p.data ?? []) as PlanRow[]));
-    setWos(w.data ?? []);
+    // Work orders still to be produced, one entry per work order number. A work order whose whole
+    // quantity is done has moved to Finished Goods, so it is no longer offered for planning.
+    const seenWo = new Set<string>();
+    setWos((w.data ?? []).filter((x: any) => {
+      const key = String(x.wo_no ?? x.id).trim().toLowerCase();
+      if (seenWo.has(key)) return false;
+      const qty = Number(x.quantity) || 0;
+      if (qty > 0 && (Number(x.completed) || 0) >= qty) return false;
+      seenWo.add(key);
+      return true;
+    }));
     setOps(o.error ? [] : (o.data ?? []));
     const set = new Set<string>();
     [...(m.data ?? []).map((x: any) => x.code), ...(pr.data ?? []).map((x: any) => x.machine_type)].forEach(v => { const t = String(v ?? '').trim(); if (t) set.add(t); });
