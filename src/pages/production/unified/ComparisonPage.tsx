@@ -46,7 +46,7 @@ export function useTimelineData() {
     setLoading(true);
     const [p, w, j] = await Promise.all([
       supabase.from('cnc_operation_plans').select('*'),
-      supabase.from('cnc_work_orders').select('id,wo_no,part_name,customer,status,quantity'),
+      supabase.from('cnc_work_orders').select('id,wo_no,part_name,customer,status,quantity,completed,sales_order'),
       supabase.from('cnc_job_cards').select('*'),
     ]);
     setMissing(!!p.error && isMissingTable(p.error));

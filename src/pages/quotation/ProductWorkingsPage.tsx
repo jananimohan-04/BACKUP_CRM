@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, Calculator, Cog, Package, Plus, RotateCcw, Save, Trash2 } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 import { calcWorkings, emptyWorkings, rowCost, type WorkRow, type Workings } from '@/lib/quotationWorkings';
@@ -30,7 +30,13 @@ export function ProductWorkingsPage({ title, initial, onBack, onSave }: {
     change(p => ({ ...p, materials: [...p.materials, newRow(it.description, String(it.weightKg), it.ratePerKg !== null ? String(it.ratePerKg) : '')] }));
     setNote(it.ratePerKg === null ? 'Metal added to the BOM. Enter its rate (₹/kg) in the sheet below.' : 'Metal added to the BOM.');
   };
-  const back = () => { if (!dirty || window.confirm('Leave without saving this product\'s workings?')) onBack(); };
+  // Keep the quotation line's unit price in step with the workings as they are edited, so leaving
+  // the sheet (or exporting) never finds the price still empty.
+  useEffect(() => {
+    if (dirty && r.issues.length === 0 && r.total > 0) onSave(w, r.total, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [w]);
+  const back = () => { if (!dirty || r.issues.length === 0 || window.confirm('Leave without saving this product\'s workings?')) onBack(); };
   const save = (leave: boolean) => {
     if (r.issues.length) { setNote(r.issues[0]); return; }
     onSave(w, r.total, leave);
