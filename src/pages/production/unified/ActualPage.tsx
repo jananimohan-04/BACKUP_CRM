@@ -37,7 +37,7 @@ export function ActualTimeline() {
     void (async () => {
       const [o, p, so, inw] = await Promise.all([
         supabase.from('cnc_work_order_operations').select('*'), supabase.from('cnc_processes').select('process_name'),
-        supabase.from('cnc_sales_orders').select('id,order_no,customer,part_name,part_no,part_number,quantity,status,created_at').order('created_at', { ascending: false }),
+        supabase.from('cnc_sales_orders').select('id,order_no,customer,part_name,part_no,part_number,quantity,items,status,created_at,order_date').order('created_at', { ascending: false }),
         supabase.from('cnc_inwards').select('*').order('created_at', { ascending: false }),
       ]);
       setOps(o.error ? [] : (o.data ?? []));
@@ -54,29 +54,36 @@ export function ActualTimeline() {
   // Everything that can be produced, once each: the products on open sales orders and inward items,
   // minus those already fully finished. (Work orders stay in the background; the person never picks one.)
   const lc = (v: unknown) => String(v ?? '').trim().toLowerCase();
-  const woFor = (customer: unknown, part: unknown) => data.wos.filter(w => String(w.status) !== 'Cancelled' && lc(w.customer) === lc(customer) && lc(w.part_name) === lc(part));
+  // A product is identified by its name: the same product on a sales order and on an inward is one item.
+  const woFor = (_customer: unknown, part: unknown) => data.wos.filter(w => String(w.status) !== 'Cancelled' && lc(w.part_name) === lc(part));
+  const stampOf = (iso: unknown) => {
+    const d = new Date(String(iso ?? '')); if (Number.isNaN(d.getTime())) return '';
+    const p = (n: number) => String(n).padStart(2, '0'); const h = d.getHours() % 12 || 12;
+    return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()} ${p(h)}:${p(d.getMinutes())} ${d.getHours() < 12 ? 'AM' : 'PM'}`;
+  };
   const choices = useMemo(() => {
     type Item = { value: string; label: string; soRef: string; customer: string; part: string; partNo: string; qty: number; remaining: number };
     const sos: Item[] = []; const ins: Item[] = [];
     const seen = new Set<string>();
     const add = (list: Item[], value: string, ref: string, shown: string, customer: string, part: string, partNo: string, qty: number) => {
-      const key = `${lc(customer)}|${lc(part)}`;
+      const key = lc(part);
       if (!part || seen.has(key)) return;
       seen.add(key);
       const done = woFor(customer, part).reduce((s, w) => s + (Number(w.completed) || 0), 0);
       const remaining = Math.max(0, qty - done);
       if (qty > 0 && remaining <= 0) return; // fully finished: it has moved on to Finished Goods
-      list.push({ value, label: `${shown} - ${part} - ${customer || '—'} - Qty ${qty}${done ? ` (${done} done)` : ''}`, soRef: ref, customer, part, partNo, qty, remaining: qty > 0 ? remaining : 0 });
+      list.push({ value, label: `${part} - ${customer || '—'}${shown ? ` - ${shown}` : ''} - Qty ${qty}${done ? ` (${done} done)` : ''}`, soRef: ref, customer, part, partNo, qty, remaining: qty > 0 ? remaining : 0 });
     };
+    const soCustomer = (ref: unknown) => (ref ? String(salesOrders.find(s => lc(s.order_no) === lc(ref))?.customer ?? '') : '');
     salesOrders.filter(s => !['Cancelled', 'Completed', 'Delivered', 'Closed'].includes(String(s.status))).forEach(s => {
       let items: any[] = [];
       try { const raw = typeof s.items === 'string' ? JSON.parse(s.items) : s.items; if (Array.isArray(raw)) items = raw; } catch { /* single product */ }
       const named = items.filter(it => String(it.partName || it.productName || it.part_name || '').trim());
-      if (named.length) named.forEach((it, n) => add(sos, `so:${s.id}:${n}`, s.order_no, s.order_no, s.customer ?? '', String(it.partName || it.productName || it.part_name).trim(), String(it.partNumber || it.part_no || ''), Number(it.quantity ?? it.qty) || 0));
-      else add(sos, `so:${s.id}:0`, s.order_no, s.order_no, s.customer ?? '', String(s.part_name ?? '').trim(), String(s.part_number || s.part_no || ''), Number(s.quantity) || 0);
+      if (named.length) named.forEach((it, n) => add(sos, `so:${s.id}:${n}`, s.order_no, stampOf(s.created_at || s.order_date), s.customer ?? '', String(it.partName || it.productName || it.part_name).trim(), String(it.partNumber || it.part_no || ''), Number(it.quantity ?? it.qty) || 0));
+      else add(sos, `so:${s.id}:0`, s.order_no, stampOf(s.created_at || s.order_date), s.customer ?? '', String(s.part_name ?? '').trim(), String(s.part_number || s.part_no || ''), Number(s.quantity) || 0);
     });
     inwards.filter(i => String(i.status) !== 'Deleted' && String(i.category ?? '').trim().toUpperCase() !== 'EXPENSES').forEach(i =>
-      add(ins, `in:${i.id}`, i.sales_order_ref || '', i.inward_no || 'Inward', i.party_name ?? '', String(i.product_name || i.part_name || '').trim(), String(i.part_number || ''), Number(i.quantity) || 0));
+      add(ins, `in:${i.id}`, i.sales_order_ref || '', stampOf(i.created_at), soCustomer(i.sales_order_ref) || i.party_name || '', String(i.part_name || i.product_name || '').trim(), String(i.part_number || ''), Number(i.quantity) || 0));
     return { sos, ins, byValue: new Map([...sos, ...ins].map(x => [x.value, x])) };
   }, [data.wos, salesOrders, inwards]);
   const pendingSrc = choices.byValue.get(run.item);

@@ -1876,10 +1876,18 @@ export function SalesPipelinePage() {
     return `nm:${normStr(item?.productName)}`;
   };
 
-  /** Legacy (enquiry/order-linked) options for one inward group, as before. */
-  const inwardLegacyOptions = (group: any) => inwardModalTarget?.id === 'dummy'
-    ? (inwardForm.productOptions || []).filter((o: any) => { const p = (group.partyName || inwardForm.partyName || '').trim().toLowerCase(); const u = (inwardForm.projectName || '').trim(); const base = (s: any) => String(s||'').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, ''); return (!p || String(o.customer || '').trim().toLowerCase() === p) && (!u || base(o.leadNo) === base(u)); })
-    : (inwardForm.productOptions || []);
+  /** Product choices for one inward group: sales-order products plus earlier inward products, each name once.
+   *  The Company on an inward is the supplier it came from, so it never narrows the product list. */
+  const inwardLegacyOptions = (_group: any) => {
+    const base = (s: any) => String(s||'').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, '');
+    const u = (inwardForm.projectName || '').trim();
+    const seen = new Set<string>();
+    return [...(inwardForm.productOptions || []), ...inwardProdOptions].filter((o: any) => {
+      const k = String(o.name || '').trim().toLowerCase();
+      if (!k || seen.has(k) || (u && base(o.leadNo) !== base(u))) return false;
+      seen.add(k); return true;
+    });
+  };
   // Approved-price lookup for the DC form (same source as the DC→Invoice
   // gate: latest Approved costing sheet for the quotation).
   useEffect(() => {
@@ -4267,10 +4275,8 @@ export function SalesPipelinePage() {
       const cat = String(g.category || inwardForm.category || '').trim().toUpperCase();
       const party = String(g.partyName || inwardForm.partyName || '').trim();
       if (!party) { alert('Select a company/supplier for each inward.'); return; }
-      if (PURCHASE_CATEGORIES.includes(cat) && resolveSupplier(party).kind === 'unknown') {
-        alert(`"${party}" is not a known supplier or company. Pick one from the list instead of typing a new name.`);
-        return;
-      }
+      // Any name is accepted: the company is simply who the goods came from (a known supplier just gets its price terms).
+      void cat;
     }
     const flatItems = groups.flatMap((g: any) => g.items.map((it: any) => ({ g, it })));
     for (const { g, it } of flatItems) {
@@ -4782,6 +4788,27 @@ export function SalesPipelinePage() {
 
   // Standalone inward entry (kanban +Add and Inwards list share this).
   const [inwardRefreshSignal, setInwardRefreshSignal] = useState(0);
+  // Products already received on earlier inwards (their stored product name already carries the sale date/time),
+  // offered next to the sales-order products so the same product can be inwarded again.
+  const [inwardProdOptions, setInwardProdOptions] = useState<any[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.from('cnc_inwards').select('product_name,enquiry_id,project_name,status').neq('status', 'Deleted');
+      if (cancelled || error) return;
+      const seen = new Set<string>();
+      const out: any[] = [];
+      for (const r of data ?? []) {
+        const name = String((r as any).product_name ?? '').trim();
+        const k = name.toLowerCase();
+        if (!name || seen.has(k)) continue;
+        seen.add(k);
+        out.push({ key: `inward:${k}`, name, quantity: '', enquiryId: (r as any).enquiry_id || '', leadNo: (r as any).project_name || '', customer: '', saleLabel: 'earlier inward' });
+      }
+      setInwardProdOptions(out);
+    })();
+    return () => { cancelled = true; };
+  }, [inwardRefreshSignal, company?.id]);
   const openDummyInward = () => {
     setInwardForm({
       category: 'GOODS PURCHASE', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: '', remarks: '',
@@ -4929,7 +4956,6 @@ export function SalesPipelinePage() {
         const dupe = opts?.allowFreeText ? undefined : dupeOf(`nm:${normStr(leg.name)}`);
         if (dupe) { alert(`"${leg.name}" is already on line ${dupe.jj + 1}. Change the quantity there instead of adding it twice.`); return; }
         const patch: any = { productName: leg.name, productKey: leg.key, partId: '', partCode: '', enquiryId: leg.enquiryId || '', projectName: leg.leadNo || '' };
-        if (leg.customer && !String(group.partyName || '').trim()) group.partyName = leg.customer;
         items[ii] = { ...prev, ...patch };
       } else if (opts?.allowFreeText) {
         // Expense items are bought repeatedly (e.g. a battery on several days), so the same name may be entered again.
@@ -5687,7 +5713,7 @@ export function SalesPipelinePage() {
                             onChange={e => onInwardProductInput(index, ii, e.target.value)} />
                           <datalist id={`inward-products-${index}-${ii}`}>
                             {eligibleCatalogue.map((m: any) => <option key={m.key} value={m.name}>{[m.code, m.unit ? `per ${m.unit}` : '', m.unitPrice ? `₹${m.unitPrice}` : ''].filter(Boolean).join(' · ')}</option>)}
-                            {productOptions.map((option: any) => <option key={option.key} value={option.name}>{option.customer || option.leadNo}{option.saleLabel ? ` · ${option.saleLabel}` : ''}</option>)}
+                            {productOptions.map((option: any) => <option key={option.key} value={option.name}>{[option.customer, option.saleLabel || option.leadNo].filter(Boolean).join(' · ')}</option>)}
                           </datalist>
                         </>
                       )}
