@@ -4402,12 +4402,8 @@ export function SalesPipelinePage() {
     fetchPipeline();
     setInwardRefreshSignal((n) => n + 1);
     if (another) {
-      // Next inward: same company, category and date for convenience, nothing else carried over.
-      const first = (inwardForm.parts || [])[0] || {};
-      setInwardForm((f: any) => ({
-        ...f,
-        parts: [{ ...emptyInwardPart({ category: first.category || f.category || 'GOODS PURCHASE', referenceNo: '', inwardDate: first.inwardDate || f.inwardDate || new Date().toISOString().split('T')[0], partyName: first.partyName ?? f.partyName ?? '' }), productKey: '', productName: '', enquiryId: '' }],
-      }));
+      // Next inward: a completely blank form (the saved one is cleared), the popup stays open.
+      openDummyInward();
       setInwardSavedCount((n) => n + 1);
       return;
     }
@@ -6566,6 +6562,9 @@ export function SalesPipelinePage() {
             )}
             {addPopup === 'Sales Order' && (
               <Button size="sm" onClick={saveStandaloneSalesOrder} disabled={savingSo} className={MODULE_THEMES['Sales Order'].btnPrimary}>{savingSo ? 'Saving...' : 'Save Order'}</Button>
+            )}
+            {addPopup === 'Inward' && (
+              <Button variant="secondary" size="sm" disabled={savingInward} onClick={() => void saveInward(true)}>{savingInward ? 'Saving...' : 'Save & Add Another Inward'}</Button>
             )}
             {addPopup === 'Inward' && (
               <Button size="sm" disabled={savingInward} onClick={() => void saveInward(false)} className={MODULE_THEMES.Inward.btnPrimary}>{savingInward ? 'Saving...' : 'Submit'}</Button>
