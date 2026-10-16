@@ -5286,13 +5286,12 @@ export function SalesPipelinePage() {
           </div>
         </div>
         {(soForm.items || []).length > 0 && (
-          <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_7.5rem_6rem_2rem] gap-2 items-center px-1 pt-0.5">
+          <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_6rem_2rem] gap-2 items-center px-1 pt-0.5">
             <span></span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Product Name</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Qty</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Unit Price (₹)</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">GST %</span>
-            <span className="text-[10px] font-bold text-slate-500 uppercase">Status</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Drawings</span>
             <span></span>
           </div>
@@ -5301,15 +5300,12 @@ export function SalesPipelinePage() {
           const upd = (patch: any) => setSoForm((prev: any) => ({ ...prev, items: (prev.items || []).map((r: any, i: number) => (i === idx ? { ...r, ...patch } : r)) }));
           return (
             <div key={item.id || idx} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5">
-              <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_7.5rem_6rem_2rem] gap-2 items-center">
+              <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_6rem_2rem] gap-2 items-center">
                 <span className="text-[11px] font-bold text-slate-400 text-center">{idx + 1}</span>
                 <input className={compactCell} placeholder="Product name" value={item.partName || ''} onChange={e=>upd({ partName: e.target.value })} />
                 <input type="number" min={0} className={compactCell} placeholder="Qty" value={item.quantity ?? ''} onChange={e=>upd({ quantity: e.target.value })} />
                 <input type="number" min={0} className={compactCell} placeholder="Unit Price (₹)" value={item.unitPrice ?? ''} onChange={e=>upd({ unitPrice: e.target.value })} />
                 <input type="number" min={0} className={compactCell} placeholder="GST %" value={item.gst ?? ''} onChange={e=>upd({ gst: e.target.value })} />
-                <select className={compactCell} value={item.itemStatus || 'Confirmed'} onChange={e=>upd({ itemStatus: e.target.value })}>
-                  {['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'].map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
                 <label className="inline-flex h-7 w-full cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach drawings or any file (all formats)">
                   <UploadCloud size={13} />{((item.files || []).length + getItemFileEntries(item).length) ? `${(item.files || []).length + getItemFileEntries(item).length} file${((item.files || []).length + getItemFileEntries(item).length) === 1 ? '' : 's'}` : 'Upload'}
                   <input type="file" multiple accept="*/*" className="hidden" aria-label={`Drawings for product ${idx + 1}`} onChange={e => {
