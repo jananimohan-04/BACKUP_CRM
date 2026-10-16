@@ -738,7 +738,7 @@ export function LeadsPage({ hideHeader = false, toolbarLeft }: { hideHeader?: bo
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      {!hideHeader && <PageHeader title="All Companies" description="Manage all incoming enquiries and convert qualified companies to companies" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}</div>} />}
+      {!hideHeader && <PageHeader title="All Company Library" description="Manage all incoming enquiries and convert qualified companies to companies" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}</div>} />}
 
       <DataTable data={displayLeads} columns={columns} searchKeys={['company', 'leadNo', 'city', 'gst']} onAdd={() => { setEditId(null); setMasterEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Company" inlineAdd toolbarLeft={toolbarLeft} toolbarDate={<DateSelector />} filterOptions={[{ label: 'New', value: 'New' }, { label: 'Converted', value: 'Converted' }, { label: 'Lost', value: 'Lost' }]} />
 

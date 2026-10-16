@@ -38,7 +38,7 @@ export const MODULE_CATALOG: ModuleDef[] = [
   { key: 'enquiries', label: 'Enquiries', category: 'Sales', actions: [...VCEDX], pages: [] },
   { key: 'quotations', label: 'Quotations', category: 'Sales', actions: [...VCEDX], pages: ['sales/quotations', 'quotation/metal-calculator', 'quotation/create', 'quotation/client-library', 'quotation/product-library', 'quotation/terms-library', 'quotation/library', 'quotation/company-profile'] },
   { key: 'sales-orders', label: 'Sales Orders', category: 'Sales', actions: [...VCEDX], pages: ['sales/orders'] },
-  { key: 'companies', label: 'All Companies', category: 'Sales', actions: [...VCEDX], pages: ['sales/leads', 'sales/customers'] },
+  { key: 'companies', label: 'All Company Library', category: 'Sales', actions: [...VCEDX], pages: ['sales/leads', 'sales/customers'] },
 
   { key: 'production', label: 'Production', category: 'Production', actions: [...VCED], pages: ['production/planning', 'production/work-orders', 'production/job-cards'] },
   { key: 'scheduling', label: 'Scheduling', category: 'Production', actions: [...VCED], pages: ['production/scheduling'] },

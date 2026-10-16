@@ -6076,7 +6076,7 @@ export function SalesPipelinePage() {
         setActiveView('pipeline');
         setPipelineViewMode(pipelineViewMode === 'companies' ? 'kanban' : 'companies');
       }}
-      title="Open All Companies Directory"
+      title="Open All Company Library"
       className={`flex items-center gap-2 px-3.5 py-1.5 text-sm font-semibold rounded-lg border shadow-sm transition-all cursor-pointer shrink-0 whitespace-nowrap ${
         pipelineViewMode === 'companies'
           ? 'bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-500/25 ring-2 ring-brand-500/30'
@@ -6084,7 +6084,7 @@ export function SalesPipelinePage() {
       }`}
     >
       <Building2 size={15} className={pipelineViewMode === 'companies' ? 'text-white' : 'text-brand-500'} />
-      <span>All Companies</span>
+      <span>All Company Library</span>
     </button>
   ) : null;
 

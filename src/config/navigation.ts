@@ -113,7 +113,7 @@ export const navSections: NavSection[] = [
 export const pageTitles: Record<string, string> = {
   'dashboard': 'Executive Dashboard',
   'sales/pipeline': 'Sales Pipeline',
-  'sales/leads': 'All Companies',
+  'sales/leads': 'All Company Library',
   'sales/customers': 'Companies',
   'sales/quotations': 'Quotations',
   'sales/orders': 'Sales Orders',
