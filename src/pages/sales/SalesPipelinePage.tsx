@@ -3268,7 +3268,25 @@ export function SalesPipelinePage() {
 
     // An inward whose order is fully produced (nothing remaining) leaves the board;
     // it is listed under the company's History instead.
+    // One card per order: once every product of a sales order has been inwarded, its Sales Order card
+    // leaves the board (the Inward card carries it on). If the inward is deleted it comes back.
+    const liveInwards = (inwards || []).filter((i: any) => !String(i.category || '').trim().toUpperCase().startsWith('EXPENSE'));
+    const inwardSoRefs = new Set(liveInwards.map((i: any) => String(i.sales_order_ref || '').trim().toLowerCase()).filter(Boolean));
+    const inwardBases = new Set(liveInwards.map((i: any) => baseUniqueNo(i.project_name || '')).filter(Boolean));
+    const inwardNames = new Set(liveInwards.flatMap((i: any) => [i.product_name, i.part_name]).map((n: any) => getProductBaseName(String(n || '')).toLowerCase()).filter(Boolean));
+    const orderInwarded = (o: any): boolean => {
+      const linked = inwardSoRefs.has(String(o?.order_no || '').trim().toLowerCase())
+        || (!!baseUniqueNo(o?.lead_no || '') && inwardBases.has(baseUniqueNo(o.lead_no)));
+      if (!linked) return false;
+      let names: string[] = [];
+      try {
+        const raw = typeof o.items === 'string' ? JSON.parse(o.items) : o.items;
+        if (Array.isArray(raw)) names = raw.map((it: any) => String(it.partName || it.productName || it.part_name || '').trim()).filter(Boolean);
+      } catch { /* single product */ }
+      return names.length === 0 || names.every(n => inwardNames.has(getProductBaseName(n).toLowerCase()));
+    };
     setCards(newCards.filter(c => {
+      if (c.type === 'order' && orderInwarded(c.raw)) return false;
       if (c.type !== 'inward') return true;
       if (c.qtyTrack && c.qtyTrack.ordered > 0) return c.qtyTrack.remaining > 0;
       // No linked sales order: everything received has been produced when no product has any left.
@@ -3440,6 +3458,14 @@ export function SalesPipelinePage() {
       const error = del.error ?? ((del.data ?? []).length === 0 ? { message: 'Nothing was deleted (the record may be protected or already gone).' } : null);
       if (error) alert("Error deleting: " + error.message);
       else {
+        // A deleted finished-goods record takes its production batches with it. Left behind, they kept
+        // counting the old rejected / gross quantities on the order and inward cards.
+        if (card.type === 'finished_goods') {
+          try {
+            const uuids = ids.map(String).filter((v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v));
+            if (uuids.length) await supabase.from('cnc_production_batches').delete().in('work_order_id', uuids);
+          } catch (e) { console.error('Batch clean-up after finished goods delete failed:', e); }
+        }
         // A deleted challan returns its goods to Finished Goods and un-counts them on the order.
         if (card.type === 'dc') {
           try {
