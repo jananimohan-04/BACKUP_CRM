@@ -88,7 +88,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   onClose: () => void;
   onMoved: () => void;
   /** Direct add: the sales orders / inwards the user can choose from (card.raw.__pick marks the blank starting card). */
-  pickOptions?: { company: string; product: string }[];
+  pickOptions?: { company: string; product: string; qty?: number }[];
   pickCompanies?: string[];
   onPick?: (company: string, product: string) => void;
   /** add: move an inward to Finished Goods. edit: revise the costing of an existing FG card. view: read-only. */
@@ -933,7 +933,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
     // One row per product, written as "Company - Product - date time". Typing matches any part of that text,
     // so the company name finds it too.
     const rowsAll = pickOptions
-      .map((o) => ({ key: `${o.company}||${o.product}`, company: String(o.company || '').trim(), product: o.product, label: productWithCompany(o.product, String(o.company || '')) }))
+      .map((o) => ({ key: `${o.company}||${o.product}`, company: String(o.company || '').trim(), product: o.product, label: productWithCompany(o.product, String(o.company || ''), o.qty) }))
       .sort((a, b) => a.label.localeCompare(b.label));
     const words = key(pickText).split(/\s+/).filter(Boolean);
     const rows = rowsAll.filter((r) => words.every((w) => r.label.toLowerCase().includes(w)));

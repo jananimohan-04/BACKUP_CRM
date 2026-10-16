@@ -162,7 +162,7 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
         const key = `${o.order_no}||${it.name}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        out.push({ key, orderNo: String(o.order_no), company, name: it.name, qty: it.qty, label: productWithCompany(attachDateTimeToProduct(it.name, o), company) });
+        out.push({ key, orderNo: String(o.order_no), company, name: it.name, qty: it.qty, label: productWithCompany(attachDateTimeToProduct(it.name, o), company, it.qty) });
       }
     }
     return out.sort((a, b) => a.label.localeCompare(b.label));

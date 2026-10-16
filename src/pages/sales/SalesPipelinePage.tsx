@@ -1924,7 +1924,7 @@ export function SalesPipelinePage() {
       if (!(o.saleOrderRef || o.saleStamp || String(o.key || '').startsWith('inward:'))) return false;
       if (String(o.key || '').startsWith('inward:') && soKeys.has(baseKey(o))) return false;
       seen.add(k); return true;
-    }).map((o: any) => ({ ...o, display: productWithCompany(o.name, o.customer) }));
+    }).map((o: any) => ({ ...o, display: productWithCompany(o.name, o.customer, o.quantity) }));
   };
   // Approved-price lookup for the DC form (same source as the DC→Invoice
   // gate: latest Approved costing sheet for the quotation).
@@ -5018,7 +5018,7 @@ export function SalesPipelinePage() {
         // Expense entries (free-text lines) may repeat an item; only catalogue purchases stay single-line.
         const dupe = opts?.allowFreeText ? undefined : dupeOf(`nm:${normStr(leg.name)}`);
         if (dupe) { alert(`"${leg.name}" is already on line ${dupe.jj + 1}. Change the quantity there instead of adding it twice.`); return; }
-        const patch: any = { productName: leg.name, productDisplay: leg.display || '', productKey: leg.key, partId: '', partCode: '', enquiryId: leg.enquiryId || '', projectName: leg.leadNo || '' };
+        const patch: any = { productName: leg.name, productDisplay: leg.display || '', partName: String(prev.partName || '').trim() ? prev.partName : getProductBaseName(leg.name), quantity: String(prev.quantity || '').trim() ? prev.quantity : (Number(leg.quantity) > 0 ? String(leg.quantity) : ''), productKey: leg.key, partId: '', partCode: '', enquiryId: leg.enquiryId || '', projectName: leg.leadNo || '' };
         items[ii] = { ...prev, ...patch };
       } else if (opts?.allowFreeText) {
         // Expense items are bought repeatedly (e.g. a battery on several days), so the same name may be entered again.
@@ -5893,7 +5893,7 @@ export function SalesPipelinePage() {
       }
     });
 
-    const optionsMap = new Map<string, { company: string; product: string }>();
+    const optionsMap = new Map<string, { company: string; product: string; qty?: number }>();
 
     // 1. From Inward cards (directly before Finished Goods)
     cards.filter(c => c.stage === 'Inward').forEach(c => {
@@ -5906,14 +5906,14 @@ export function SalesPipelinePage() {
           const prodName = String(p.name || '').trim();
           if (prodName && (p.left > 0 || !p.left)) {
             const key = `${norm(company)}||${norm(prodName)}`;
-            optionsMap.set(key, { company, product: prodName });
+            optionsMap.set(key, { company, product: prodName, qty: Number((p as any).left) || 0 });
           }
         });
       } else {
         const prod = String(c.raw?.product_name || c.raw?.part_name || c.part || '').trim();
         if (prod && !/^multiple/i.test(prod)) {
           const key = `${norm(company)}||${norm(prod)}`;
-          optionsMap.set(key, { company, product: prod });
+          optionsMap.set(key, { company, product: prod, qty: Number(c.qty) || 0 });
         }
       }
     });
@@ -5937,7 +5937,7 @@ export function SalesPipelinePage() {
             prodName = attachDateTimeToProduct(prodName, c.raw);
             const key = `${norm(company)}||${norm(prodName)}`;
             if (!postFgProductKeys.has(key)) {
-              optionsMap.set(key, { company, product: prodName });
+              optionsMap.set(key, { company, product: prodName, qty: Number(it.quantity ?? it.qty) || 0 });
             }
           }
         });
@@ -5947,7 +5947,7 @@ export function SalesPipelinePage() {
           prod = attachDateTimeToProduct(prod, c.raw);
           const key = `${norm(company)}||${norm(prod)}`;
           if (!postFgProductKeys.has(key)) {
-            optionsMap.set(key, { company, product: prod });
+            optionsMap.set(key, { company, product: prod, qty: Number(c.raw?.quantity ?? c.qty) || 0 });
           }
         }
       }
@@ -5970,7 +5970,7 @@ export function SalesPipelinePage() {
           prodName = attachDateTimeToProduct(prodName, o);
           const key = `${norm(company)}||${norm(prodName)}`;
           if (!postFgProductKeys.has(key)) {
-            optionsMap.set(key, { company, product: prodName });
+            optionsMap.set(key, { company, product: prodName, qty: Number(it.quantity ?? it.qty) || 0 });
           }
         }
       });
@@ -5978,7 +5978,7 @@ export function SalesPipelinePage() {
 
     // The same product reached through its inward (plain name) and through its sales order (name + date/time)
     // is one product: keep the sales-order original, once per company.
-    const byBase = new Map<string, { company: string; product: string }>();
+    const byBase = new Map<string, { company: string; product: string; qty?: number }>();
     for (const o of optionsMap.values()) {
       const k = `${norm(o.company)}||${norm(getProductBaseName(o.product))}`;
       const have = byBase.get(k);

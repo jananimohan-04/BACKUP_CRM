@@ -58,8 +58,8 @@ export function ActualTimeline() {
   const woFor = (_customer: unknown, part: unknown) => data.wos.filter(w => String(w.status) !== 'Cancelled' && lc(w.part_name) === lc(part));
   const stampOf = (iso: unknown) => {
     const d = new Date(String(iso ?? '')); if (Number.isNaN(d.getTime())) return '';
-    const p = (n: number) => String(n).padStart(2, '0'); const h = d.getHours() % 12 || 12;
-    return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()} ${p(h)}:${p(d.getMinutes())} ${d.getHours() < 12 ? 'AM' : 'PM'}`;
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
   };
   const choices = useMemo(() => {
     type Item = { value: string; label: string; soRef: string; customer: string; part: string; partNo: string; qty: number; remaining: number };
