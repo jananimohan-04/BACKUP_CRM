@@ -467,7 +467,7 @@ function VoucherDetailModal({ id, onClose }: { id: string; onClose: () => void }
           <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
             <table className="w-full text-sm">
               <thead><tr className="border-b border-slate-200 bg-slate-50">
-                <th className={thClass}>Account</th><th className={thClass}>Party</th><th className={thNum}>Debit</th><th className={thNum}>Credit</th>
+                <th className={thClass}>Account</th><th className={thClass}>Company</th><th className={thNum}>Debit</th><th className={thNum}>Credit</th>
               </tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {entry.lines.map((l, i) => (
@@ -702,7 +702,7 @@ function VoucherFormModal({ entry, accounts, onClose, onSaved }: {
         <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead><tr className="border-b border-slate-200 bg-slate-50">
-              <th className={thClass}>Account</th><th className={thClass}>Party</th>
+              <th className={thClass}>Account</th><th className={thClass}>Company</th>
               <th className={`${thNum} w-36`}>Debit</th><th className={`${thNum} w-36`}>Credit</th><th className="w-10" />
             </tr></thead>
             <tbody className="divide-y divide-slate-100">

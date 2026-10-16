@@ -50,12 +50,12 @@ function AddPartyDialog({ onAdded }: { onAdded: () => void }) {
         phone: phone.trim() || null,
         status: "Active"
       });
-      toast.success("Party added successfully");
+      toast.success("Company added successfully");
       setOpen(false);
       onAdded();
       setName(""); setCode(""); setContact(""); setEmail(""); setPhone("");
     } catch (err: any) {
-      toast.error(err.message || "Failed to add party");
+      toast.error(err.message || "Failed to add company");
     } finally {
       setLoading(false);
     }
@@ -197,11 +197,11 @@ function EditPartyModal({ party, open, onOpenChange, onSaved }: { party: Party |
         phone: phone.trim() || null,
         status: status,
       });
-      toast.success("Party updated successfully!");
+      toast.success("Company updated successfully!");
       onSaved();
       onOpenChange(false);
     } catch (err: any) {
-      toast.error(err.message || "Failed to update party");
+      toast.error(err.message || "Failed to update company");
     } finally {
       setLoading(false);
     }

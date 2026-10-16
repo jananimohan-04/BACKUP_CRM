@@ -16,6 +16,7 @@ import { exportCsv } from '@/lib/reportExport';
 import { todayISO } from '@/lib/format';
 import { summarizeSalesOrder, type OrderQtySummary } from '@/lib/orderQuantities';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 
 const fmt = (n: number) => Number(n || 0).toLocaleString('en-IN');
 
@@ -74,9 +75,15 @@ export function QuantityTrackingPage() {
     return () => { cancelled = true; };
   }, []);
 
+  // Global date filter (sales order date) applies before summarising.
+  const { inRange: inDateRange } = useGlobalDateFilter();
+  const rangedOrders = useMemo(
+    () => orders.filter((o: any) => inDateRange(o.order_date ?? o.created_at)),
+    [orders, inDateRange],
+  );
   const rows = useMemo<OrderQtySummary[]>(
-    () => orders.map((o) => summarizeSalesOrder(o, wos, deliveries, invoices, batches)),
-    [orders, wos, deliveries, invoices, batches],
+    () => rangedOrders.map((o) => summarizeSalesOrder(o, wos, deliveries, invoices, batches)),
+    [rangedOrders, wos, deliveries, invoices, batches],
   );
 
   const filtered = useMemo(() => rows.filter((q) => {

@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
+import { recordDateOf } from '@/lib/globalDate';
 import { supabase } from '@/lib/supabase';
 import { Search, ArrowLeft, FileText } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
@@ -140,6 +142,7 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [quotations]);
 
+  const { from: globalFrom, to: globalTo, inRange: inDateRange } = useGlobalDateFilter();
   const filteredQuotes = quotations.filter(q => {
     const matchesSearch = (q.quote_no || '').toLowerCase().includes(search.toLowerCase()) || 
       (q.customer || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -148,10 +151,12 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
       (q.customer || '').trim().toLowerCase() === companyFilter.trim().toLowerCase();
     const matchesStatus = !statusFilter || statusFilter === 'All Status' ||
       (q.status || 'Sent').trim().toLowerCase() === statusFilter.trim().toLowerCase();
-    return matchesSearch && matchesCompany && matchesStatus;
+    // Global date filter uses the quotation date (not the expiry).
+    const matchesDate = inDateRange(recordDateOf(q, ['date', 'quote_date', 'created_at']));
+    return matchesSearch && matchesCompany && matchesStatus && matchesDate;
   });
 
-  const pager = usePager(filteredQuotes, `${search}||${companyFilter}||${statusFilter}`);
+  const pager = usePager(filteredQuotes, `${search}||${companyFilter}||${statusFilter}||${globalFrom}||${globalTo}`);
 
   return (
     <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-violet-400/30 overflow-hidden flex flex-col">

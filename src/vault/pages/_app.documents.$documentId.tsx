@@ -207,12 +207,12 @@ function DocumentDetailPage() {
 
             <Card className="shadow-sm border-slate-200">
               <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Part & Party Details</CardTitle>
+                <CardTitle className="text-lg">Part & Company Details</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <div className="text-sm text-slate-500">Party / Company</div>
+                    <div className="text-sm text-slate-500">Company</div>
                     <div className="font-medium">{doc.parties?.name || "Internal"}</div>
                   </div>
                   {(doc as any)?.parts?.part_name && (

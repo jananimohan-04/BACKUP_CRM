@@ -8,6 +8,8 @@ import { financeApi, type BankFilters, type BankRow, type BankSummary } from '@/
 import { formatDate, formatINR, todayISO } from '@/lib/format';
 import { exportCsv } from '@/lib/reportExport';
 import { useAuth } from '@/contexts/AuthContext';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
+import { intersectRange } from '@/lib/globalDate';
 
 const PAGE=10;
 const cash=(v:string|number|null|undefined)=>formatINR(v,{decimals:'auto'});
@@ -36,18 +38,21 @@ export function BankCashPage(){
   const [transfer,setTransfer]=useState<any>({from:'',to:'',amount:'',date:todayISO(),mode:'',reference:'',description:''});
   const [invoices,setInvoices]=useState<any[]>([]);
 
+  const { from: globalFrom, to: globalTo } = useGlobalDateFilter();
   const reload=async(p=page,f=filters,t=tab)=>{
     setLoading(true);setError('');
     try{
+      // Global Topbar range intersects the page's own From/To.
+      const eff = intersectRange(f.from, f.to, globalFrom, globalTo);
       const [list,s]=await Promise.all([
-        financeApi.bankTransactions({kind:t||null,account:f.account||null,type:f.type||null,party:f.party||null,search:f.search,from:f.from,to:f.to,page:p,pageSize:PAGE}),
-        financeApi.bankSummary(f.from||undefined,f.to||undefined),
+        financeApi.bankTransactions({kind:t||null,account:f.account||null,type:f.type||null,party:f.party||null,search:f.search,from:eff.from||undefined,to:eff.to||undefined,page:p,pageSize:PAGE}),
+        financeApi.bankSummary(eff.from||undefined,eff.to||undefined),
       ]);
       setData(list.rows);setTotal(list.total);setSummary(s||blank);setPage(p);
     }catch(e){setData([]);setTotal(0);setSummary(blank);setError(e instanceof Error?e.message:'Unable to load bank and cash data.');}
     finally{setLoading(false);}
   };
-  useEffect(()=>{void reload(1,filters,tab)},[company?.id,tab]);
+  useEffect(()=>{void reload(1,filters,tab)},[company?.id,tab,globalFrom,globalTo]);
   useEffect(()=>{
     let active=true;
     Promise.all([financeApi.bankFilters(),financeApi.invoices({page:1,pageSize:500})]).then(([f,i])=>{
@@ -90,7 +95,7 @@ export function BankCashPage(){
   const exportData=async()=>{
     setBusy(true);
     try{const all:BankRow[]=[];for(let p=1;p<=Math.max(1,Math.ceil(total/500));p++){const r=await financeApi.bankTransactions({kind:tab||null,account:filters.account||null,type:filters.type||null,party:filters.party||null,search:filters.search,from:filters.from,to:filters.to,page:p,pageSize:500});all.push(...r.rows);if(all.length>=r.total)break;}
-      exportCsv('Bank_Cash_'+todayISO(),[['Date','Reference','Account','Type','Description','Party','Receipt','Payment','Balance','Mode','Status'],...all.map(x=>[x.txn_date,x.txn_no,x.account_name,x.kind,x.description||'',x.party_name||'',x.receipt||'',x.payment||'',x.balance||'',x.mode||'',x.status])]);
+      exportCsv('Bank_Cash_'+todayISO(),[['Date','Reference','Account','Type','Description','Company','Receipt','Payment','Balance','Mode','Status'],...all.map(x=>[x.txn_date,x.txn_no,x.account_name,x.kind,x.description||'',x.party_name||'',x.receipt||'',x.payment||'',x.balance||'',x.mode||'',x.status])]);
     }catch(e){setError(e instanceof Error?e.message:'Export failed.');}
     finally{setBusy(false);}
   };
@@ -117,11 +122,11 @@ export function BankCashPage(){
       <FormField label="To Date"><input type="date" className={inputClass} value={draft.to} onChange={e=>setDraft({...draft,to:e.target.value})}/></FormField>
       <FormField label="Bank / Cash Account"><select className={inputClass} value={draft.account} onChange={e=>setDraft({...draft,account:e.target.value})}><option value="">All Accounts</option>{accountList.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></FormField>
       <FormField label="Type"><select className={inputClass} value={draft.type} onChange={e=>setDraft({...draft,type:e.target.value})}><option value="">All</option><option value="IN">Receipt</option><option value="OUT">Payment</option><option value="Transfer">Transfer</option><option value="Cash">Cash Entry</option></select></FormField>
-      <FormField label="Party"><select className={inputClass} value={draft.party} onChange={e=>setDraft({...draft,party:e.target.value})}><option value="">All Companies / Suppliers</option>{[...(options?.customers||[]),...(options?.suppliers||[])].map((p:any)=><option key={p.id} value={p.id}>{p.name}</option>)}</select></FormField>
-      <FormField label="Search"><div className="relative"><Search size={14} className="absolute left-2.5 top-2.5 text-slate-400"/><input className={inputClass+' pl-8'} placeholder="Reference, description, party..." value={draft.search} onChange={e=>setDraft({...draft,search:e.target.value})}/></div></FormField>
+      <FormField label="Company"><select className={inputClass} value={draft.party} onChange={e=>setDraft({...draft,party:e.target.value})}><option value="">All Companies / Suppliers</option>{[...(options?.customers||[]),...(options?.suppliers||[])].map((p:any)=><option key={p.id} value={p.id}>{p.name}</option>)}</select></FormField>
+      <FormField label="Search"><div className="relative"><Search size={14} className="absolute left-2.5 top-2.5 text-slate-400"/><input className={inputClass+' pl-8'} placeholder="Reference, description, company..." value={draft.search} onChange={e=>setDraft({...draft,search:e.target.value})}/></div></FormField>
       <Button size="sm" onClick={()=>{setFilters(draft);void reload(1,draft,tab)}}>Apply</Button><Button size="sm" variant="secondary" onClick={()=>{const f={from:'',to:'',account:'',type:'',party:'',search:''};setDraft(f);setFilters(f);void reload(1,f,tab)}}>Clear</Button>
     </div></Card>
-    <Card className="overflow-hidden"><div className="overflow-auto"><table className="w-full min-w-[980px] text-left"><thead><tr className="bg-slate-50 text-[10px] uppercase text-slate-500 border-b">{['#','Date','Account','Type','Description','Reference No','Party','Receipt','Payment','Balance','Mode','Status','Actions'].map(x=><th key={x} className="px-2 py-2">{x}</th>)}</tr></thead><tbody>
+    <Card className="overflow-hidden"><div className="overflow-auto"><table className="w-full min-w-[980px] text-left"><thead><tr className="bg-slate-50 text-[10px] uppercase text-slate-500 border-b">{['#','Date','Account','Type','Description','Reference No','Company','Receipt','Payment','Balance','Mode','Status','Actions'].map(x=><th key={x} className="px-2 py-2">{x}</th>)}</tr></thead><tbody>
       {loading?<tr><td colSpan={13} className="p-10 text-center">Loading transactions...</td></tr>:data.map((r,i)=><tr key={r.id} className="border-b hover:bg-slate-50 text-xs"><td className="px-2 py-2 text-slate-400">{(page-1)*PAGE+i+1}</td><td className="px-2 py-2">{formatDate(r.txn_date)}</td><td className="px-2 py-2 font-medium">{r.account_name}</td><td className="px-2 py-2"><Badge variant={r.direction==='IN'?'success':'warning'}>{r.transfer_group?'Transfer':r.kind}</Badge></td><td className="px-2 py-2">{r.description||'—'}</td><td className="px-2 py-2 font-mono">{r.reference_no||r.txn_no}</td><td className="px-2 py-2">{r.party_name||'—'}</td><td className="px-2 py-2 text-right text-emerald-700">{r.receipt?cash(r.receipt):'—'}</td><td className="px-2 py-2 text-right text-rose-700">{r.payment?cash(r.payment):'—'}</td><td className="px-2 py-2 text-right">{r.balance?cash(r.balance):'—'}</td><td className="px-2 py-2">{r.mode||'—'}</td><td className="px-2 py-2"><Badge variant={statusToVariant(r.status)}>{r.status}</Badge></td><td className="px-2 py-2">{r.invoice_id&&<button title="View linked invoice" onClick={()=>navigate('/finance/invoices?invoice='+encodeURIComponent(r.invoice_id!))} className="mr-1 text-blue-700 underline">Invoice</button>}{r.status==='Pending'&&options?.can_manage?<button title="Clear transaction" onClick={()=>void setStatus(r.id,'Cleared')} className="p-1 text-emerald-600"><CheckCircle2 size={15}/></button>:null}</td></tr>)}
       {!loading&&!data.length&&<tr><td colSpan={13} className="p-6 text-center text-slate-500">No transactions found for these filters.</td></tr>}
     </tbody></table></div><div className="flex justify-between p-2 border-t text-xs text-slate-500"><span>{total?((page-1)*PAGE+1):0}-{Math.min(page*PAGE,total)} of {total}</span><div className="flex gap-2"><button disabled={page<=1} onClick={()=>void reload(page-1)}><ChevronLeft size={16}/></button>{page}/{pageCount}<button disabled={page>=pageCount} onClick={()=>void reload(page+1)}><ChevronRight size={16}/></button></div></div></Card>
@@ -134,8 +139,8 @@ export function BankCashPage(){
       <div className="grid md:grid-cols-2 gap-3">
         <FormField label="Direction"><select className={inputClass} value={form.direction} onChange={e=>setForm({...form,direction:e.target.value,contra_account_id:''})}><option value="IN">Receipt</option><option value="OUT">Payment</option></select></FormField>
         <FormField label="Bank / Cash Account"><select className={inputClass} value={form.account_id} onChange={e=>setForm({...form,account_id:e.target.value})}>{accountList.map(a=><option key={a.id} value={a.id}>{a.name} · {cash(a.balance)}</option>)}</select></FormField>
-        <FormField label="Party Type"><select className={inputClass} value={form.party_type} onChange={e=>setForm({...form,party_type:e.target.value,party_id:'',party_name:''})}><option>Customer</option><option>Supplier</option><option>Other</option></select></FormField>
-        {form.party_type==='Other'?<FormField label="Party Name"><input className={inputClass} value={form.party_name} onChange={e=>setForm({...form,party_name:e.target.value})}/></FormField>:<FormField label="Party"><select className={inputClass} value={form.party_id} onChange={e=>{const x=parties.find((p:any)=>p.id===e.target.value);setForm({...form,party_id:e.target.value,party_name:x?.name||''})}}><option value="">Select party</option>{parties.map((x:any)=><option key={x.id} value={x.id}>{x.name}</option>)}</select></FormField>}
+        <FormField label="Company Type"><select className={inputClass} value={form.party_type} onChange={e=>setForm({...form,party_type:e.target.value,party_id:'',party_name:''})}><option>Customer</option><option>Supplier</option><option>Other</option></select></FormField>
+        {form.party_type==='Other'?<FormField label="Company Name"><input className={inputClass} value={form.party_name} onChange={e=>setForm({...form,party_name:e.target.value})}/></FormField>:<FormField label="Company"><select className={inputClass} value={form.party_id} onChange={e=>{const x=parties.find((p:any)=>p.id===e.target.value);setForm({...form,party_id:e.target.value,party_name:x?.name||''})}}><option value="">Select company</option>{parties.map((x:any)=><option key={x.id} value={x.id}>{x.name}</option>)}</select></FormField>}
         <FormField label="Invoice (optional)"><select className={inputClass} value={form.invoice_id} onChange={e=>{const inv=invoices.find(x=>x.id===e.target.value);setForm({...form,invoice_id:e.target.value,party_type:'Customer',party_name:inv?.customer_name||form.party_name,party_id:inv?.customer_id||form.party_id,amount:inv?.balance||form.amount})}}><option value="">Not linked</option>{invoices.filter(i=>i.invoice_type==='Sales Invoice'&&i.status!=='Cancelled'&&Number(i.balance)>0).map(i=><option key={i.id} value={i.id}>{i.invoice_no} · {i.customer_name} · {cash(i.balance)}</option>)}</select></FormField>
         <FormField label="Amount"><input type="number" min="0.01" className={inputClass} value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})}/></FormField>
         <FormField label="Date"><input type="date" className={inputClass} value={form.txn_date} onChange={e=>setForm({...form,txn_date:e.target.value})}/></FormField>

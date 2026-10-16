@@ -3,6 +3,8 @@ import { BookOpen, BookText, RefreshCw, Landmark, FileText, PackageOpen, Search,
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { useAuth } from '@/contexts/AuthContext';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
+import { intersectRange } from '@/lib/globalDate';
 import { supabase } from '@/lib/supabase';
 import { financeApi, type BankRow, type InvoiceRow } from '@/lib/finance';
 import { formatINR, todayISO } from '@/lib/format';
@@ -29,7 +31,7 @@ type SourceState = { rows: LedgerLine[]; state: 'idle' | 'loading' | 'ok' | 'err
 const emptySource = (): SourceState => ({ rows: [], state: 'idle', error: '', at: '' });
 
 const COLS: { key: SortKey; label: string; align?: 'right' }[] = [
-  { key: 'date', label: 'Date (dd/MM/yyyy)' }, { key: 'ref', label: 'Reference Number' }, { key: 'party', label: 'Party Name' },
+  { key: 'date', label: 'Date (dd/MM/yyyy)' }, { key: 'ref', label: 'Reference Number' }, { key: 'party', label: 'Company Name' },
   { key: 'particulars', label: 'Particulars' }, { key: 'narration', label: 'Narration' },
   { key: 'debit', label: 'Debit', align: 'right' }, { key: 'credit', label: 'Credit', align: 'right' },
 ];
@@ -145,7 +147,10 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
     for (const l of all) { const k = nameKey(l.party); if (k && !byKey.has(k)) byKey.set(k, l.party.trim().replace(/\s+/g, ' ')); }
     return Array.from(byKey.values()).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }, [all]);
-  const filtered = useMemo(() => filterLines(all, { from: applied.from, to: applied.to, particulars: applied.part, party: applied.party, search }), [all, applied, search]);
+  // Global Topbar range intersects the page's own From/To.
+  const { from: globalFrom, to: globalTo } = useGlobalDateFilter();
+  const { from: effFrom, to: effTo } = intersectRange(applied.from, applied.to, globalFrom, globalTo);
+  const filtered = useMemo(() => filterLines(all, { from: effFrom, to: effTo, particulars: applied.part, party: applied.party, search }), [all, applied, search, effFrom, effTo]);
   const sorted = useMemo(() => sortLines(filtered, sort.key, sort.dir), [filtered, sort]);
   const pages = pageSize === 0 ? 1 : Math.max(1, Math.ceil(sorted.length / pageSize));
   const cur = Math.min(page, pages);
@@ -161,7 +166,7 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
 
   const exportRows = () => {
     if (!sorted.length) { setNote('Nothing to export.'); return; }
-    exportCsv(`ledger-${todayISO()}`, [['Date', 'Reference Number', 'Party Name', 'Particulars', 'Narration', 'Debit', 'Credit', 'Source', 'Status'],
+    exportCsv(`ledger-${todayISO()}`, [['Date', 'Reference Number', 'Company Name', 'Particulars', 'Narration', 'Debit', 'Credit', 'Source', 'Status'],
       ...sorted.map(l => [dmy(l.date), l.ref, l.party, l.particulars, l.narration, l.debit || '', l.credit || '', l.source, statusText(l.id)])]);
   };
 
@@ -193,7 +198,7 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
     pdf.setDrawColor(242, 90, 10); pdf.setLineWidth(0.7); pdf.line(14, 27, 283, 27);
     autoTable(pdf, {
       startY: 31, styles: { fontSize: 7.5, cellPadding: 1.4 }, headStyles: { fillColor: [51, 65, 85] },
-      head: [['Date', 'Reference', 'Party Name', 'Particulars', 'Narration', 'Debit', 'Credit', 'Status']],
+      head: [['Date', 'Reference', 'Company Name', 'Particulars', 'Narration', 'Debit', 'Credit', 'Status']],
       body: reportBody(),
       foot: [['', '', '', '', `Total (${sorted.length} rows)`, money(totals.debit) || '0.00', money(totals.credit) || '0.00', `Balance ${balanceText}`]],
       footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold' },
@@ -221,7 +226,7 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
   const printReport = () => {
     if (!sorted.length) { setNote('Nothing to print.'); return; }
     const cell = (v: string, num = false) => `<td${num ? ' class="num"' : ''}>${escapeHtml(v)}</td>`;
-    const head = ['Date', 'Reference', 'Party Name', 'Particulars', 'Narration', 'Debit', 'Credit', 'Status'].map((h, i) => `<th${i === 5 || i === 6 ? ' class="num"' : ''}>${escapeHtml(h)}</th>`).join('');
+    const head = ['Date', 'Reference', 'Company Name', 'Particulars', 'Narration', 'Debit', 'Credit', 'Status'].map((h, i) => `<th${i === 5 || i === 6 ? ' class="num"' : ''}>${escapeHtml(h)}</th>`).join('');
     const body = reportBody().map(r => `<tr>${r.map((v, i) => cell(v, i === 5 || i === 6)).join('')}</tr>`).join('');
     printHtml(reportTitle, `<div class="brand"><img src="${window.location.origin}/arguscnc-logo.jpg" alt="Logo"><div style="text-align:right"><h1>${escapeHtml(reportTitle)}</h1><div class="meta">${escapeHtml(reportSub)}</div></div></div>
 <table><thead><tr>${head}</tr></thead><tbody>${body}<tr class="total"><td colspan="5" style="text-align:right">Total (${sorted.length} rows)</td>${cell(money(totals.debit) || '0.00', true)}${cell(money(totals.credit) || '0.00', true)}<td>Balance ${escapeHtml(balanceText)}</td></tr></tbody></table>`);
@@ -275,8 +280,8 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
             <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">Start <input type="date" aria-label="Start date" className={inp} value={from} onChange={e => setFrom(e.target.value)} /></label>
             <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">End <input type="date" aria-label="End date" className={inp} value={to} onChange={e => setTo(e.target.value)} /></label>
             <input aria-label="Filter particulars" className={`${inp} w-40 shrink min-w-0`} placeholder="Filter: Particulars" value={part} onChange={e => setPart(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') apply(); }} />
-            <select aria-label="Party" className={`${sel} w-48 shrink min-w-0`} value={party} onChange={e => { setParty(e.target.value); setApplied(a => ({ ...a, party: e.target.value })); setPage(1); }}>
-              <option value="">Party (all)</option>{parties.map(p => <option key={p} value={p}>{p}</option>)}</select>
+            <select aria-label="Company" className={`${sel} w-48 shrink min-w-0`} value={party} onChange={e => { setParty(e.target.value); setApplied(a => ({ ...a, party: e.target.value })); setPage(1); }}>
+              <option value="">Company (all)</option>{parties.map(p => <option key={p} value={p}>{p}</option>)}</select>
             <button className={btnPrimary} onClick={apply}>Apply</button>
             <button className={btn} onClick={clear}><X size={14} />Clear</button>
             <span className="ml-auto flex gap-2 shrink-0">
@@ -391,7 +396,7 @@ function StatementModal({ open, onClose, lines, parties, party, setParty, initFr
 
   const csv = () => {
     if (!st || !party) return;
-    exportCsv(`statement-${party.replace(/[^\w]+/g, '_')}`, [['Party', party], ['From', from ? dmy(from) : ''], ['To', to ? dmy(to) : ''], [], ['Date', 'Reference', 'Particulars', 'Narration', 'Debit', 'Credit', 'Balance'],
+    exportCsv(`statement-${party.replace(/[^\w]+/g, '_')}`, [['Company', party], ['From', from ? dmy(from) : ''], ['To', to ? dmy(to) : ''], [], ['Date', 'Reference', 'Particulars', 'Narration', 'Debit', 'Credit', 'Balance'],
       ['', '', 'Opening balance', '', '', '', `${Math.abs(st.opening)} ${drCr(st.opening)}`],
       ...st.rows.map(r => [dmy(r.date), r.ref, r.particulars, r.narration, r.debit || '', r.credit || '', `${Math.abs(r.balance)} ${drCr(r.balance)}`]),
       ['', '', 'Closing balance', '', st.debit, st.credit, `${Math.abs(st.closing)} ${drCr(st.closing)}`]]);
@@ -413,10 +418,10 @@ function StatementModal({ open, onClose, lines, parties, party, setParty, initFr
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Ledger Statement" subtitle="Running balance for one party" size="2xl"
+    <Modal open={open} onClose={onClose} title="Ledger Statement" subtitle="Running balance for one company" size="2xl"
       footer={<><button className={btn} onClick={onClose}>Close</button><button className={btn} disabled={!st} onClick={csv}><FileSpreadsheet size={14} />CSV</button><button className={btnPrimary} disabled={!st} data-testid="statement-pdf" onClick={() => void pdf()}><FileDown size={14} />Download PDF</button></>}>
       <div className="flex flex-wrap items-center gap-2 pb-3 border-b border-slate-100">
-        <select aria-label="Statement party" className={`${sel} w-72`} value={party} onChange={e => setParty(e.target.value)}><option value="">-- Select party --</option>{parties.map(p => <option key={p} value={p}>{p}</option>)}</select>
+        <select aria-label="Statement company" className={`${sel} w-72`} value={party} onChange={e => setParty(e.target.value)}><option value="">-- Select company --</option>{parties.map(p => <option key={p} value={p}>{p}</option>)}</select>
         <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">From <input type="date" aria-label="Statement from" className={inp} value={from} onChange={e => setFrom(e.target.value)} /></label>
         <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">To <input type="date" aria-label="Statement to" className={inp} value={to} onChange={e => setTo(e.target.value)} /></label>
       </div>
@@ -450,16 +455,16 @@ function BookModal({ open, onClose, lines, onOpen }: { open: boolean; onClose: (
   const types = Array.from(new Set(sum.map(s => s.ledgerType).filter(Boolean))).sort();
   const tot = rows.reduce((a, s) => ({ d: a.d + s.debit, c: a.c + s.credit }), { d: 0, c: 0 });
   return (
-    <Modal open={open} onClose={onClose} title="Ledger Book" subtitle="Party-wise totals. Click a party to open its statement." size="2xl"
+    <Modal open={open} onClose={onClose} title="Ledger Book" subtitle="Company-wise totals. Click a company to open its statement." size="2xl"
       footer={<button className={btn} onClick={onClose}>Close</button>}>
       <div className="flex flex-wrap items-center gap-2 pb-3 border-b border-slate-100">
-        <div className="relative"><Search size={14} className="absolute left-3 top-2.5 text-slate-400" /><input aria-label="Search parties" className={`${inp} pl-8 w-64`} placeholder="Search party" value={q} onChange={e => setQ(e.target.value)} /></div>
+        <div className="relative"><Search size={14} className="absolute left-3 top-2.5 text-slate-400" /><input aria-label="Search companies" className={`${inp} pl-8 w-64`} placeholder="Search company" value={q} onChange={e => setQ(e.target.value)} /></div>
         <select aria-label="Ledger type filter" className={sel} value={type} onChange={e => setType(e.target.value)}><option value="">All types</option>{types.map(t => <option key={t} value={t}>{t}</option>)}</select>
         <span className="ml-auto text-xs text-slate-500">{rows.length} parties</span>
       </div>
       <div className="mt-3 overflow-auto max-h-[440px] border border-slate-200 rounded-xl">
         <table className="w-full text-[13px] min-w-[720px]">
-          <thead className="bg-slate-50 sticky top-0"><tr className="text-left">{['Party', 'Type', 'Entries', 'Debit', 'Credit', 'Balance'].map((h, i) => <th key={h} className={`${th} ${i >= 3 ? 'text-right' : ''}`}>{h}</th>)}</tr></thead>
+          <thead className="bg-slate-50 sticky top-0"><tr className="text-left">{['Company', 'Type', 'Entries', 'Debit', 'Credit', 'Balance'].map((h, i) => <th key={h} className={`${th} ${i >= 3 ? 'text-right' : ''}`}>{h}</th>)}</tr></thead>
           <tbody>
             {rows.map(s => (
               <tr key={s.party} data-testid="book-row" className="border-t border-slate-100 hover:bg-orange-50/40 cursor-pointer" onClick={() => s.party !== '(no party)' && onOpen(s.party)}>

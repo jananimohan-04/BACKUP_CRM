@@ -20,7 +20,7 @@ export const Route = createFileRoute("/_app/upload")({
 });
 
 const STEPS = [
-  "Party",
+  "Company",
   "Part",
   "Details",
   "File",
@@ -382,10 +382,10 @@ function UploadWizardPage() {
           {currentStep === 0 && (
             <div className="space-y-6">
               <div className="space-y-2">
-                <Label>Select Party (Company)</Label>
+                <Label>Select Company</Label>
                 <Select value={partyId} onValueChange={(val) => { setPartyId(val); setSelectedFolderId("root"); }}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a party..." />
+                    <SelectValue placeholder="Select a company..." />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="internal">Internal / CNC Vault</SelectItem>

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { supabase } from '@/lib/supabase';
 import { Eye, Edit, Trash2, FileText, Users, Truck } from 'lucide-react';
 import { PageHeader, DateSelector } from '@/components/ui/PageHeader';
@@ -248,6 +249,12 @@ export function QuotationsPage() {
   const [viewTarget, setViewTarget] = useState<QuotationRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<QuotationRow | null>(null);
   const [quotationsData, setQuotationsData] = useState<QuotationRow[]>([]);
+  // Global date filter (quotation date) drives the table.
+  const { inRange: inQuotationDateRange } = useGlobalDateFilter();
+  const rangedQuotations = useMemo(
+    () => quotationsData.filter((q: any) => inQuotationDateRange(q.date)),
+    [quotationsData, inQuotationDateRange],
+  );
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
   const customerOptions = useCustomerOptions();
@@ -483,7 +490,7 @@ export function QuotationsPage() {
         </section>
       )}
 
-      <DataTable data={quotationsData} columns={columns} searchKeys={['quoteNo', 'customer', 'partName']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Quotation" filterOptions={[{ label: 'Draft', value: 'Draft' }, { label: 'Sent', value: 'Sent' }, { label: 'Converted', value: 'Converted' }, { label: 'Rejected', value: 'Rejected' }]} />
+      <DataTable data={rangedQuotations} columns={columns} searchKeys={['quoteNo', 'customer', 'partName']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Quotation" filterOptions={[{ label: 'Draft', value: 'Draft' }, { label: 'Sent', value: 'Sent' }, { label: 'Converted', value: 'Converted' }, { label: 'Rejected', value: 'Rejected' }]} />
       
       <Modal open={!!editId} onClose={() => { setEditId(null); setFormData(resetForm()); }} title="Edit Quotation" subtitle="Update quotation details" size="lg" footer={<><Button variant="secondary" onClick={() => { setEditId(null); setFormData(resetForm()); }}>Cancel</Button><Button onClick={() => void handleSave()} disabled={saving}>{saving ? 'Saving...' : 'Update Quotation'}</Button></>}>
         {quotationFormBody}
@@ -540,6 +547,12 @@ export function SalesOrdersPage() {
   const [deleteTarget, setDeleteTarget] = useState<SalesOrderRow | null>(null);
   const [deliveryTarget, setDeliveryTarget] = useState<SalesOrderRow | null>(null);
   const [ordersData, setOrdersData] = useState<SalesOrderRow[]>([]);
+  // Global date filter (order date) drives the table.
+  const { inRange: inOrderDateRange } = useGlobalDateFilter();
+  const rangedOrders = useMemo(
+    () => ordersData.filter((o: any) => inOrderDateRange(o.orderDate)),
+    [ordersData, inOrderDateRange],
+  );
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
   const customerOptions = useCustomerOptions();
@@ -775,7 +788,7 @@ export function SalesOrdersPage() {
         <StatCard label="Delivered" value={deliveredCount.toString()} icon={<FileText size={20} />} trend="100%" trendUp accent="success" />
         <StatCard label="Order Value" value={`₹${(totalValue / 100000).toFixed(1)}L`} icon={<FileText size={20} />} accent="navy" />
       </div>
-      <DataTable data={ordersData} columns={columns} searchKeys={['orderNo', 'customer', 'partName']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Sales Order" filterOptions={[{ label: 'Confirmed', value: 'Confirmed' }, { label: 'Inwarded', value: 'Inwarded' }, { label: 'In Production', value: 'In Production' }, { label: 'Partially Delivered', value: 'Partially Delivered' }, { label: 'Delivered', value: 'Delivered' }]} />
+      <DataTable data={rangedOrders} columns={columns} searchKeys={['orderNo', 'customer', 'partName']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Sales Order" filterOptions={[{ label: 'Confirmed', value: 'Confirmed' }, { label: 'Inwarded', value: 'Inwarded' }, { label: 'In Production', value: 'In Production' }, { label: 'Partially Delivered', value: 'Partially Delivered' }, { label: 'Delivered', value: 'Delivered' }]} />
       
       <Modal open={showAdd} onClose={() => { setShowAdd(false); setEditId(null); setFormData(resetForm()); }} title={editId ? "Edit Sales Order" : "New Sales Order"} subtitle={editId ? "Update sales order details" : "Create a sales order from an accepted quotation"} size="lg" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>{editId ? 'Update Order' : 'Create Order'}</Button></>}>
         <div className="grid grid-cols-2 gap-4">

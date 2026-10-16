@@ -11,6 +11,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
+import { useDateRange } from '@/contexts/DateRangeContext';
+import { displayDay } from '@/lib/globalDate';
+import { GlobalDateFilterPopup } from './GlobalDateFilter';
 
 const ROLE_LABELS: Record<string, string> = {
   SUPER_ADMIN: 'Super Admin',
@@ -30,8 +33,11 @@ export function Topbar({
   onMenuClick?: () => void;
 }) {
   const [showProfile, setShowProfile] = useState(false);
+  const [showDateFilter, setShowDateFilter] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
+  const dateFilterRef = useRef<HTMLDivElement>(null);
   const { profile, company, companies, isSuperAdmin, setActiveCompany } = useAuth();
+  const { from: globalFrom, to: globalTo, isAllTime: globalAllTime } = useDateRange();
 
   const displayName = profile?.full_name || profile?.email || '';
   const initials = displayName.split(/[s@.]+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join('');
@@ -39,10 +45,17 @@ export function Topbar({
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) setShowProfile(false);
+      if (dateFilterRef.current && !dateFilterRef.current.contains(e.target as Node)) setShowDateFilter(false);
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+  useEffect(() => {
+    if (!showDateFilter) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowDateFilter(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [showDateFilter]);
 
   const { kpis, header, tabs, tabActions, headerCenter } = useHeaderKpis();
   // Live clock: date + time, ticking every second.
@@ -148,12 +161,22 @@ export function Topbar({
         {/* Date + profile box */}
         <div className="relative shrink-0" ref={profileRef}>
         <button
-          onClick={() => setShowProfile(!showProfile)}
+          onClick={() => { setShowProfile(!showProfile); setShowDateFilter(false); }}
           className="flex items-center gap-1.5 px-2 py-1.5 hover:bg-slate-100 rounded-md transition-colors border border-slate-200 bg-white shadow-sm shrink-0"
         >
-          <div className="hidden sm:flex items-center gap-1.5 shrink-0">
-            <div className="w-5 h-5 rounded bg-gradient-to-br from-brand-500 to-brand-800 flex items-center justify-center text-white shrink-0">
+          {/* Global date-range filter trigger: same look as before, only clickable. */}
+          <div
+            className="hidden sm:flex items-center gap-1.5 shrink-0 cursor-pointer rounded"
+            role="button"
+            tabIndex={0}
+            title={globalAllTime ? 'Filter by date (showing all time)' : `Filtered: ${displayDay(globalFrom)} to ${displayDay(globalTo)} — click to change`}
+            aria-label="Filter by date"
+            onClick={(e) => { e.stopPropagation(); setShowProfile(false); setShowDateFilter((v) => !v); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setShowProfile(false); setShowDateFilter((v) => !v); } }}
+          >
+            <div className="relative w-5 h-5 rounded bg-gradient-to-br from-brand-500 to-brand-800 flex items-center justify-center text-white shrink-0">
               <CalendarDays size={12} />
+              {!globalAllTime && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-400 ring-1 ring-white" />}
             </div>
             <p className="text-[9px] font-extrabold text-slate-700 whitespace-nowrap tabular-nums leading-none">{datePart} <span className="text-brand-600 font-bold">{timePart}</span></p>
             <span className="h-6 w-px shrink-0 bg-slate-200 mx-0.5" aria-hidden="true" />
@@ -204,6 +227,11 @@ export function Topbar({
               <div className="my-1 border-t border-slate-100" />
               <button onClick={() => { setShowProfile(false); onLogout(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors text-left cursor-pointer"><LogOut size={15} className="text-red-400" /> Sign Out</button>
             </div>
+          </div>
+        )}
+        {showDateFilter && (
+          <div ref={dateFilterRef} className="absolute right-0 top-full mt-2 z-50">
+            <GlobalDateFilterPopup onClose={() => setShowDateFilter(false)} />
           </div>
         )}
         </div>

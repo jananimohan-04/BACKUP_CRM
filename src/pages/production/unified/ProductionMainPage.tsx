@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Card';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
@@ -33,6 +34,12 @@ export function ProductionMainPage() {
     };
   }, [activeTab, setTabs, setHeader]);
 
+  // Global date filter (plan start date) applies to every tab's orders and summaries.
+  const { inRange: inProdDateRange } = useGlobalDateFilter();
+  const rangedWorkOrders = useMemo(
+    () => workOrders.filter((w: any) => inProdDateRange(w.start_date ?? w.created_at)),
+    [workOrders, inProdDateRange],
+  );
   const fetchData = async () => {
     setLoading(true);
     const { data, error } = await supabase
@@ -70,7 +77,7 @@ export function ProductionMainPage() {
           />
         </div>
       )}
-      {!isOrders && <SummaryCards workOrders={workOrders} />}
+      {!isOrders && <SummaryCards workOrders={rangedWorkOrders} />}
 
       {/* Tabs (below-lg screens only — desktop shows them in the top bar) */}
       <div className="flex lg:hidden items-center gap-4 border-b border-slate-200 mb-3 overflow-x-auto">
@@ -91,15 +98,15 @@ export function ProductionMainPage() {
 
       {/* Dynamic Tab Content */}
       {isOrders ? (
-        <ProductionOrdersTab workOrders={workOrders} refresh={fetchData} />
+        <ProductionOrdersTab workOrders={rangedWorkOrders} refresh={fetchData} />
       ) : (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200">
           {activeTab === 'Part Routing' && <PartRoutingTab />}
-          {activeTab === 'Live Production' && <LiveProductionTab workOrders={workOrders} />}
-          {activeTab === 'Job Card' && <JobCardsTab workOrders={workOrders} />}
-          {activeTab === 'WIP' && <WIPTab workOrders={workOrders} />}
-          {activeTab === 'Completed' && <CompletedTab workOrders={workOrders} />}
-          {activeTab === 'Reports' && <ReportsTab workOrders={workOrders} />}
+          {activeTab === 'Live Production' && <LiveProductionTab workOrders={rangedWorkOrders} />}
+          {activeTab === 'Job Card' && <JobCardsTab workOrders={rangedWorkOrders} />}
+          {activeTab === 'WIP' && <WIPTab workOrders={rangedWorkOrders} />}
+          {activeTab === 'Completed' && <CompletedTab workOrders={rangedWorkOrders} />}
+          {activeTab === 'Reports' && <ReportsTab workOrders={rangedWorkOrders} />}
         </div>
       )}
     </div>

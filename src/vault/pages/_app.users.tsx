@@ -115,7 +115,7 @@ function InviteUserModal({ open, onOpenChange }: { open: boolean; onOpenChange: 
             Invite & Create User
           </DialogTitle>
           <DialogDescription>
-            Add a new user and assign them to a Company (Party) and Role.
+            Add a new user and assign them to a Company and Role.
           </DialogDescription>
         </DialogHeader>
 
@@ -139,7 +139,7 @@ function InviteUserModal({ open, onOpenChange }: { open: boolean; onOpenChange: 
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label>Assign to Company (Party)</Label>
+              <Label>Assign to Company</Label>
               <Button
                 type="button"
                 variant="ghost"
@@ -485,7 +485,7 @@ function UsersPage() {
           <TableHeader className="bg-slate-50">
             <TableRow>
               <TableHead>User Profile</TableHead>
-              <TableHead>Company (Party)</TableHead>
+              <TableHead>Company</TableHead>
               <TableHead>Part & Drawings Role</TableHead>
               <TableHead>Department</TableHead>
               <TableHead>Status</TableHead>

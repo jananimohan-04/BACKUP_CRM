@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, Landmark, Tags, Layers, BookOpen, PenLine, UploadCloud, FileText, Save, Table2, Eraser, FileDown, FileSpreadsheet, RefreshCw, Wand2, Search, Filter, CheckCircle2, AlertTriangle, Info, Inbox } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
+import { intersectRange } from '@/lib/globalDate';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { financeApi, type BankFilters, type BankRow } from '@/lib/finance';
 import { accountingApi, type Account } from '@/lib/accounting';
@@ -120,10 +122,13 @@ export function BankEntryPage() {
   }, []);
   useEffect(() => { void loadOptions(); setTypes(loadTypes(cid)); setOthers(loadOthers(cid)); }, [cid, loadOptions]);
 
+  const { from: globalFrom, to: globalTo } = useGlobalDateFilter();
   const loadData = useCallback(async (everything = false) => {
     setLoadingData(true); setDataError('');
     try {
-      const args = { account: fBank || null, kind: fKind || null, from: from || undefined, to: to || undefined };
+      // Global Topbar range intersects the page's own From/To.
+      const eff = intersectRange(from, to, globalFrom, globalTo);
+      const args = { account: fBank || null, kind: fKind || null, from: eff.from || undefined, to: eff.to || undefined };
       if (!everything) {
         const r = await financeApi.bankTransactions({ ...args, page: 1, pageSize: 50 });
         setData(r.rows); setDataTotal(r.total); setFull(r.rows.length >= r.total);
@@ -138,7 +143,7 @@ export function BankEntryPage() {
       }
     } catch (e) { setData([]); setDataTotal(0); setDataError(e instanceof Error ? e.message : 'Could not load bank data.'); }
     finally { setLoadingData(false); }
-  }, [fBank, fKind, from, to]);
+  }, [fBank, fKind, from, to, globalFrom, globalTo]);
   useEffect(() => { void loadData(false); }, [loadData, cid]);
 
   const bank = options?.accounts.find(a => a.id === bankId);
@@ -264,7 +269,7 @@ export function BankEntryPage() {
   const downloadCsv = () => {
     if (!shownData.length) { setMsg({ kind: 'err', text: 'No bank data to download.' }); return; }
     exportCsv(`bank-data-${todayISO()}`, [
-      ['Txn No', 'Date', 'Bank', 'Type', 'Party', 'Reference', 'Description', 'Debit (out)', 'Credit (in)', 'Balance', 'Status'],
+      ['Txn No', 'Date', 'Bank', 'Type', 'Company', 'Reference', 'Description', 'Debit (out)', 'Credit (in)', 'Balance', 'Status'],
       ...shownData.map(r => [r.txn_no, dmy(r.txn_date), r.account_name, r.kind, r.party_name ?? '', r.reference_no ?? '', r.description ?? '', r.direction === 'OUT' ? r.amount : '', r.direction === 'IN' ? r.amount : '', r.balance ?? '', r.status]),
     ]);
   };
@@ -277,7 +282,7 @@ export function BankEntryPage() {
       pdf.setFontSize(8); pdf.text(`${company?.company_name ?? ''}  |  ${dmy(from) || 'start'} to ${dmy(to) || 'today'}  |  ${shownData.length} rows`, 14, 19);
       autoTable(pdf, {
         startY: 23, styles: { fontSize: 7.5, cellPadding: 1.4 }, headStyles: { fillColor: [51, 65, 85] },
-        head: [['Txn No', 'Date', 'Bank', 'Type', 'Party', 'Ref', 'Description', 'Debit', 'Credit', 'Balance', 'Status']],
+        head: [['Txn No', 'Date', 'Bank', 'Type', 'Company', 'Ref', 'Description', 'Debit', 'Credit', 'Balance', 'Status']],
         body: shownData.map(r => [r.txn_no, dmy(r.txn_date), r.account_name, r.kind, r.party_name ?? '', r.reference_no ?? '', (r.description ?? '').slice(0, 40), r.direction === 'OUT' ? Number(r.amount).toFixed(2) : '', r.direction === 'IN' ? Number(r.amount).toFixed(2) : '', r.balance ?? '', r.status]),
         columnStyles: { 7: { halign: 'right' }, 8: { halign: 'right' }, 9: { halign: 'right' } },
       });
@@ -394,7 +399,7 @@ export function BankEntryPage() {
             <div className="overflow-auto max-h-[440px]">
               <table className="w-full text-xs min-w-[1100px]">
                 <thead className="bg-slate-50/95 backdrop-blur sticky top-0 z-10 shadow-[0_1px_0_#e2e8f0]"><tr className="text-left">
-                  {['#', 'Date', 'Description', 'Reference', 'Debit', 'Credit', 'Type', 'Ledger', 'Party / Other', 'Status'].map((h, i) => <th key={h} className={`${th} ${i === 4 || i === 5 ? 'text-right' : ''}`}>{h}</th>)}
+                  {['#', 'Date', 'Description', 'Reference', 'Debit', 'Credit', 'Type', 'Ledger', 'Company / Other', 'Status'].map((h, i) => <th key={h} className={`${th} ${i === 4 || i === 5 ? 'text-right' : ''}`}>{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {shownRows.map(r => {
@@ -411,7 +416,7 @@ export function BankEntryPage() {
                           <option value="">—</option>{types.filter(t => typeFitsRow(t, r)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></td>
                         <td className="px-3 py-1.5"><select aria-label={`Ledger row ${r.line}`} className={`${sel} !h-8 w-48`} value={r.ledgerId} onChange={e => patchRow(r.id, { ledgerId: e.target.value })}>
                           {ledgerOptions(r)}</select></td>
-                        <td className="px-3 py-1.5"><input aria-label={`Party row ${r.line}`} list="bank-parties" className={`${inp} !h-8 w-36`} value={r.party} onChange={e => patchRow(r.id, { party: e.target.value })} /></td>
+                        <td className="px-3 py-1.5"><input aria-label={`Company row ${r.line}`} list="bank-parties" className={`${inp} !h-8 w-36`} value={r.party} onChange={e => patchRow(r.id, { party: e.target.value })} /></td>
                         <td className="px-3 py-2">{issueBadge(is)}</td>
                       </tr>
                     );
@@ -480,7 +485,7 @@ export function BankEntryPage() {
             <div className="overflow-auto max-h-[480px] border border-slate-200 rounded-xl">
               <table className="w-full text-xs min-w-[1000px]">
                 <thead className="bg-slate-50/95 backdrop-blur sticky top-0 z-10 shadow-[0_1px_0_#e2e8f0]"><tr className="text-left">
-                  {['Txn No', 'Date', 'Bank', 'Type', 'Party', 'Reference', 'Description', 'Debit (out)', 'Credit (in)', 'Balance', 'Status'].map((h, i) => <th key={h} className={`${th} ${i >= 7 && i <= 9 ? 'text-right' : ''}`}>{h}</th>)}
+                  {['Txn No', 'Date', 'Bank', 'Type', 'Company', 'Reference', 'Description', 'Debit (out)', 'Credit (in)', 'Balance', 'Status'].map((h, i) => <th key={h} className={`${th} ${i >= 7 && i <= 9 ? 'text-right' : ''}`}>{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {shownData.map(r => (
@@ -725,13 +730,13 @@ function ManageOthers({ open, onClose, others, typeNames, onSave }: { open: bool
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Manage Others" subtitle="Parties that are not customers or suppliers, for the Party of a row" size="lg"
+    <Modal open={open} onClose={onClose} title="Manage Others" subtitle="Companies that are not customers or suppliers, for the Company of a row" size="lg"
       footer={<><button className={btn} onClick={onClose}>Cancel</button><button className={btnPrimary} data-testid="others-save" onClick={() => { onSave(list); onClose(); }}>Save</button></>}>
       <div className="flex flex-wrap items-center gap-2 pb-3 border-b border-slate-100">
-        <input aria-label="New party name" className={`${inp} flex-1 min-w-[12rem]`} placeholder="Party name" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add(); }} />
-        <select aria-label="New party type" className={`${sel} w-44`} value={kind} onChange={e => setKind(e.target.value)}>
+        <input aria-label="New company name" className={`${inp} flex-1 min-w-[12rem]`} placeholder="Company name" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add(); }} />
+        <select aria-label="New company type" className={`${sel} w-44`} value={kind} onChange={e => setKind(e.target.value)}>
           <option value="">-- Select Type --</option>{typeNames.map(k => <option key={k} value={k}>{k}</option>)}</select>
-        <button className={btn} onClick={add}><Plus size={14} />Add Party</button>
+        <button className={btn} onClick={add}><Plus size={14} />Add Company</button>
       </div>
       {err && <p role="alert" data-testid="others-error" className="mt-2 text-xs text-red-600">{err}</p>}
       <div className="mt-2 max-h-80 overflow-y-auto divide-y divide-slate-100">
@@ -740,8 +745,8 @@ function ManageOthers({ open, onClose, others, typeNames, onSave }: { open: bool
           <div key={o.name} data-testid="other-row" className="flex items-center gap-2 py-2 text-sm">
             {editing === o.name ? (
               <>
-                <input aria-label="Edit party name" className={`${inp} flex-1 !h-8`} value={draftName} onChange={e => setDraftName(e.target.value)} />
-                <select aria-label="Edit party type" className={`${sel} !h-8 w-36`} value={draftKind} onChange={e => setDraftKind(e.target.value)}>{Array.from(new Set([...typeNames, draftKind])).map(k => <option key={k}>{k}</option>)}</select>
+                <input aria-label="Edit company name" className={`${inp} flex-1 !h-8`} value={draftName} onChange={e => setDraftName(e.target.value)} />
+                <select aria-label="Edit company type" className={`${sel} !h-8 w-36`} value={draftKind} onChange={e => setDraftKind(e.target.value)}>{Array.from(new Set([...typeNames, draftKind])).map(k => <option key={k}>{k}</option>)}</select>
                 <button className={`${btn} !h-8`} data-testid="other-update" onClick={commitEdit}>Update</button>
                 <button className={`${btn} !h-8`} onClick={() => { setEditing(null); setErr(''); }}>Cancel</button>
               </>

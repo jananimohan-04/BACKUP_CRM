@@ -3,6 +3,8 @@ import { Search, Download, Eye, Edit2, Trash2 } from 'lucide-react';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 import { KanbanCard } from './SalesPipelinePage';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
+import { recordDateOf } from '@/lib/globalDate';
 
 interface PipelineListViewProps {
   cards: KanbanCard[];
@@ -43,6 +45,10 @@ export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineLi
   const stageOptions = ['Total Enquiries', 'Quotations', 'Sales Orders', 'Inward', 'Finished Goods', 'Delivery Challans', 'Invoices']
     .filter(label => cards.some(c => stageOf(c) === label));
 
+  const { from: globalFrom, to: globalTo, inRange: inDateRange } = useGlobalDateFilter();
+  const cardDate = (c: KanbanCard): string | null =>
+    recordDateOf({ date: (c as any).date, ...((c as any).raw ?? {}) } as Record<string, unknown>,
+      ['date', 'invoice_date', 'delivery_date', 'inward_date', 'order_date', 'received_date', 'created_at']);
   const filteredCards = cards.filter(c => {
     const matchesSearch = !search ||
       (c.refNo || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -52,11 +58,12 @@ export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineLi
     const matchesCustomer = !companyFilter || companyFilter === 'All Companies' ||
       (c.customer || '').trim().toLowerCase() === companyFilter.trim().toLowerCase();
     const matchesStage = stageFilter === 'All' || stageOf(c) === stageFilter;
+    const matchesDate = inDateRange(cardDate(c));
 
-    return matchesSearch && matchesCustomer && matchesStage;
+    return matchesSearch && matchesCustomer && matchesStage && matchesDate;
   });
 
-  const pager = usePager(filteredCards, `${search}|${companyFilter}|${stageFilter}`);
+  const pager = usePager(filteredCards, `${search}|${companyFilter}|${stageFilter}|${globalFrom}|${globalTo}`);
   const { pageCards, start } = { pageCards: pager.pageItems, start: pager.start };
 
   return (

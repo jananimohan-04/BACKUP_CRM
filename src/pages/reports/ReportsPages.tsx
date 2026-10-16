@@ -8,6 +8,8 @@ import { supabase } from '@/lib/supabase';
 import { exportCsv } from '@/lib/reportExport';
 import { formatINR, todayISO } from '@/lib/format';
 import { useAuth } from '@/contexts/AuthContext';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
+import { intersectRange } from '@/lib/globalDate';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 
 type Section = 'Overview' | 'Sales' | 'Production' | 'Inventory' | 'Machine Utilization' | 'Profitability' | 'Custom Reports';
@@ -26,6 +28,9 @@ function ReportsPage({ initialSection = 'Overview' as Section }) {
   const [section, setSection] = useState<Section>(initialSection);
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(todayISO());
+  // Global Topbar range intersects the report's own From/To (server-side filters below).
+  const { from: globalFrom, to: globalTo } = useGlobalDateFilter();
+  const { from: effFrom, to: effTo } = intersectRange(from, to, globalFrom, globalTo);
   const [customer, setCustomer] = useState('');
   const [machine, setMachine] = useState('');
   const [data, setData] = useState<ReportData>({ invoices: [], orders: [], workOrders: [], machines: [], jobs: [], customers: [], inventory: null, pnl: null });
@@ -33,20 +38,20 @@ function ReportsPage({ initialSection = 'Overview' as Section }) {
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
-    if (!from || !to || from > to) { setError('Choose a valid date range.'); return; }
+    if (!effFrom || !effTo || effFrom > effTo) { setError('Choose a valid date range.'); return; }
     setLoading(true); setError('');
     try {
-      const invQ = supabase.from('cnc_invoices').select('id,invoice_no,invoice_type,invoice_date,customer_name,customer_id,amount,status,cancelled,part_name,quantity').gte('invoice_date', from).lte('invoice_date', to).order('invoice_date', { ascending: false }).limit(2000);
-      const soQ = supabase.from('cnc_sales_orders').select('id,order_no,order_date,created_at,customer,part_name,part_no,quantity,value,total_value,status').gte('order_date', from).lte('order_date', to).order('order_date', { ascending: false }).limit(2000);
-      const woQ = supabase.from('cnc_work_orders').select('id,wo_no,customer,part_name,part_no,quantity,completed,rejected,status,start_date,due_date,created_at,sales_order').gte('created_at', `${from}T00:00:00`).lte('created_at', `${to}T23:59:59`).order('created_at', { ascending: false }).limit(2000);
-      const jobsQ = supabase.from('cnc_job_cards').select('id,work_order,machine,qty_planned,qty_completed,qty_rejected,cycle_time,setup_time,status,created_at').gte('created_at', `${from}T00:00:00`).lte('created_at', `${to}T23:59:59`).limit(5000);
+      const invQ = supabase.from('cnc_invoices').select('id,invoice_no,invoice_type,invoice_date,customer_name,customer_id,amount,status,cancelled,part_name,quantity').gte('invoice_date', effFrom).lte('invoice_date', effTo).order('invoice_date', { ascending: false }).limit(2000);
+      const soQ = supabase.from('cnc_sales_orders').select('id,order_no,order_date,created_at,customer,part_name,part_no,quantity,value,total_value,status').gte('order_date', effFrom).lte('order_date', effTo).order('order_date', { ascending: false }).limit(2000);
+      const woQ = supabase.from('cnc_work_orders').select('id,wo_no,customer,part_name,part_no,quantity,completed,rejected,status,start_date,due_date,created_at,sales_order').gte('created_at', `${effFrom}T00:00:00`).lte('created_at', `${effTo}T23:59:59`).order('created_at', { ascending: false }).limit(2000);
+      const jobsQ = supabase.from('cnc_job_cards').select('id,work_order,machine,qty_planned,qty_completed,qty_rejected,cycle_time,setup_time,status,created_at').gte('created_at', `${effFrom}T00:00:00`).lte('created_at', `${effTo}T23:59:59`).limit(5000);
       const [inv, so, wo, mc, jc, cu, inventory, pnl] = await Promise.all([
         invQ, soQ, woQ,
         supabase.from('cnc_machines').select('id,code,name,type,status,utilization,spindle_hours').order('code'),
         jobsQ,
         supabase.from('cnc_customers').select('id,name').order('name').limit(2000),
         supabase.rpc('erp_inventory_summary'),
-        supabase.rpc('erp_profit_and_loss', { p_from: from, p_to: to }),
+        supabase.rpc('erp_profit_and_loss', { p_from: effFrom, p_to: effTo }),
       ]);
       const failures = [inv, so, wo, mc, jc, cu].filter(x => x.error);
       if (failures.length) throw failures[0].error;
@@ -57,7 +62,7 @@ function ReportsPage({ initialSection = 'Overview' as Section }) {
       setData({ invoices: [], orders: [], workOrders: [], machines: [], jobs: [], customers: [], inventory: null, pnl: null });
       setError(e instanceof Error ? e.message : 'Unable to generate report. Please try again.');
     } finally { setLoading(false); }
-  }, [company?.id, from, to]);
+  }, [company?.id, effFrom, effTo]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { setSection(initialSection); }, [initialSection]);
@@ -94,7 +99,7 @@ function ReportsPage({ initialSection = 'Overview' as Section }) {
   const exportReport = () => exportCsv(`ERP_Report_${section.replace(/ /g,'_')}_${todayISO()}`,[
     ['Report',section],['Company',company?.company_name||'Current authorized company'],['Date From',from],['Date To',to],['Company',data.customers.find(c=>c.id===customer)?.name||'All'],['Machine',machine||'All'],[],
     ['KPI','Value'],['Invoiced Sales',salesTotal],['Production Completed Qty',productionTotal],['Finished Goods Stock Value',fgValue],['Machine Utilization %',avgUtil??''],['Net Profit (P&L)',data.pnl?.totals?.net_profit||''],[],
-    ['Sales Trend Month','Invoiced','Invoices'],...trend.map(x=>[x.month,x.sales,x.orders]),[],['Product','Quantity','Sales Value'],...products.map(x=>[x.name,x.qty,x.value]),[],['Recent Sales Order','Date','Company','Value','Status'],...filteredOrders.slice(0,20).map(x=>[x.order_no,x.order_date,x.customer,x.total_value??x.value,x.status]),[],['Work Order','Date','Part','Quantity','Completed','Rejected','Status'],...filteredWos.slice(0,20).map(x=>[x.wo_no,x.created_at,x.part_name,x.quantity,x.completed,x.rejected,x.status]),[],['Inventory Category','Items','Stock Value'],...categoryValues.map((x:any)=>[x.name,x.items,x.value]),[],['Machine','Status','Utilization %'],...utilizationRows.map(x=>[x.code,x.status,x.utilizationValue]),[],['P&L Account','Type','Amount'],...(data.pnl?.rows||[]).map((x:any)=>[x.name,x.account_type,x.amount]),
+    ['Sales Trend Month','Invoiced','Invoices'],...trend.map(x=>[x.month,x.sales,x.orders]),[],['Product','Quantity','Sales Value'],...products.map(x=>[x.name,x.qty,x.value]),[],['Recent Sales Order','Date','Company','Value','Status'],...filteredOrders.slice(0,20).map(x=>[x.order_no,x.order_date,x.customer,x.total_value??x.value,x.status]),[],['Work Order','Date','Part','Quantity','Completed','Rejected','Status'],...filteredWos.slice(0,20).map(x=>[x.wo_no,x.created_at,x.part_name,x.quantity,x.completed,x.rejected,x.status]),[],['Inventory Category','Products','Stock Value'],...categoryValues.map((x:any)=>[x.name,x.items,x.value]),[],['Machine','Status','Utilization %'],...utilizationRows.map(x=>[x.code,x.status,x.utilizationValue]),[],['P&L Account','Type','Amount'],...(data.pnl?.rows||[]).map((x:any)=>[x.name,x.account_type,x.amount]),
   ]);
 
   const exportReportRef = useRef(exportReport);
@@ -213,7 +218,7 @@ function ReportsPage({ initialSection = 'Overview' as Section }) {
         <Card className="p-4"><div className="flex justify-between mb-3"><h2 className="font-bold text-sm">Recent Sales Orders</h2><Button size="sm" variant="secondary" onClick={()=>navigate('/sales/orders')}>View Details</Button></div>{filteredOrders.slice(0,6).map(o=><div key={o.id} className="grid grid-cols-[1fr_auto] gap-2 border-t py-2 text-xs"><span><b>{o.order_no}</b><span className="text-slate-500"> · {o.customer}</span></span><b>{money(o.total_value??o.value)}</b></div>)}{!filteredOrders.length&&<Empty/>}</Card>
         <Card className="p-4"><div className="flex justify-between mb-3"><h2 className="font-bold text-sm">Recent Production Orders</h2><Button size="sm" variant="secondary" onClick={()=>navigate('/production/work-orders')}>View Details</Button></div>{filteredWos.slice(0,6).map(w=><div key={w.id} className="grid grid-cols-[1fr_auto] gap-2 border-t py-2 text-xs"><span><b>{w.wo_no}</b><span className="text-slate-500"> · {w.part_name}</span></span><Badge variant={isOpen(w.status)?'warning':'success'}>{w.status||'Unknown'}</Badge></div>)}{!filteredWos.length&&<Empty/>}</Card>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3"><Insight label="Overdue production" value={overdueWos.length?`${overdueWos.length} work orders past due`:'No overdue work orders in this period'} tone={overdueWos.length?'rose':'green'}/><Insight label="Top invoiced company" value={topCustomer?`${topCustomer[0]} · ${money(topCustomer[1])}`:'No invoiced company data'} tone="blue"/><Insight label="Inventory attention" value={Number(data.inventory?.low_stock||0)+Number(data.inventory?.out_of_stock||0)?`${Number(data.inventory.low_stock||0)} low and ${Number(data.inventory.out_of_stock||0)} out of stock`:'No low or out-of-stock items'} tone={Number(data.inventory?.low_stock||0)+Number(data.inventory?.out_of_stock||0)?'amber':'green'}/></div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3"><Insight label="Overdue production" value={overdueWos.length?`${overdueWos.length} work orders past due`:'No overdue work orders in this period'} tone={overdueWos.length?'rose':'green'}/><Insight label="Top invoiced company" value={topCustomer?`${topCustomer[0]} · ${money(topCustomer[1])}`:'No invoiced company data'} tone="blue"/><Insight label="Inventory attention" value={Number(data.inventory?.low_stock||0)+Number(data.inventory?.out_of_stock||0)?`${Number(data.inventory.low_stock||0)} low and ${Number(data.inventory.out_of_stock||0)} out of stock`:'No low or out-of-stock products'} tone={Number(data.inventory?.low_stock||0)+Number(data.inventory?.out_of_stock||0)?'amber':'green'}/></div>
     </>}
   </div>;
 }

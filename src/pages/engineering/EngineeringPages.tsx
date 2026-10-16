@@ -505,8 +505,8 @@ export function BOMPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="BOM Levels" value={maxLevel.toString()} icon={<Boxes size={20} />} accent="brand" />
         <StatCard label="Total Components" value={bomData.length.toString()} icon={<Boxes size={20} />} accent="accent" />
-        <StatCard label="Make Items" value={makeItemsCount.toString()} icon={<Cog size={20} />} accent="navy" />
-        <StatCard label="Buy Items" value={buyItemsCount.toString()} icon={<Boxes size={20} />} accent="success" />
+        <StatCard label="Make Products" value={makeItemsCount.toString()} icon={<Cog size={20} />} accent="navy" />
+        <StatCard label="Buy Products" value={buyItemsCount.toString()} icon={<Boxes size={20} />} accent="success" />
       </div>
       <Card className="overflow-hidden">
         <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
@@ -577,7 +577,7 @@ export function BOMPage() {
               {projects.map((p, i) => <option key={i} value={p}>{p}</option>)}
             </select>
           </FormField>
-          <FormField label="Product Name" required><input className={inputClass} value={formData.partName} onChange={e => setFormData({...formData, partName: e.target.value})} placeholder="Product Name" /></FormField>
+          <FormField label="Product Name" required><input className={inputClass} list="saved-products" value={formData.partName} onChange={e => setFormData({...formData, partName: e.target.value})} placeholder="Product Name" /></FormField>
           <FormField label="Material"><input className={inputClass} value={formData.material} onChange={e => setFormData({...formData, material: e.target.value})} placeholder="Material Grade" /></FormField>
           <FormField label="Quantity" required><input type="number" step="0.01" className={inputClass} value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} /></FormField>
           <FormField label="UOM">

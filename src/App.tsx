@@ -7,6 +7,7 @@ import { AccessDenied } from './components/AccessDenied';
 import { AuthProvider, useAuth, type ErpRole } from './contexts/AuthContext';
 import { AdminAssistant } from './components/AdminAssistant';
 import { VoiceControl } from './components/VoiceControl';
+import { SavedProductsDatalist } from './lib/savedProducts';
 import { Sidebar } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
 import { HeaderKpiProvider } from './contexts/HeaderKpiContext';
@@ -276,6 +277,7 @@ function MainLayout() {
       </div>
       <AdminAssistant />
       <VoiceControl />
+      <SavedProductsDatalist />
     </div>
     </HeaderKpiProvider>
   );

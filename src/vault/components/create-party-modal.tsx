@@ -61,7 +61,7 @@ export function CreatePartyModal({ open, onOpenChange, onPartyCreated }: CreateP
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-indigo-900">
             <Building2 className="w-5 h-5 text-indigo-600" />
-            Create New Company (Party)
+            Create New Company
           </DialogTitle>
           <DialogDescription>
             Add a new client company, supplier, or internal partner.

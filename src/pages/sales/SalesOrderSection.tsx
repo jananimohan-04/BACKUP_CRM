@@ -180,7 +180,7 @@ export function SalesOrderSection({ order, qtyTracking, editMode: editing, saveR
           <div key={idx} className="rounded-lg border border-slate-200 bg-white px-2 py-2">
             <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_7.5rem_6.5rem] min-w-[640px] gap-2 items-center">
               <span className="text-[11px] font-bold text-slate-400 text-center">{idx + 1}</span>
-              <input className={inputBox} placeholder="Product name" value={it.partName || ''} onChange={(e) => updItem(idx, { partName: e.target.value })} />
+              <input className={inputBox} placeholder="Product name" list="saved-products" value={it.partName || ''} onChange={(e) => updItem(idx, { partName: e.target.value })} />
               <input type="number" min={0} className={`${inputBox} tabular-nums`} value={it.quantity ?? ''} placeholder="0" onChange={(e) => updItem(idx, { quantity: e.target.value })} />
               <input type="number" min={0} className={`${inputBox} tabular-nums`} value={it.unitPrice ?? ''} placeholder="0.00" onChange={(e) => updItem(idx, { unitPrice: e.target.value })} />
               <input type="number" min={0} className={`${inputBox} tabular-nums`} value={it.gst ?? ''} placeholder="18" onChange={(e) => updItem(idx, { gst: e.target.value })} />

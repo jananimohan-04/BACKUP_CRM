@@ -1,6 +1,7 @@
 export { ProductionMainPage as ProductionPlanningPage } from './unified/ProductionMainPage';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { Eye, Edit, Trash2, Cog, ClipboardList, Gauge, Package, Activity, Calendar } from 'lucide-react';
 import { PageHeader, FilterButton, ExportButton, DateSelector, SectionCard } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -23,6 +24,7 @@ type JobCardRow = Omit<JobCard, 'status' | 'cncProgram' | 'startDate'> & {
   status: JobCardStatus | string;
   cncProgram?: string;
   startDate?: string;
+  createdAt?: string;
 };
 
 function mapJobCardRow(d: any): JobCardRow {
@@ -43,6 +45,7 @@ function mapJobCardRow(d: any): JobCardRow {
     setupTime: Number(d.setup_time) || 0,
     toolNo: d.tool_no,
     status: d.status,
+    createdAt: d.created_at,
   };
 }
 
@@ -537,10 +540,16 @@ export function WorkOrdersPage() {
     },
   ];
 
-  const totalWOs = woData.length;
-  const inProgressWOs = woData.filter(w => w.status === 'In Progress').length;
-  const completedWOs = woData.filter(w => w.status === 'Completed').length;
-  const onHoldWOs = woData.filter(w => w.status === 'On Hold').length;
+  // Global date filter (plan start date) drives the stats and the table together.
+  const { inRange: inWODateRange } = useGlobalDateFilter();
+  const rangedWOs = useMemo(
+    () => woData.filter((w: any) => inWODateRange(w.startDate ?? w.start_date ?? w.created_at)),
+    [woData, inWODateRange],
+  );
+  const totalWOs = rangedWOs.length;
+  const inProgressWOs = rangedWOs.filter(w => w.status === 'In Progress').length;
+  const completedWOs = rangedWOs.filter(w => w.status === 'Completed').length;
+  const onHoldWOs = rangedWOs.filter(w => w.status === 'On Hold').length;
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
@@ -551,7 +560,7 @@ export function WorkOrdersPage() {
         <StatCard label="Completed" value={completedWOs.toString()} icon={<Package size={20} />} accent="success" />
         <StatCard label="On Hold" value={onHoldWOs.toString()} icon={<ClipboardList size={20} />} accent="warning" />
       </div>
-      <DataTable data={woData} columns={columns} searchKeys={['woNo', 'partName', 'customer']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Work Order" filterOptions={WO_STATUSES.map(s => ({ label: s, value: s }))} />
+      <DataTable data={rangedWOs} columns={columns} searchKeys={['woNo', 'partName', 'customer']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Work Order" filterOptions={WO_STATUSES.map(s => ({ label: s, value: s }))} />
       
       {selectedWO && <WorkOrderDetailModal wo={selectedWO} onClose={() => setSelectedWO(null)} />}
 
@@ -892,10 +901,16 @@ export function JobCardsPage() {
     },
   ];
 
-  const totalJobs = jobData.length;
-  const runningJobs = jobData.filter(j => j.status === 'In Progress').length;
-  const pendingJobs = jobData.filter(j => j.status === 'Planned' || j.status === 'Pending').length;
-  const onHoldJobs = jobData.filter(j => j.status === 'On Hold').length;
+  // Global date filter (job creation date) drives the stats and the table together.
+  const { inRange: inJobDateRange } = useGlobalDateFilter();
+  const rangedJobs = useMemo(
+    () => jobData.filter((j: any) => inJobDateRange(j.createdAt ?? j.created_at)),
+    [jobData, inJobDateRange],
+  );
+  const totalJobs = rangedJobs.length;
+  const runningJobs = rangedJobs.filter(j => j.status === 'In Progress').length;
+  const pendingJobs = rangedJobs.filter(j => j.status === 'Planned' || j.status === 'Pending').length;
+  const onHoldJobs = rangedJobs.filter(j => j.status === 'On Hold').length;
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
@@ -906,7 +921,7 @@ export function JobCardsPage() {
         <StatCard label="Planned" value={pendingJobs.toString()} icon={<ClipboardList size={20} />} accent="warning" />
         <StatCard label="On Hold" value={onHoldJobs.toString()} icon={<ClipboardList size={20} />} accent="neutral" />
       </div>
-      <DataTable data={jobData} columns={columns} searchKeys={['jobNo', 'workOrder', 'partName', 'operation', 'machine', 'operator']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Job Card" filterOptions={JOB_STATUSES.map(s => ({ label: s, value: s }))} />
+      <DataTable data={rangedJobs} columns={columns} searchKeys={['jobNo', 'workOrder', 'partName', 'operation', 'machine', 'operator']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Job Card" filterOptions={JOB_STATUSES.map(s => ({ label: s, value: s }))} />
       
       {selectedJob && <JobCardModal job={selectedJob} onClose={() => setSelectedJob(null)} />}
 

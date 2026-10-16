@@ -355,7 +355,7 @@ export function QuoteCostingPage() {
                         <span className="ml-2 inline-flex items-center gap-1">
                           Product:
                           <select value={productIdx} onChange={(e) => { setProductIdx(Number(e.target.value)); setMatLines([]); setOpLines([]); }} className="text-slate-800 text-xs rounded border border-slate-300 px-1.5 py-0.5">
-                            {products.map((p, i) => <option key={i} value={i}>{p.name || `Item ${i + 1}`} (Qty {p.qty})</option>)}
+                            {products.map((p, i) => <option key={i} value={i}>{p.name || `Product ${i + 1}`} (Qty {p.qty})</option>)}
                           </select>
                         </span>
                       )}

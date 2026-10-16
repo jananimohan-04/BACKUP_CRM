@@ -5,6 +5,8 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
+import { recordDateOf } from '@/lib/globalDate';
 import { downloadBrandedDocument, viewBrandedDocument } from '@/lib/brandedDocument';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 
@@ -123,7 +125,7 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
       documentNo: r.inward_no || '',
       date: r.inward_date || r.created_at,
       details: [
-        ['Party Name', r.party_name || '—'],
+        ['Company Name', r.party_name || '—'],
         ['Category', r.category || '—'],
         ['Reference No.', r.reference_no || '—'],
         ['Product', r.product_name || r.project_name || '—'],
@@ -157,6 +159,7 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
     catch (error) { alert(error instanceof Error ? error.message : 'Unable to download the bill.'); }
   };
 
+  const { from: globalFrom, to: globalTo, inRange: inDateRange } = useGlobalDateFilter();
   const filteredRecords = records.filter(r => r.status !== 'Deleted').filter(r => {
     const matchesSearch = (r.inward_no || '').toLowerCase().includes(search.toLowerCase()) ||
       (r.party_name || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -172,12 +175,14 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
       (r.part_name || '').trim().toLowerCase() === partNameFilter.trim().toLowerCase();
     const matchesStatus = !statusFilter || statusFilter === 'All Status' ||
       (r.status || '').trim().toLowerCase() === statusFilter.trim().toLowerCase();
-    return matchesSearch && matchesCompany && matchesCategory && matchesPartName && matchesStatus;
+    // Global date filter uses the inward date.
+    const matchesDate = inDateRange(recordDateOf(r, ['inward_date', 'created_at']));
+    return matchesSearch && matchesCompany && matchesCategory && matchesPartName && matchesStatus && matchesDate;
   });
 
   const colCount = 8;
 
-  const pager = usePager(filteredRecords, `${search}||${companyFilter}||${categoryFilter}||${partNameFilter}||${statusFilter}`);
+  const pager = usePager(filteredRecords, `${search}||${companyFilter}||${categoryFilter}||${partNameFilter}||${statusFilter}||${globalFrom}||${globalTo}`);
 
   // Shared so the two row templates cannot drift apart.
   const actionCell = (record: any) => (
@@ -254,10 +259,10 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
                 <th className="py-2 px-3 font-semibold">Inward No</th>
                 <th className="py-2 px-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
-                    <span className="whitespace-nowrap">Party</span>
+                    <span className="whitespace-nowrap">Company</span>
                     <select
-                      aria-label="Filter by Party/Company"
-                      title="Filter by Party/Company"
+                      aria-label="Filter by Company"
+                      title="Filter by Company"
                       value={companyFilter || 'All Companies'}
                       onChange={e => setCompanyFilter(e.target.value)}
                       className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[125px] truncate shadow-xs"

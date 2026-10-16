@@ -986,7 +986,7 @@ export function ProjectCostingPage() {
                             <tr className="bg-slate-50 text-slate-500">
                               <th className="p-2 text-left">Type</th>
                               <th className="p-2 text-left">Process / Operation</th>
-                              <th className="p-2 text-left">Party / Machine</th>
+                              <th className="p-2 text-left">Company / Machine</th>
                               <th className="p-2 text-right">Qty / Hours</th>
                               <th className="p-2 text-right">Rate</th>
                               <th className="p-2 text-right">Cost</th>
@@ -1059,7 +1059,7 @@ export function ProjectCostingPage() {
                               <th className="p-2 text-left">Date</th>
                               <th className="p-2 text-left">Reference</th>
                               <th className="p-2 text-left">Expense</th>
-                              <th className="p-2 text-left">Party</th>
+                              <th className="p-2 text-left">Company</th>
                               <th className="p-2 text-left">Remarks</th>
                               <th className="p-2 text-right">Qty</th>
                               <th className="p-2 text-right">Rate</th>

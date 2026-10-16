@@ -5,6 +5,8 @@ import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
+import { recordDateOf } from '@/lib/globalDate';
 
 export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal, onView, entryForm }: { onBack: () => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onView?: (record: any) => void; entryForm?: ReactNode | ((props: { onBack: () => void; searchSlot: ReactNode }) => ReactNode) }) {
   const { companyFilter, setCompanyFilter, companyOptions } = useHeaderKpis();
@@ -52,6 +54,7 @@ export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal,
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [records]);
 
+  const { from: globalFrom, to: globalTo, inRange: inDateRange } = useGlobalDateFilter();
   const filteredRecords = records.filter(r => {
     const matchesSearch = (r.delivery_no || '').toLowerCase().includes(search.toLowerCase()) ||
       (r.customer_name || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -60,10 +63,12 @@ export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal,
       (r.customer_name || '').trim().toLowerCase() === companyFilter.trim().toLowerCase();
     const matchesStatus = !statusFilter || statusFilter === 'All Status' ||
       (r.status || '').trim().toLowerCase() === statusFilter.trim().toLowerCase();
-    return matchesSearch && matchesCompany && matchesStatus;
+    // Global date filter uses the delivery date.
+    const matchesDate = inDateRange(recordDateOf(r, ['delivery_date', 'created_at']));
+    return matchesSearch && matchesCompany && matchesStatus && matchesDate;
   });
 
-  const pager = usePager(filteredRecords, `${search}||${companyFilter}||${statusFilter}`);
+  const pager = usePager(filteredRecords, `${search}||${companyFilter}||${statusFilter}||${globalFrom}||${globalTo}`);
 
   const searchInput = (
     <div className="relative shrink-0">

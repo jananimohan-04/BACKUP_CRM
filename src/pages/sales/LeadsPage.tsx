@@ -7,6 +7,8 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, Button, statusToVariant } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
+import { recordDateOf } from '@/lib/globalDate';
 import { generateUniqueProjectNo } from '@/lib/projectNumber';
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
 import { fetchOrderQty } from '@/lib/orderQuantities';
@@ -212,7 +214,22 @@ export function LeadsPage({ hideHeader = false, toolbarLeft }: { hideHeader?: bo
 
   // Company-master rows with no enquiry yet still list under All Companies
   // (blank product/status cells). Their Company ID is the master CUST-xxxx id.
+  // The global date filter keeps a company when at least one of its enquiries
+  // (by received date) falls in range; master-only rows have no date and stay.
+  const { inRange: inDateRange } = useGlobalDateFilter();
   const displayLeads = useMemo(() => {
+    const ranged = (leadsData || []).map((l: any) => {
+      if (l.isMasterOnly) return l;
+      const rows = (l.allEnquiries || []).filter((d: any) =>
+        inDateRange(recordDateOf(d, ['received_date', 'created_at'])));
+      if (rows.length === 0) return null;
+      const statusSummary: Record<string, number> = {};
+      for (const d of rows) {
+        const st = d.status || 'New';
+        statusSummary[st] = (statusSummary[st] || 0) + 1;
+      }
+      return { ...l, allEnquiries: rows, statusSummary };
+    }).filter(Boolean);
     const grouped = new Set((leadsData || []).map((l: any) => String(l.company || '').trim().toLowerCase()));
     const extras = (customerList || [])
       .filter((c: any) => String(c.name || '').trim() && !grouped.has(String(c.name).trim().toLowerCase()))
@@ -239,8 +256,8 @@ export function LeadsPage({ hideHeader = false, toolbarLeft }: { hideHeader?: bo
         allEnquiries: [],
         isMasterOnly: true,
       }));
-    return [...(leadsData || []), ...extras];
-  }, [leadsData, customerList]);
+    return [...ranged, ...extras];
+  }, [leadsData, customerList, inDateRange]);
 
   async function fetchLeads() {
     try {
@@ -828,7 +845,7 @@ export function LeadsPage({ hideHeader = false, toolbarLeft }: { hideHeader?: bo
               <FormField label="Salesperson"><input className={inputClass} value={quoteForm.salesperson} onChange={e=>setQuoteForm({...quoteForm, salesperson: e.target.value})} /></FormField>
             </div>
             
-            <h4 className="font-semibold text-sm text-slate-800">Item Details</h4>
+            <h4 className="font-semibold text-sm text-slate-800">Product Details</h4>
             <div className="grid grid-cols-3 gap-4">
               <FormField label="Product Name" required><input className={inputClass} value={quoteForm.partName} onChange={e=>setQuoteForm({...quoteForm, partName: e.target.value})} /></FormField>
               <FormField label="Description"><input className={inputClass} value={quoteForm.description} onChange={e=>setQuoteForm({...quoteForm, description: e.target.value})} /></FormField>

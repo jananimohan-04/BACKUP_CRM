@@ -6,6 +6,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Card, Badge, Button, StatCard } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { fromInwards } from '@/lib/ledgerDashboard';
 import { exportCsv } from '@/lib/reportExport';
@@ -240,6 +241,12 @@ export function SuppliersPage() {
 
 export function PurchaseRequisitionsPage() {
   const [prs, setPrs] = useState<any[]>([]);
+  // Global date filter (requisition date).
+  const { inRange: inPRDateRange } = useGlobalDateFilter();
+  const rangedPrs = useMemo(
+    () => prs.filter((r: any) => inPRDateRange(r.pr_date ?? r.created_at)),
+    [prs, inPRDateRange],
+  );
   const [, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [viewTarget, setViewTarget] = useState<any>(null);
@@ -364,7 +371,7 @@ export function PurchaseRequisitionsPage() {
 
   const submitPR = async (status: string) => {
     if (submitting) return;
-    if (!form.items.length) return alert('Add at least one item');
+    if (!form.items.length) return alert('Add at least one product');
     setSubmitting(true);
     try {
       const { data: prRecord, error } = await supabase.from('cnc_purchase_requisitions').insert([{
@@ -401,7 +408,7 @@ export function PurchaseRequisitionsPage() {
         console.error(itemsError);
         const { error: cleanupError } = await supabase.from('cnc_purchase_requisitions').delete().eq('id', prId);
         if (cleanupError) console.error('Failed to roll back PR header:', cleanupError);
-        return alert('Error saving PR items: ' + itemsError.message);
+        return alert('Error saving PR products: ' + itemsError.message);
       }
 
       setShowAdd(false);
@@ -479,7 +486,7 @@ export function PurchaseRequisitionsPage() {
             console.error(itemsError);
             const { error: cleanupError } = await supabase.from('cnc_purchase_orders').delete().eq('id', poId);
             if (cleanupError) console.error('Failed to roll back PO header:', cleanupError);
-            return alert('Error creating PO items: ' + itemsError.message);
+            return alert('Error creating PO products: ' + itemsError.message);
          }
       }
 
@@ -515,14 +522,14 @@ export function PurchaseRequisitionsPage() {
       />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-        <StatCard label="Total PRs" value={prs.length.toString()} icon={<FileText size={20} />} accent="neutral" />
-        <StatCard label="Pending Approval" value={prs.filter(p => p.status === 'Pending Approval' || p.status === 'Submitted').length.toString()} icon={<Activity size={20} />} accent="warning" />
-        <StatCard label="Approved" value={prs.filter(p => p.status === 'Approved').length.toString()} icon={<TrendingUp size={20} />} accent="success" />
-        <StatCard label="Converted to PO" value={prs.filter(p => p.status === 'Converted to PO').length.toString()} icon={<ShoppingCart size={20} />} accent="brand" />
+        <StatCard label="Total PRs" value={rangedPrs.length.toString()} icon={<FileText size={20} />} accent="neutral" />
+        <StatCard label="Pending Approval" value={rangedPrs.filter(p => p.status === 'Pending Approval' || p.status === 'Submitted').length.toString()} icon={<Activity size={20} />} accent="warning" />
+        <StatCard label="Approved" value={rangedPrs.filter(p => p.status === 'Approved').length.toString()} icon={<TrendingUp size={20} />} accent="success" />
+        <StatCard label="Converted to PO" value={rangedPrs.filter(p => p.status === 'Converted to PO').length.toString()} icon={<ShoppingCart size={20} />} accent="brand" />
       </div>
 
       <Card>
-         <DataTable data={prs} columns={columns} searchKeys={['pr_no', 'department', 'source_reference']} />
+         <DataTable data={rangedPrs} columns={columns} searchKeys={['pr_no', 'department', 'source_reference']} />
       </Card>
 
       {/* CREATE PR MODAL */}
@@ -571,12 +578,12 @@ export function PurchaseRequisitionsPage() {
 
             <div className="border-t border-slate-200 pt-4">
                <div className="flex justify-between items-center mb-3">
-                  <h4 className="text-sm font-bold text-slate-800">Requested Items</h4>
-                  <Button variant="secondary" size="sm" onClick={handleAddItem} icon={<Plus size={14}/>}>Add Item</Button>
+                  <h4 className="text-sm font-bold text-slate-800">Requested Products</h4>
+                  <Button variant="secondary" size="sm" onClick={handleAddItem} icon={<Plus size={14}/>}>Add Product</Button>
                </div>
                
                {form.items.length === 0 ? (
-                  <div className="text-center p-4 bg-slate-50 rounded-lg border border-dashed border-slate-300 text-slate-500 text-sm">No items added yet.</div>
+                  <div className="text-center p-4 bg-slate-50 rounded-lg border border-dashed border-slate-300 text-slate-500 text-sm">No products added yet.</div>
                ) : (
                   <div className="overflow-x-auto">
                      <table className="w-full text-left text-sm whitespace-nowrap">
@@ -664,7 +671,7 @@ export function PurchaseRequisitionsPage() {
                )}
 
                <div>
-                  <h4 className="text-sm font-bold text-slate-800 mb-3 border-b border-slate-200 pb-2">Requested Items</h4>
+                  <h4 className="text-sm font-bold text-slate-800 mb-3 border-b border-slate-200 pb-2">Requested Products</h4>
                   <table className="w-full text-left text-sm">
                      <thead>
                         <tr className="text-slate-500 border-b border-slate-100">
@@ -820,7 +827,7 @@ export function PurchaseOrdersPage() {
   const savePO = async (statusToSave = 'Draft') => {
     if (saving) return;
     if (!form.supplierId) return alert('Supplier is required');
-    if (!form.items.length) return alert('At least one item is required');
+    if (!form.items.length) return alert('At least one product is required');
     if (statusToSave === 'Issued' && !form.expectedDate) return alert('Expected Delivery Date is required to Issue PO');
 
     const totals = calculateTotals();
@@ -853,7 +860,7 @@ export function PurchaseOrdersPage() {
          // Remember the old items; they are only removed after the new ones are saved,
          // so a failed insert can't leave the PO with no items (still not a single transaction).
          const { data: oldItems, error: oldErr } = await supabase.from('cnc_purchase_order_items').select('id').eq('purchase_order_id', poId);
-         if (oldErr) { console.error(oldErr); return alert('Error loading existing PO items: ' + oldErr.message); }
+         if (oldErr) { console.error(oldErr); return alert('Error loading existing PO products: ' + oldErr.message); }
          oldItemIds = (oldItems || []).map((i: any) => i.id);
       } else {
          // Insert new
@@ -884,12 +891,12 @@ export function PurchaseOrdersPage() {
             const { error: cleanupError } = await supabase.from('cnc_purchase_orders').delete().eq('id', poId);
             if (cleanupError) console.error('Failed to roll back PO header:', cleanupError);
          }
-         return alert('Error saving PO items: ' + itemsErr.message);
+         return alert('Error saving PO products: ' + itemsErr.message);
       }
 
       if (oldItemIds.length > 0) {
          const { error: delErr } = await supabase.from('cnc_purchase_order_items').delete().in('id', oldItemIds);
-         if (delErr) { console.error(delErr); alert('PO saved, but old line items could not be removed (they may appear duplicated): ' + delErr.message); }
+         if (delErr) { console.error(delErr); alert('PO saved, but old line products could not be removed (they may appear duplicated): ' + delErr.message); }
       }
 
       setShowAdd(false);
@@ -943,25 +950,31 @@ export function PurchaseOrdersPage() {
     }));
   }, [inwardRows]);
   const allPOs = useMemo(() => [...pos, ...inwardPOs].sort((a, b) => String(b.order_date ?? '').localeCompare(String(a.order_date ?? ''))), [pos, inwardPOs]);
+  // Global date filter (order date) drives the stats and the table together.
+  const { inRange: inPODateRange } = useGlobalDateFilter();
+  const rangedPOs = useMemo(
+    () => allPOs.filter((p: any) => inPODateRange(p.order_date ?? p.created_at)),
+    [allPOs, inPODateRange],
+  );
 
   const poStats = useMemo(() => {
-    const total = allPOs.length;
-    const draft = allPOs.filter(p => p.status === 'Draft').length;
-    const issued = allPOs.filter(p => p.status === 'Issued').length;
-    const rcvd = allPOs.filter(p => ['Partially Received', 'Received'].includes(p.status)).length;
-    const delayed = allPOs.filter(p => isDelayed(p)).length;
+    const total = rangedPOs.length;
+    const draft = rangedPOs.filter(p => p.status === 'Draft').length;
+    const issued = rangedPOs.filter(p => p.status === 'Issued').length;
+    const rcvd = rangedPOs.filter(p => ['Partially Received', 'Received'].includes(p.status)).length;
+    const delayed = rangedPOs.filter(p => isDelayed(p)).length;
     return { total, draft, issued, rcvd, delayed };
-  }, [allPOs]);
+  }, [rangedPOs]);
 
   const filteredPOs = useMemo(() => {
-    if (!search.trim()) return allPOs;
+    if (!search.trim()) return rangedPOs;
     const q = search.toLowerCase();
-    return allPOs.filter(p =>
+    return rangedPOs.filter(p =>
       String(p.po_number || '').toLowerCase().includes(q) ||
       String(p.supplier?.name || '').toLowerCase().includes(q) ||
       String(p.supplier?.code || '').toLowerCase().includes(q)
     );
-  }, [allPOs, search]);
+  }, [rangedPOs, search]);
 
   const handleExport = () => {
     if (filteredPOs.length === 0) return;
@@ -1158,12 +1171,12 @@ export function PurchaseOrdersPage() {
 
             <div className="border-t border-slate-200 pt-4">
                <div className="flex justify-between items-center mb-3">
-                  <h4 className="text-sm font-bold text-slate-800">Order Items</h4>
-                  <Button variant="secondary" size="sm" onClick={handleAddItem} icon={<Plus size={14}/>}>Add Item</Button>
+                  <h4 className="text-sm font-bold text-slate-800">Order Products</h4>
+                  <Button variant="secondary" size="sm" onClick={handleAddItem} icon={<Plus size={14}/>}>Add Product</Button>
                </div>
                
                {form.items.length === 0 ? (
-                  <div className="text-center p-4 bg-slate-50 rounded-lg border border-dashed border-slate-300 text-slate-500 text-sm">No items added to PO.</div>
+                  <div className="text-center p-4 bg-slate-50 rounded-lg border border-dashed border-slate-300 text-slate-500 text-sm">No products added to PO.</div>
                ) : (
                   <div className="overflow-x-auto">
                      <table className="w-full text-left text-sm whitespace-nowrap">
@@ -1289,7 +1302,7 @@ export function PurchaseOrdersPage() {
                      <thead>
                         <tr className="border-b-2 border-slate-800 text-slate-800">
                            <th className="py-2 font-bold w-12">#</th>
-                           <th className="py-2 font-bold">Item & Description</th>
+                           <th className="py-2 font-bold">Product & Description</th>
                            <th className="py-2 font-bold text-center">Ordered Qty</th>
                            <th className="py-2 font-bold text-center">Pending Qty</th>
                            <th className="py-2 font-bold text-right">Unit Price</th>
@@ -1346,6 +1359,12 @@ export function PurchaseOrdersPage() {
 
 export function GoodsReceiptPage() {
   const [grns, setGrns] = useState<any[]>([]);
+  // Global date filter (receipt date) drives the stats and the table together.
+  const { inRange: inGRNDateRange } = useGlobalDateFilter();
+  const rangedGrns = useMemo(
+    () => grns.filter((g: any) => inGRNDateRange(g.receipt_date ?? g.created_at)),
+    [grns, inGRNDateRange],
+  );
   const [, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [viewTarget, setViewTarget] = useState<any>(null);
@@ -1464,7 +1483,7 @@ export function GoodsReceiptPage() {
     if (saving) return;
     if (!form.poId) return alert('Purchase Order is required');
     if (!form.warehouseId) return alert('Warehouse is required');
-    if (!form.items.length) return alert('At least one item is required');
+    if (!form.items.length) return alert('At least one product is required');
 
     const po = pos.find(p => p.id === form.poId);
 
@@ -1494,7 +1513,7 @@ export function GoodsReceiptPage() {
          if (updErr) { console.error(updErr); return alert('Error updating GRN: ' + updErr.message); }
          // Old items are removed only after the new ones are saved (not a single transaction).
          const { data: oldItems, error: oldErr } = await supabase.from('cnc_goods_receipt_items').select('id').eq('goods_receipt_id', grnId);
-         if (oldErr) { console.error(oldErr); return alert('Error loading existing GRN items: ' + oldErr.message); }
+         if (oldErr) { console.error(oldErr); return alert('Error loading existing GRN products: ' + oldErr.message); }
          oldItemIds = (oldItems || []).map((i: any) => i.id);
       } else {
          // Insert new
@@ -1526,12 +1545,12 @@ export function GoodsReceiptPage() {
             const { error: cleanupError } = await supabase.from('cnc_goods_receipts').delete().eq('id', grnId);
             if (cleanupError) console.error('Failed to roll back GRN header:', cleanupError);
          }
-         return alert('Error saving GRN items: ' + itemsErr.message);
+         return alert('Error saving GRN products: ' + itemsErr.message);
       }
 
       if (oldItemIds.length > 0) {
          const { error: delErr } = await supabase.from('cnc_goods_receipt_items').delete().in('id', oldItemIds);
-         if (delErr) { console.error(delErr); alert('GRN saved, but old line items could not be removed (they may appear duplicated): ' + delErr.message); }
+         if (delErr) { console.error(delErr); alert('GRN saved, but old line products could not be removed (they may appear duplicated): ' + delErr.message); }
       }
 
       setShowAdd(false);
@@ -1585,14 +1604,14 @@ export function GoodsReceiptPage() {
       />
       
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-        <StatCard label="Total GRNs" value={grns.length.toString()} icon={<Package size={20} />} accent="brand" />
-        <StatCard label="Draft" value={grns.filter(g => g.status === 'Draft').length.toString()} icon={<FileText size={20} />} accent="neutral" />
-        <StatCard label="Posted" value={grns.filter(g => g.status === 'Posted').length.toString()} icon={<CheckCircle size={20} />} accent="success" />
-        <StatCard label="This Month" value={grns.filter(g => (g.receipt_date || '').startsWith(new Date().toISOString().substring(0, 7))).length.toString()} icon={<TrendingUp size={20} />} accent="brand" />
+        <StatCard label="Total GRNs" value={rangedGrns.length.toString()} icon={<Package size={20} />} accent="brand" />
+        <StatCard label="Draft" value={rangedGrns.filter(g => g.status === 'Draft').length.toString()} icon={<FileText size={20} />} accent="neutral" />
+        <StatCard label="Posted" value={rangedGrns.filter(g => g.status === 'Posted').length.toString()} icon={<CheckCircle size={20} />} accent="success" />
+        <StatCard label="This Month" value={rangedGrns.filter(g => (g.receipt_date || '').startsWith(new Date().toISOString().substring(0, 7))).length.toString()} icon={<TrendingUp size={20} />} accent="brand" />
       </div>
       
       <Card>
-         <DataTable data={grns} columns={columns} searchKeys={['grn_number', 'supplier.name', 'po.po_number']} />
+         <DataTable data={rangedGrns} columns={columns} searchKeys={['grn_number', 'supplier.name', 'po.po_number']} />
       </Card>
 
       {/* CREATE / EDIT GRN MODAL */}
@@ -1632,11 +1651,11 @@ export function GoodsReceiptPage() {
 
             <div className="border-t border-slate-200 pt-4">
                <div className="flex justify-between items-center mb-3">
-                  <h4 className="text-sm font-bold text-slate-800">Received Items</h4>
+                  <h4 className="text-sm font-bold text-slate-800">Received Products</h4>
                </div>
                
                {form.items.length === 0 ? (
-                  <div className="text-center p-4 bg-slate-50 rounded-lg border border-dashed border-slate-300 text-slate-500 text-sm">Select a Purchase Order to load pending items.</div>
+                  <div className="text-center p-4 bg-slate-50 rounded-lg border border-dashed border-slate-300 text-slate-500 text-sm">Select a Purchase Order to load pending products.</div>
                ) : (
                   <div className="overflow-x-auto">
                      <table className="w-full text-left text-sm whitespace-nowrap">
@@ -1778,8 +1797,14 @@ export function SupplierPerformancePage() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [selectedSupplier, setSelectedSupplier] = useState<string>('');
   const [kpiFilter, setKpiFilter] = useState<string>('All');
-  
+
   const [allData, setAllData] = useState<any[]>([]);
+  // Global date filter (PO order-date cohort).
+  const { inRange: inPerfDateRange } = useGlobalDateFilter();
+  const rangedData = useMemo(
+    () => allData.filter((d: any) => inPerfDateRange(d.order_date ?? d.created_at)),
+    [allData, inPerfDateRange],
+  );
   
   const [viewTarget, setViewTarget] = useState<any>(null); // For viewing PO details
 
@@ -1851,7 +1876,7 @@ export function SupplierPerformancePage() {
   }
 
   // Derived Data for UI
-  const supplierData = selectedSupplier ? allData.filter(d => d.supplier_id === selectedSupplier) : allData;
+  const supplierData = selectedSupplier ? rangedData.filter(d => d.supplier_id === selectedSupplier) : rangedData;
   
   // Calculate Summaries
   let totalValue = 0;

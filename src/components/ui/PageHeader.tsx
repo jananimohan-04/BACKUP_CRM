@@ -24,10 +24,13 @@ export function PageHeader({
 }
 
 export function DateSelector() {
-  const { dateRange, setDateRange } = useDateRange();
+  const { from, to, isAllTime, setCustomRange, reset } = useDateRange();
   const [isOpen, setIsOpen] = useState(false);
+  const [draftFrom, setDraftFrom] = useState('');
+  const [draftTo, setDraftTo] = useState('');
+  const [error, setError] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
-  
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -38,16 +41,28 @@ export function DateSelector() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [dropdownRef]);
 
+  useEffect(() => {
+    if (isOpen) {
+      setDraftFrom(from ?? '');
+      setDraftTo(to ?? '');
+      setError('');
+    }
+  }, [isOpen, from, to]);
+
   const formatDate = (dateString: string) => {
     const d = new Date(dateString);
     if (isNaN(d.getTime())) return 'Invalid Date';
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  const endYear = new Date(dateRange.end).getFullYear();
-  
-  let dateStr = `${formatDate(dateRange.start)} - ${formatDate(dateRange.end)}`;
-  if (!isNaN(endYear)) dateStr += `, ${endYear}`;
+  let dateStr = 'All Time';
+  if (!isAllTime && from && to) {
+    const endYear = new Date(to).getFullYear();
+    dateStr = `${formatDate(from)} - ${formatDate(to)}`;
+    if (!isNaN(endYear)) dateStr += `, ${endYear}`;
+  } else if (!isAllTime) {
+    dateStr = 'Custom range';
+  }
 
   return (
     <div className="relative inline-block" ref={dropdownRef}>
@@ -55,21 +70,26 @@ export function DateSelector() {
         <Calendar size={15} className="text-slate-400" />
         <span className="text-slate-600 font-medium">{dateStr}</span>
       </div>
-      
+
       {isOpen && (
         <div className="absolute right-0 mt-2 p-4 bg-white border border-slate-200 shadow-xl rounded-xl z-[100] flex flex-col gap-3 w-72">
           <h4 className="text-xs font-bold text-slate-500 uppercase">Select Date Range</h4>
           <div className="flex flex-col gap-2">
             <label className="text-xs text-slate-600 font-medium">Start Date</label>
-            <input type="date" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-brand-500" />
+            <input type="date" value={draftFrom} onChange={e => setDraftFrom(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-brand-500" />
           </div>
           <div className="flex flex-col gap-2">
             <label className="text-xs text-slate-600 font-medium">End Date</label>
-            <input type="date" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-brand-500" />
+            <input type="date" value={draftTo} onChange={e => setDraftTo(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-brand-500" />
           </div>
+          {error && <p className="text-xs font-semibold text-red-600">{error}</p>}
           <div className="flex items-center gap-2 mt-2">
-             <button onClick={() => setIsOpen(false)} className="flex-1 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200">Cancel</button>
-             <button onClick={() => setIsOpen(false)} className="flex-1 py-2 bg-brand-600 text-white rounded-lg text-sm font-bold hover:bg-brand-700">Apply</button>
+             <button onClick={() => { reset(); setIsOpen(false); }} className="flex-1 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200">All Time</button>
+             <button onClick={() => {
+               if (draftFrom && draftTo && draftFrom > draftTo) { setError('From date cannot be after To date.'); return; }
+               if (setCustomRange(draftFrom || null, draftTo || null)) setIsOpen(false);
+               else setError('From date cannot be after To date.');
+             }} className="flex-1 py-2 bg-brand-600 text-white rounded-lg text-sm font-bold hover:bg-brand-700">Apply</button>
           </div>
         </div>
       )}

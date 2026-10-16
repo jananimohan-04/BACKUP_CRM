@@ -349,7 +349,7 @@ export function InventoryPage() {
       }
       const catName = categories.find(c => c.id === applied.categoryId)?.name ?? 'All-Items';
       exportCsv(`Inventory_${catName.replace(/\W+/g, '-')}_${todayISO()}`, [
-        ['#', 'Item Code', 'Item Name', 'Category', 'Specification', 'Unit', 'Current Stock', 'Min Stock', 'Reorder Qty', 'Rate (INR)', 'Value (INR)', 'Status', 'Supplier', 'Warehouse', 'Location', 'Item Status'],
+        ['#', 'Product Code', 'Product Name', 'Category', 'Specification', 'Unit', 'Current Stock', 'Min Stock', 'Reorder Qty', 'Rate (INR)', 'Value (INR)', 'Status', 'Supplier', 'Warehouse', 'Location', 'Product Status'],
         ...all.map((r, i) => [
           i + 1, r.code, r.name, r.category_name ?? '', r.specification ?? '', r.unit ?? '', r.current_stock, r.min_stock, r.reorder_qty,
           r.rate, r.value, r.status, r.supplier_name ?? '', r.warehouse_name ?? '', r.location_name ?? '', r.item_status,
@@ -435,7 +435,7 @@ export function InventoryPage() {
           )}
         </div>
         <button type="button" onClick={() => setEditing('new')} disabled={!filters} className={topbarPrimaryBtn}>
-          <Plus size={13} /> Add Item
+          <Plus size={13} /> Add Product
         </button>
       </div>
     );
@@ -482,7 +482,7 @@ export function InventoryPage() {
   const fgCount = byCat.filter(c => catKind(c.category_id) === 'MANUFACTURED').reduce((s, c) => s + (Number(c.items) || 0), 0);
 
   const cards = [
-    { label: 'Total Items', icon: Box, tint: 'bg-blue-100 text-blue-600', value: summary ? formatQty(summary.total_items + fgStockCount) : null },
+    { label: 'Total Products', icon: Box, tint: 'bg-blue-100 text-blue-600', value: summary ? formatQty(summary.total_items + fgStockCount) : null },
     { label: 'Total Stock Value', icon: Layers, tint: 'bg-emerald-100 text-emerald-600', value: summary ? formatINR(summary.total_value) : null },
     { label: 'Raw Materials', icon: Package, tint: 'bg-orange-100 text-orange-600', value: summary ? formatQty(rawCount) : null },
     { label: 'Work In Progress', icon: Factory, tint: 'bg-violet-100 text-violet-600', value: wipCount === null ? null : formatQty(wipCount), hint: 'Open work orders' },
@@ -531,7 +531,7 @@ export function InventoryPage() {
               </div>
             )}
           </div>
-          <button onClick={() => setEditing('new')} disabled={!filters} className={primaryBtn}><Plus size={16} /> Add Item</button>
+          <button onClick={() => setEditing('new')} disabled={!filters} className={primaryBtn}><Plus size={16} /> Add Product</button>
         </div>
       </div>
 
@@ -572,7 +572,7 @@ export function InventoryPage() {
           {/* Tabs + filters share one line */}
           <div className="flex flex-nowrap items-center gap-2 px-4 py-2 border-b border-slate-200 overflow-x-auto scrollbar-thin [&>*]:shrink-0">
             {!filters && !filtersError && [0, 1, 2, 3].map(i => <div key={i} className="h-5 w-16 rounded bg-slate-100 animate-pulse" />)}
-            {[...categories.map(c => ({ id: c.id, name: c.name })), { id: '', name: 'All Items' }].map(t => {
+            {[...categories.map(c => ({ id: c.id, name: c.name })), { id: '', name: 'All Products' }].map(t => {
               if (!filters && t.id === '' && !filtersError) return null;
               const active = applied.categoryId === t.id;
               return (
@@ -587,7 +587,7 @@ export function InventoryPage() {
               value={draft.search}
               onChange={e => setDraft({ ...draft, search: e.target.value })}
               onKeyDown={e => { if (e.key === 'Enter') handleSearch(); }}
-              placeholder="Search by item name, code..."
+              placeholder="Search by product name, code..."
               className={`${selectCls} w-44`}
             />
             <select aria-label="Category" value={draft.categoryId} onChange={e => setDraft({ ...draft, categoryId: e.target.value })} className={`${selectCls} max-w-[150px]`}>
@@ -619,7 +619,7 @@ export function InventoryPage() {
               <thead>
                 <tr className="bg-slate-50 text-slate-600 text-xs font-semibold border-b border-slate-200">
                   <th className="px-3 py-3 text-left w-10">#</th>
-                  <th className="px-3 py-3 text-left">Item Code</th>
+                  <th className="px-3 py-3 text-left">Product Code</th>
                   <th className="px-3 py-3 text-left">Product / Material Name</th>
                   <th className="px-3 py-3 text-left">Category</th>
                   <th className="px-3 py-3 text-left">Warehouse / Location</th>
@@ -641,7 +641,7 @@ export function InventoryPage() {
                   </tr>
                 ))}
                 {!itemsLoading && items && items.rows.length === 0 && fgVisible.length === 0 && (
-                  <tr><td colSpan={12} className="px-3 py-12 text-center text-slate-500">{fg.rows === null ? 'Loading…' : 'No inventory items found.'}</td></tr>
+                  <tr><td colSpan={12} className="px-3 py-12 text-center text-slate-500">{fg.rows === null ? 'Loading…' : 'No inventory products found.'}</td></tr>
                 )}
                 {!itemsLoading && items && items.rows.map((r, i) => (
                   <tr key={rowKey(r)} className="border-b border-slate-100 hover:bg-slate-50/70">
@@ -725,7 +725,7 @@ export function InventoryPage() {
 
           {/* Footer / pagination */}
           <div className="px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3 text-sm text-slate-600">
-            <span>{items ? ((items.total === 0 ? (fgVisible.length ? '' : 'Showing 0 items') : `Showing ${firstShown} to ${lastShown} of ${formatQty(items.total)} items`) + (fgVisible.length ? `${items.total ? ' · ' : ''}${fgVisible.length} finished good${fgVisible.length === 1 ? '' : 's'} ready for delivery` : '')) : ' '}</span>
+            <span>{items ? ((items.total === 0 ? (fgVisible.length ? '' : 'Showing 0 products') : `Showing ${firstShown} to ${lastShown} of ${formatQty(items.total)} products`) + (fgVisible.length ? `${items.total ? ' · ' : ''}${fgVisible.length} finished good${fgVisible.length === 1 ? '' : 's'} ready for delivery` : '')) : ' '}</span>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1">
                 <button aria-label="Previous page" disabled={page <= 1 || !items} onClick={() => setPage(p => Math.max(1, p - 1))}
@@ -784,15 +784,15 @@ export function InventoryPage() {
                 <ul className="space-y-1">
                   {summary.out_of_stock > 0 && (
                     <li><button onClick={() => filterByStatus('Out of Stock')} className="w-full text-left flex items-center gap-2 text-sm text-slate-700 hover:bg-slate-50 rounded px-1 py-1.5">
-                      <XCircle size={16} className="text-red-500 flex-shrink-0" /> {formatQty(summary.out_of_stock)} items are out of stock</button></li>
+                      <XCircle size={16} className="text-red-500 flex-shrink-0" /> {formatQty(summary.out_of_stock)} products are out of stock</button></li>
                   )}
                   {summary.low_stock > 0 && (
                     <li><button onClick={() => filterByStatus('Low Stock')} className="w-full text-left flex items-center gap-2 text-sm text-slate-700 hover:bg-slate-50 rounded px-1 py-1.5">
-                      <AlertTriangle size={16} className="text-amber-500 flex-shrink-0" /> {formatQty(summary.low_stock)} items are below minimum stock</button></li>
+                      <AlertTriangle size={16} className="text-amber-500 flex-shrink-0" /> {formatQty(summary.low_stock)} products are below minimum stock</button></li>
                   )}
                   {summary.to_reorder > 0 && (
                     <li><button onClick={() => filterByStatus('Reorder')} className="w-full text-left flex items-center gap-2 text-sm text-slate-700 hover:bg-slate-50 rounded px-1 py-1.5">
-                      <Info size={16} className="text-blue-500 flex-shrink-0" /> {formatQty(summary.to_reorder)} items need reordering</button></li>
+                      <Info size={16} className="text-blue-500 flex-shrink-0" /> {formatQty(summary.to_reorder)} products need reordering</button></li>
                   )}
                 </ul>
               ))}
@@ -804,7 +804,7 @@ export function InventoryPage() {
       {menu && (
         <div data-floating-menu className="fixed z-40 w-44 bg-white border border-slate-200 rounded-lg shadow-xl overflow-hidden"
           style={{ top: Math.min(menu.y + 4, window.innerHeight - 140), left: Math.max(8, menu.x - 176) }}>
-          <button onClick={() => { setViewing({ row: menu.row, tab: 'details' }); setMenu(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2"><Eye size={14} /> View Item</button>
+          <button onClick={() => { setViewing({ row: menu.row, tab: 'details' }); setMenu(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2"><Eye size={14} /> View Product</button>
           <button onClick={() => { setViewing({ row: menu.row, tab: 'history' }); setMenu(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2"><History size={14} /> Stock Movement</button>
           {canManage && (
             <button onClick={() => { setAdjusting(menu.row); setMenu(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2"><SlidersHorizontal size={14} /> Adjust Stock</button>
@@ -838,7 +838,7 @@ export function InventoryPage() {
         <AdjustStockModal row={adjusting} onClose={() => setAdjusting(null)} onSaved={() => { setAdjusting(null); refreshAll(); }} />
       )}
       {adjustPickerOpen && canManage && (
-        <ItemPickerModal title="Stock Adjustment — Select Item" onClose={() => setAdjustPickerOpen(false)} onPick={row => { setAdjustPickerOpen(false); setAdjusting(row); }} />
+        <ItemPickerModal title="Stock Adjustment — Select Product" onClose={() => setAdjustPickerOpen(false)} onPick={row => { setAdjustPickerOpen(false); setAdjusting(row); }} />
       )}
       {transferOpen && canManage && (
         <TransferModal onClose={() => setTransferOpen(false)} onSaved={refreshAll} />
@@ -920,7 +920,7 @@ function StockStatusCard({ summary, failed }: { summary: InventorySummary | null
     { label: 'In Stock', count: summary.in_stock, color: 'bg-emerald-500' },
     { label: 'Low Stock', count: summary.low_stock, color: 'bg-amber-500' },
     { label: 'Out of Stock', count: summary.out_of_stock, color: 'bg-red-500' },
-    { label: 'Total Items', count: summary.total_items, color: 'bg-slate-500' },
+    { label: 'Total Products', count: summary.total_items, color: 'bg-slate-500' },
   ] : [];
   const total = summary?.total_items ?? 0;
   return (
@@ -1023,8 +1023,8 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
   const locations = locationsFor(form.warehouse_id);
 
   const save = async () => {
-    if (!form.code.trim()) return setError('Item Code is required.');
-    if (!form.name.trim()) return setError('Item Name is required.');
+    if (!form.code.trim()) return setError('Product Code is required.');
+    if (!form.name.trim()) return setError('Product Name is required.');
     if (!form.category_id) return setError('Select a category.');
     for (const [label, v] of [['Min Stock', form.min_stock], ['Reorder Qty', form.reorder_qty], ['Rate', form.rate]] as const) {
       if (!isNonNegativeDecimal(v)) return setError(`${label} must be a number of zero or more.`);
@@ -1061,15 +1061,15 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
   };
 
   return (
-    <Modal open onClose={onClose} size="lg" title={isNew ? 'Add Item' : 'Edit Item'} subtitle={item ? `${item.code} · ${item.name}` : undefined}
+    <Modal open onClose={onClose} size="lg" title={isNew ? 'Add Product' : 'Edit Product'} subtitle={item ? `${item.code} · ${item.name}` : undefined}
       footer={<>
         <button onClick={onClose} className={cancelBtn}>Cancel</button>
         <button onClick={save} disabled={saving} className={saveBtn}>{saving && <Loader2 size={14} className="animate-spin" />} Save</button>
       </>}>
       <ModalError message={error} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FormField label="Item Code" required><input className={inputClass} value={form.code} onChange={e => set('code', e.target.value)} /></FormField>
-        <FormField label="Item Name" required><input className={inputClass} value={form.name} onChange={e => set('name', e.target.value)} /></FormField>
+        <FormField label="Product Code" required><input className={inputClass} value={form.code} onChange={e => set('code', e.target.value)} /></FormField>
+        <FormField label="Product Name" required><input className={inputClass} value={form.name} onChange={e => set('name', e.target.value)} /></FormField>
         <FormField label="Category" required>
           <select className={inputClass} value={form.category_id} onChange={e => set('category_id', e.target.value)}>
             <option value="">Select…</option>
@@ -1188,7 +1188,7 @@ function ViewItemModal({ row, initialTab, imageUrl, onClose, onOpenSource }: {
     : null;
 
   return (
-    <Modal open onClose={onClose} size="xl" title="View Item" subtitle={`${it.code} · ${it.name}`}
+    <Modal open onClose={onClose} size="xl" title="View Product" subtitle={`${it.code} · ${it.name}`}
       footer={<button onClick={onClose} className={cancelBtn}>Close</button>}>
       <ModalError message={error} />
       <div className="flex gap-6 border-b border-slate-200 mb-4">
@@ -1208,8 +1208,8 @@ function ViewItemModal({ row, initialTab, imageUrl, onClose, onOpenSource }: {
           </div>
           <div className="flex-1">
             <DetailGrid fields={[
-              ['Item Code', it.code],
-              ['Item Name', it.name],
+              ['Product Code', it.code],
+              ['Product Name', it.name],
               ['Category', it.category_name],
               ['Specification', it.specification],
               ['Unit', it.unit],
@@ -1339,7 +1339,7 @@ function AdjustStockModal({ row, onClose, onSaved }: { row: InventoryItemRow; on
       </>}>
       <ModalError message={error} />
       <div className="space-y-4">
-        <FormField label="Item">
+        <FormField label="Product">
           <input className={`${inputClass} bg-slate-50`} readOnly value={`${row.code} · ${row.name} (current ${formatQty(row.current_stock)} ${row.unit ?? ''})`} />
         </FormField>
         <FormField label="Direction" required>
@@ -1397,7 +1397,7 @@ function ItemPickerModal({ title, onPick, onClose }: {
   useEffect(() => { search(''); }, []);
 
   return (
-    <Modal open onClose={onClose} size="md" title={title} subtitle="Search by item code or name"
+    <Modal open onClose={onClose} size="md" title={title} subtitle="Search by product code or name"
       footer={<button onClick={onClose} className={cancelBtn}>Cancel</button>}>
       <ModalError message={error} />
       <div className="flex gap-2 mb-3">
@@ -1405,7 +1405,7 @@ function ItemPickerModal({ title, onPick, onClose }: {
           value={q}
           onChange={e => setQ(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') search(q); }}
-          placeholder="Item code or name..."
+          placeholder="Product code or name..."
           className={`${inputClass} flex-1`}
         />
         <button onClick={() => search(q)} disabled={searching} className={outlineBtn}>
@@ -1461,7 +1461,7 @@ function TransferModal({ onClose, onSaved }: { onClose: () => void; onSaved: () 
   const whName = (id: string) => warehouses?.find(w => String(w.id) === id)?.name ?? id;
 
   const startReview = () => {
-    if (!item) return setError('Select an item to transfer.');
+    if (!item) return setError('Select a product to transfer.');
     if (!fromId || !toId) return setError('Choose the source and destination warehouses.');
     if (fromId === toId) return setError('Source and destination must be different.');
     if (!isPositiveQty(qty)) return setError('Enter a quantity greater than zero.');
@@ -1530,9 +1530,9 @@ function TransferModal({ onClose, onSaved }: { onClose: () => void; onSaved: () 
         </div>
       ) : (
         <div className="space-y-4">
-          <FormField label="Item" required>
+          <FormField label="Product" required>
             <button onClick={() => setPicking(true)} className={`${inputClass} text-left ${item ? '' : 'text-slate-400'}`}>
-              {item ? `${item.code} · ${item.name} (available ${formatQty(item.current_stock)} ${item.unit ?? ''})` : 'Select item...'}
+              {item ? `${item.code} · ${item.name} (available ${formatQty(item.current_stock)} ${item.unit ?? ''})` : 'Select product...'}
             </button>
           </FormField>
           <div className="grid grid-cols-2 gap-4">
@@ -1565,7 +1565,7 @@ function TransferModal({ onClose, onSaved }: { onClose: () => void; onSaved: () 
         </div>
       )}
       {picking && (
-        <ItemPickerModal title="Select Item to Transfer" onClose={() => setPicking(false)} onPick={r => { setItem(r); setPicking(false); }} />
+        <ItemPickerModal title="Select Product to Transfer" onClose={() => setPicking(false)} onPick={r => { setItem(r); setPicking(false); }} />
       )}
     </Modal>
   );
@@ -1618,7 +1618,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
   };
 
   return (
-    <Modal open onClose={onClose} size="lg" title="Import Items"
+    <Modal open onClose={onClose} size="lg" title="Import Products"
       footer={<>
         <button onClick={onClose} className={cancelBtn}>{result ? 'Close' : 'Cancel'}</button>
         {!result && <button onClick={runImport} disabled={!rows || busy} className={saveBtn}>{busy && <Loader2 size={14} className="animate-spin" />} Import</button>}
@@ -1684,8 +1684,8 @@ function TransactionModal({ txn, onClose, onOpenSource }: { txn: RecentTransacti
         ['Type', txn.type],
         ['Direction', <DirectionBadge direction={txn.direction} />],
         ['Quantity', <SignedQty qty={txn.qty} unit={txn.unit} />],
-        ['Item Code', txn.item_code],
-        ['Item Name', txn.item_name],
+        ['Product Code', txn.item_code],
+        ['Product Name', txn.item_name],
         ['Reference Type', txn.reference_type ? REFERENCE_LABELS[txn.reference_type] ?? txn.reference_type : ''],
         ['Reference No', txn.reference_no],
         ['Remarks', txn.remarks],

@@ -8,6 +8,7 @@
 // Cancel writes nothing and the card stays put.
 
 import { useState, useEffect, useMemo, useRef, Fragment, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { calcWorkings, rowCost, type WorkRow, type Workings } from '@/lib/quotationWorkings';
 import { supabase } from '@/lib/supabase';
 import { todayISO } from '@/lib/format';
@@ -905,65 +906,59 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
 
   const [pickCompany, setPickCompany] = useState('');
   const [pickProduct, setPickProduct] = useState('');
+  const [pickText, setPickText] = useState('');
+  const pickInputRef = useRef<HTMLInputElement>(null);
+  const [pickTick, setPickTick] = useState(0);
   const [prodDropdownOpen, setProdDropdownOpen] = useState(false);
   const prodRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleOutside = (e: MouseEvent) => {
-      if (prodRef.current && !prodRef.current.contains(e.target as Node)) {
+      const inList = (e.target as HTMLElement | null)?.closest?.('[data-fg-dropdown]');
+      if (!inList && prodRef.current && !prodRef.current.contains(e.target as Node)) {
         setProdDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleOutside);
-    return () => document.removeEventListener('mousedown', handleOutside);
+    // The list is drawn at a fixed spot under the field: follow it when the page moves or resizes.
+    const follow = () => setPickTick((n) => n + 1);
+    window.addEventListener('scroll', follow, true);
+    window.addEventListener('resize', follow);
+    return () => { document.removeEventListener('mousedown', handleOutside); window.removeEventListener('scroll', follow, true); window.removeEventListener('resize', follow); };
   }, []);
 
   if (card?.raw?.__pick) {
     const key = (v: string) => String(v || '').trim().toLowerCase();
-    const queryComp = key(pickCompany);
-
-    // Products matching the typed/selected company
-    const exactMatches = pickOptions.filter((o) => key(o.company) === queryComp);
-    const matchedOptions = exactMatches.length > 0
-      ? exactMatches
-      : pickOptions.filter((o) => !queryComp || key(o.company).includes(queryComp) || queryComp.includes(key(o.company)));
-
-    const products = Array.from(new Set(matchedOptions.map((o) => o.product).filter(Boolean))).sort((a, b) => a.localeCompare(b));
-
-    const filteredProducts = products.filter((p) => !pickProduct.trim() || p.toLowerCase().includes(key(pickProduct)));
-
-    // Product → company: when the picked product belongs to exactly one
-    // company, fill it in (unless the current company already offers it).
-    const autoCompanyForProduct = (p: string) => {
-      const found = Array.from(new Set(
-        pickOptions.filter((o) => key(o.product) === key(p)).map((o) => String(o.company || '').trim()).filter(Boolean)
-      ));
-      if (found.length !== 1) return;
-      const cur = queryComp;
-      if (!cur || !found.some((c) => key(c) === cur)) setPickCompany(found[0]);
-    };
+    // One row per product, written as "Company - Product - date time". Typing matches any part of that text,
+    // so the company name finds it too.
+    const rowsAll = pickOptions
+      .map((o) => ({ key: `${o.company}||${o.product}`, company: String(o.company || '').trim(), product: o.product, label: o.company ? `${String(o.company).trim()} - ${o.product}` : o.product }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+    const words = key(pickText).split(/\s+/).filter(Boolean);
+    const rows = rowsAll.filter((r) => words.every((w) => r.label.toLowerCase().includes(w)));
+    const box = pickInputRef.current?.getBoundingClientRect();
+    void pickTick;
 
     return (
       <Modal open inline={inline} onClose={onClose} title="Finished Goods + Costing" subtitle="Add Finished Goods" size="3xl" width={960} accent={tint('Finished Goods')}>
         <div className={`w-fit rounded-xl border p-2.5 ${tint('Finished Goods').panel}`}>
           <div className="flex flex-wrap items-center gap-2">
             {titleSlot ?? <h3 className="text-[10px] font-bold uppercase tracking-widest text-brand-600">Section 1 — Transaction Details</h3>}
-            <div className="flex items-center gap-1.5">
-              <span className={inlineLbl}>Company *</span>
-              <span className="text-sm font-bold text-slate-800 min-w-[8rem]" data-testid="fg-pick-company">{pickCompany || '—'}</span>
-            </div>
             <div className="flex items-center gap-1.5 relative" ref={prodRef}>
               <span className={inlineLbl}>Product *</span>
               <div className="relative">
                 <input
-                  className={`${compactInput} w-[15rem] pr-6`}
-                  list="fg-pick-products"
-                  placeholder="Type or select product"
-                  value={pickProduct}
+                  ref={pickInputRef}
+                  className={`${compactInput} w-[26rem] max-w-[60vw] pr-6`}
+                  placeholder="Type company or product, or select"
+                  value={pickText}
                   onFocus={() => setProdDropdownOpen(true)}
                   onChange={(e) => {
-                    setPickProduct(e.target.value);
-                    autoCompanyForProduct(e.target.value);
+                    const v = e.target.value;
+                    setPickText(v);
+                    const hit = rowsAll.find((r) => key(r.label) === key(v));
+                    setPickProduct(hit ? hit.product : '');
+                    setPickCompany(hit ? hit.company : '');
                     setProdDropdownOpen(true);
                   }}
                 />
@@ -975,55 +970,38 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                 >
                   <ChevronDown size={14} />
                 </button>
-                {prodDropdownOpen && (
-                  <div className="absolute left-0 top-full mt-1 w-[18rem] z-50 bg-white border border-slate-200 rounded-lg shadow-xl max-h-56 overflow-y-auto py-1">
-                    {filteredProducts.length > 0 ? (
-                      (() => {
-                        // One row per company + product, so the same product under
-                        // different companies stays distinguishable and always
-                        // resolves its company on pick.
-                        const seen = new Set<string>();
-                        const rows: { key: string; company: string; product: string }[] = [];
-                        filteredProducts.forEach((p) => {
-                          const cos = Array.from(new Set(matchedOptions.filter((o) => o.product === p).map((o) => String(o.company || '').trim()).filter(Boolean)));
-                          (cos.length > 0 ? cos : ['']).forEach((co) => {
-                            const k = `${co}||${p}`;
-                            if (seen.has(k)) return;
-                            seen.add(k);
-                            rows.push({ key: k, company: co, product: p });
-                          });
-                        });
-                        return rows.map((r) => {
-                          const label = r.company ? `${r.company} · ${r.product}` : r.product;
-                          return (
-                            <div
-                              key={r.key}
-                              title={label}
-                              className="px-3 py-1.5 text-xs text-slate-700 hover:bg-brand-50 hover:text-brand-800 cursor-pointer font-medium"
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                setPickProduct(r.product);
-                                if (r.company) setPickCompany(r.company);
-                                else autoCompanyForProduct(r.product);
-                                setProdDropdownOpen(false);
-                              }}
-                            >
-                              {label}
-                            </div>
-                          );
-                        });
-                      })()
-                    ) : (
-                      <div className="px-3 py-2 text-xs text-slate-400 italic">
-                        {pickCompany.trim() ? "No products found for this company before Finished Goods" : "Select a company first"}
+                {prodDropdownOpen && box && createPortal(
+                  // Drawn on the page itself (not inside the form) so no panel can clip or hide it.
+                  <div
+                    data-fg-dropdown
+                    style={{ position: 'fixed', left: Math.max(8, Math.min(box.left, window.innerWidth - 8 - Math.max(box.width, 420))), top: box.bottom + 4, width: Math.max(box.width, 420), maxWidth: 'calc(100vw - 16px)', maxHeight: Math.max(160, Math.min(320, window.innerHeight - box.bottom - 16)), zIndex: 100 }}
+                    className="overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-xl"
+                  >
+                    {rows.length > 0 ? rows.map((r) => (
+                      <div
+                        key={r.key}
+                        title={r.label}
+                        className="cursor-pointer px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-brand-50 hover:text-brand-800"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setPickText(r.label);
+                          setPickProduct(r.product);
+                          setPickCompany(r.company);
+                          setProdDropdownOpen(false);
+                        }}
+                      >
+                        {r.label}
+                      </div>
+                    )) : (
+                      <div className="px-3 py-2 text-xs italic text-slate-400">
+                        {pickOptions.length === 0 ? 'No products are waiting to be finished' : 'No product matches what you typed'}
                       </div>
                     )}
-                  </div>
+                  </div>,
+                  document.body,
                 )}
               </div>
-              <datalist id="fg-pick-products">{products.map((p) => <option key={p} value={p} />)}</datalist>
             </div>
-            <p className="text-[11px] text-slate-400">Pick a product — its company fills in automatically.</p>
             <Button variant="secondary" size="sm" icon={<X size={14} />} onClick={onClose}>Cancel</Button>
             <Button size="sm" disabled={!pickCompany.trim() || !pickProduct.trim()} onClick={() => onPick?.(pickCompany.trim(), pickProduct.trim())} className="!bg-teal-600 hover:!bg-teal-500 text-white shadow-md shadow-teal-500/25 !border-teal-600">Continue</Button>
             {searchSlot}

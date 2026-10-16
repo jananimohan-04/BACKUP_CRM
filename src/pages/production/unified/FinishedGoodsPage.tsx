@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { Badge, statusToVariant } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Package, Eye, Edit, Filter, Plus, Download, CheckCircle, Clock } from 'lucide-react';
@@ -183,15 +184,18 @@ export function FinishedGoodsPage() {
     }
   };
 
+  // Global date filter (completion record date) intersects the page's own filters.
+  const { inRange: inFGDateRange } = useGlobalDateFilter();
   const filteredRecords = records.filter(r => {
     const matchesSearch = (r.part_name?.toLowerCase() || '').includes(searchTerm.toLowerCase());
     const matchesProject = projectFilter === 'All Projects' || r.sales_order === projectFilter;
     const matchesCustomer = customerFilter === 'All Companies' || r.customer === customerFilter;
-    const matchesStatus = statusFilter === 'All' ? true : 
-                          statusFilter === 'Active Only' ? (r.status !== 'Dispatched' && r.status !== 'Delivered') : 
+    const matchesStatus = statusFilter === 'All' ? true :
+                          statusFilter === 'Active Only' ? (r.status !== 'Dispatched' && r.status !== 'Delivered') :
                           r.status === statusFilter;
     const matchesMonth = monthFilter === '' ? true : (r.created_at && r.created_at.startsWith(monthFilter));
-    return matchesSearch && matchesProject && matchesCustomer && matchesStatus && matchesMonth;
+    const matchesDate = inFGDateRange(r.created_at);
+    return matchesSearch && matchesProject && matchesCustomer && matchesStatus && matchesMonth && matchesDate;
   });
 
   // Summary cards reflect the currently filtered set

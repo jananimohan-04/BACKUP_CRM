@@ -98,7 +98,7 @@ function AuditLogsPage() {
               <TableHead>Timestamp</TableHead>
               <TableHead>User</TableHead>
               <TableHead>Action</TableHead>
-              <TableHead>Document / Party</TableHead>
+              <TableHead>Document / Company</TableHead>
               <TableHead>Details</TableHead>
             </TableRow>
           </TableHeader>

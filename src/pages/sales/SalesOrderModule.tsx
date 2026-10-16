@@ -8,6 +8,8 @@ import { SalesOrderSection } from './SalesOrderSection';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 import { formatLeadProductDisplay } from './SalesPipelinePage';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
+import { recordDateOf } from '@/lib/globalDate';
 
 const orderValue = (r: any) => r.total_value ?? r.value;
 
@@ -116,16 +118,19 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onView, onEd
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [records, companyOptions]);
 
+  const { from: globalFrom, to: globalTo, inRange: inDateRange } = useGlobalDateFilter();
   const filteredRecords = records.filter(r => {
     const matchesSearch = (r.order_no || '').toLowerCase().includes(search.toLowerCase()) ||
       (r.customer || '').toLowerCase().includes(search.toLowerCase()) ||
       (r.part_name || '').toLowerCase().includes(search.toLowerCase());
     const matchesCompany = !companyFilter || companyFilter === 'All Companies' ||
       (r.customer || '').trim().toLowerCase() === companyFilter.trim().toLowerCase();
-    return matchesSearch && matchesCompany;
+    // Global date filter uses the order date.
+    const matchesDate = inDateRange(recordDateOf(r, ['order_date', 'created_at']));
+    return matchesSearch && matchesCompany && matchesDate;
   });
 
-  const pager = usePager(filteredRecords, `${search}||${companyFilter}`);
+  const pager = usePager(filteredRecords, `${search}||${companyFilter}||${globalFrom}||${globalTo}`);
 
   const searchInput = (
     <div className="relative shrink-0">

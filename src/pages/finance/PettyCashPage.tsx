@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Wallet, Save, Eraser, Trash2, FileSpreadsheet, Inbox, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
+import { intersectRange } from '@/lib/globalDate';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { supabase } from '@/lib/supabase';
 import { financeApi, type BankFilters } from '@/lib/finance';
@@ -138,9 +140,12 @@ export function PettyCashPage() {
     catch (e) { setNote({ kind: 'err', text: e instanceof Error ? e.message : 'Could not delete the entry.' }); }
   };
 
+  // Global Topbar range intersects this page's own From/To (either may be empty).
+  const { from: globalFrom, to: globalTo } = useGlobalDateFilter();
+  const { from: effFrom, to: effTo } = intersectRange(fFrom, fTo, globalFrom, globalTo);
   const view = useMemo(() => rows.filter(r =>
-    (!fFrom || r.txn_date >= fFrom) && (!fTo || r.txn_date <= fTo) && (!fBank || r.account_id === fBank) &&
-    (!fLedger || r.contra_account_id === fLedger) && (!fType || ledgerTypeOf(r.contra_account_id ? accName.get(r.contra_account_id) : null) === fType)), [rows, fFrom, fTo, fBank, fLedger, fType, accName]);
+    (!effFrom || r.txn_date >= effFrom) && (!effTo || r.txn_date <= effTo) && (!fBank || r.account_id === fBank) &&
+    (!fLedger || r.contra_account_id === fLedger) && (!fType || ledgerTypeOf(r.contra_account_id ? accName.get(r.contra_account_id) : null) === fType)), [rows, effFrom, effTo, fBank, fLedger, fType, accName]);
   const live = view.filter(r => r.status !== 'Cancelled');
   const totalDebit = live.filter(r => r.direction === 'OUT').reduce((n, r) => n + r.amount, 0);
   const totalCredit = live.filter(r => r.direction === 'IN').reduce((n, r) => n + r.amount, 0);

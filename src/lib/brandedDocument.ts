@@ -941,10 +941,10 @@ async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
   autoTable(doc, {
     startY: y,
     body: [
-      ['Party Name', val(input.partyName), 'Doc. No', val(input.docNo)],
-      ['Party Address', val(input.partyAddress), 'DC Number', val(input.dcNo)],
-      ['Party Code', val(input.partyCode), 'DC Date', challanDate(input.dcDate)],
-      ['Party GSTIN', val(input.partyGstin), 'P.O. Number', val(input.poNo)],
+      ['Company Name', val(input.partyName), 'Doc. No', val(input.docNo)],
+      ['Company Address', val(input.partyAddress), 'DC Number', val(input.dcNo)],
+      ['Company Code', val(input.partyCode), 'DC Date', challanDate(input.dcDate)],
+      ['Company GSTIN', val(input.partyGstin), 'P.O. Number', val(input.poNo)],
       ['', '', 'Date', challanDate(input.invDate)],
     ],
     columnStyles: { 0: labelCell(26), 1: {}, 2: labelCell(26), 3: {} },
@@ -1048,7 +1048,7 @@ async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(...INK);
-  doc.text('Signature of the Party', ML, y + 12);
+  doc.text('Signature of the Company', ML, y + 12);
   doc.text('Authorised Signature', pageWidth - MR, y + 12, { align: 'right' });
   y += 18;
 

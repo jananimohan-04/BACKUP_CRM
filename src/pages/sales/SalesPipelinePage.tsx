@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useLayoutEffect, Fragment } from 'react';
 import { supabase } from '@/lib/supabase';
+import { refreshSavedProducts } from '@/lib/savedProducts';
 import { financeApi } from '@/lib/finance';
 import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
@@ -10,6 +11,8 @@ import { uploadOrderFile } from '@/lib/orderFiles';
 import { MetalCalculatorPage, ClientLibraryPage, ProductLibraryPage, TermsLibraryPage, QuotationLibraryPage, CompanyProfilePage } from '../quotation/QuotationToolPages';
 import { setMockImage, getMockImage } from '@/lib/mockStorage';
 import { useAuth } from '@/contexts/AuthContext';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
+import { recordDateOf } from '@/lib/globalDate';
 import { STAGE_MODULE } from '@/config/permissions';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { EnquiryModule } from './EnquiryModule';
@@ -936,7 +939,7 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved, re
         </FormField>
       </div>
       <div className="border-t border-slate-100 pt-4">
-        <h4 className="font-semibold text-sm text-slate-800 mb-3">Products / Items Breakdown</h4>
+        <h4 className="font-semibold text-sm text-slate-800 mb-3">Products Breakdown</h4>
         <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
@@ -1158,7 +1161,7 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
 
   const save = async (): Promise<boolean> => {
     if (!String(date || '').trim()) { setError('Enter the date.'); return false; }
-    if (!String(partyName || '').trim()) { setError('Enter the party name.'); return false; }
+    if (!String(partyName || '').trim()) { setError('Enter the company name.'); return false; }
     const entered = lines.filter((l: any) => String(l.partName || '').trim());
     if (!entered.length) { setError('Add at least one product with a part name.'); return false; }
     for (const l of entered) {
@@ -1265,35 +1268,35 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
         <div className="col-span-2 md:col-span-1">
           {editMode ? (
             <CustomerAutocomplete
-              label="Party Name"
+              label="Company Name"
               required
               value={partyName}
               onChange={(val) => setPartyName(val)}
               onSelectCustomer={onSelectParty}
               companies={companies}
               inputClass={inputClass}
-              placeholder="Type or select party..."
+              placeholder="Type or select company..."
             />
           ) : (
-            textCell('Party Name', partyName)
+            textCell('Company Name', partyName)
           )}
         </div>
         {editMode ? (
           <>
-            <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Party Address</span><input className={inputCls} value={partyAddress} onChange={(e) => setPartyAddress(e.target.value)} /></div>
-            <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Party GSTIN</span><input className={inputCls} value={partyGstin} onChange={(e) => setPartyGstin(e.target.value)} /></div>
+            <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Company Address</span><input className={inputCls} value={partyAddress} onChange={(e) => setPartyAddress(e.target.value)} /></div>
+            <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Company GSTIN</span><input className={inputCls} value={partyGstin} onChange={(e) => setPartyGstin(e.target.value)} /></div>
           </>
         ) : (
           <>
-            {textCell('Party Address', partyAddress)}
-            {textCell('Party GSTIN', partyGstin)}
+            {textCell('Company Address', partyAddress)}
+            {textCell('Company GSTIN', partyGstin)}
           </>
         )}
       </div>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4">
         {editMode ? (
           <>
-            <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Party Code</span><input className={inputCls} value={partyCode} onChange={(e) => setPartyCode(e.target.value)} /></div>
+            <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Company Code</span><input className={inputCls} value={partyCode} onChange={(e) => setPartyCode(e.target.value)} /></div>
             <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">E-Way Bill No</span><input className={inputCls} value={ewayBill} onChange={(e) => setEwayBill(e.target.value)} /></div>
             <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">PO Number</span><input className={inputCls} value={poNumber} onChange={(e) => setPoNumber(e.target.value)} /></div>
             <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Place of Supply</span><input className={inputCls} value={placeOfSupply} onChange={(e) => setPlaceOfSupply(e.target.value)} /></div>
@@ -1301,7 +1304,7 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
           </>
         ) : (
           <>
-            {textCell('Party Code', partyCode)}
+            {textCell('Company Code', partyCode)}
             {textCell('E-Way Bill No', ewayBill)}
             {textCell('PO Number', poNumber)}
             {textCell('Place of Supply', placeOfSupply)}
@@ -1340,7 +1343,7 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
             <div key={it.id || idx} className="grid grid-cols-[minmax(0,1.5fr)_5rem_4.5rem_4rem_5.5rem_6rem] gap-2 items-center bg-white rounded-lg border border-slate-200 p-2 mb-2">
               <div>
                 {editMode ? (
-                  <input className={inputCls} placeholder="Part name" value={it.partName || ''} onChange={(e) => setLines((list) => list.map((r, i) => (i === idx ? { ...r, partName: e.target.value } : r)))} />
+                  <input className={inputCls} placeholder="Part name" list="saved-products" value={it.partName || ''} onChange={(e) => setLines((list) => list.map((r, i) => (i === idx ? { ...r, partName: e.target.value } : r)))} />
                 ) : (
                   <span className="text-sm text-slate-800 font-medium break-words">{it.partName || '—'}</span>
                 )}
@@ -1431,6 +1434,17 @@ export function SalesPipelinePage() {
   const [activeView, setActiveView] = useState<'pipeline' | 'enquiry_list' | 'quotation_list' | 'sales_order_list' | 'inward_list' | 'rejected_list' | 'fg_list' | 'dc_list' | 'invoice_list'>('pipeline');
   const columns: Stage[] = ['Enquiry', 'Quotation', 'Sales Order', 'Inward', 'Finished Goods', 'DC', 'Invoice'];
   const [cards, setCards] = useState<KanbanCard[]>([]);
+  // ERP-wide date filter: board, list/calendar views and KPI counts show only cards
+  // whose record date falls in range. Pickers and quantity math keep using `cards`.
+  const { inRange: inGlobalDateRange } = useGlobalDateFilter();
+  const cardRecordDate = (c: KanbanCard): string | null =>
+    recordDateOf({ date: c.date, ...(c.raw ?? {}) } as Record<string, unknown>,
+      ['date', 'invoice_date', 'delivery_date', 'inward_date', 'order_date', 'date', 'received_date', 'created_at']);
+  const boardCards = useMemo(
+    () => cards.filter((c) => inGlobalDateRange(cardRecordDate(c))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cards, inGlobalDateRange],
+  );
   const [draggedCard, setDraggedCard] = useState<KanbanCard | null>(null);
   // Single tap selects (multi-select), double tap opens the edit page.
   const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
@@ -1662,7 +1676,7 @@ export function SalesPipelinePage() {
       return {
         key: s.key,
         label: s.title,
-        count: s.stage === 'Rejected' ? rejectedTotal : cards.filter(c => c.stage === s.stage).length,
+        count: s.stage === 'Rejected' ? rejectedTotal : boardCards.filter(c => c.stage === s.stage).length,
         tile: theme.kpiTile,
         icon: theme.kpiIcon,
         iconPath: s.iconPath,
@@ -1674,7 +1688,7 @@ export function SalesPipelinePage() {
     }));
     return () => setKpis([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cards, rejectedTotal, setKpis, activeView, permissions]);
+  }, [boardCards, rejectedTotal, setKpis, activeView, permissions]);
 
   // The enquiry form is always visible at the top of the Enquiries list, so it has no
   // open/closed flag any more. savingEnquiry blocks duplicate submits while a save is in
@@ -1713,11 +1727,11 @@ export function SalesPipelinePage() {
   useEffect(() => {
     void (async () => {
       try {
-        const { data, error } = await supabase.from('cnc_production_batches').select('rejected_qty').gt('rejected_qty', 0);
-        setRejectedTotal(error ? 0 : (data ?? []).reduce((n: number, r: any) => n + (Number(r.rejected_qty) || 0), 0));
+        const { data, error } = await supabase.from('cnc_production_batches').select('rejected_qty, created_at').gt('rejected_qty', 0);
+        setRejectedTotal(error ? 0 : (data ?? []).filter((r: any) => inGlobalDateRange(r.created_at)).reduce((n: number, r: any) => n + (Number(r.rejected_qty) || 0), 0));
       } catch { setRejectedTotal(0); }
     })();
-  }, [listRefresh]);
+  }, [listRefresh, inGlobalDateRange]);
   const [fgPickId, setFgPickId] = useState('');
   const [invoiceCostingTarget, setInvoiceCostingTarget] = useState<KanbanCard | null>(null);
   // The DC entry form is inline on the DC list, so its "session" (source card, or the
@@ -1882,11 +1896,34 @@ export function SalesPipelinePage() {
     const base = (s: any) => String(s||'').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, '');
     const u = (inwardForm.projectName || '').trim();
     const seen = new Set<string>();
-    return [...(inwardForm.productOptions || []), ...inwardProdOptions].filter((o: any) => {
+    // From a sales order onward a product is identified as "Company - Product - date time", so only products that
+    // have a sales order (or were already inwarded) are offered, each shown that way.
+    // Older inwards were saved with just the product name: bring the company and the date/time back from the
+    // order (or enquiry) they belong to, so old and new entries read the same.
+    const orders: any[] = salesOrdersList || [];
+    const leads: any[] = rawLeadsList || [];
+    const enrich = (o: any) => {
+      if (!String(o.key || '').startsWith('inward:')) return o;
+      const order = orders.find((s: any) => (o.soRef && s.order_no === o.soRef) || (o.leadNo && base(s.lead_no) === base(o.leadNo)));
+      const lead = leads.find((l: any) => (o.enquiryId && String(l.id) === String(o.enquiryId)) || (o.leadNo && (base(l.lead_no) === base(o.leadNo) || base(l.enquiry_no) === base(o.leadNo))));
+      return {
+        ...o,
+        name: attachDateTimeToProduct(o.name, order || (o.stampAt ? { created_at: o.stampAt, order_date: o.stampAt } : null)),
+        customer: o.customer || order?.customer || order?.customer_name || lead?.customer || '',
+        saleOrderRef: order?.order_no || o.soRef || '',
+      };
+    };
+    const all = [...(inwardForm.productOptions || []), ...inwardProdOptions.map(enrich)];
+    // The same product from a sales order and from an earlier inward is listed once (the sales order wins).
+    const baseKey = (o: any) => `${getProductBaseName(String(o.name || '')).toLowerCase()}|${base(o.leadNo)}`;
+    const soKeys = new Set(all.filter((o: any) => !String(o.key || '').startsWith('inward:')).map(baseKey));
+    return all.filter((o: any) => {
       const k = String(o.name || '').trim().toLowerCase();
       if (!k || seen.has(k) || (u && base(o.leadNo) !== base(u))) return false;
+      if (!(o.saleOrderRef || o.saleStamp || String(o.key || '').startsWith('inward:'))) return false;
+      if (String(o.key || '').startsWith('inward:') && soKeys.has(baseKey(o))) return false;
       seen.add(k); return true;
-    });
+    }).map((o: any) => ({ ...o, display: [o.customer, o.name].filter(Boolean).join(' - ') }));
   };
   // Approved-price lookup for the DC form (same source as the DC→Invoice
   // gate: latest Approved costing sheet for the quotation).
@@ -3296,6 +3333,7 @@ export function SalesPipelinePage() {
     } catch (err) {
       console.error("Error loading pipeline:", err);
     } finally {
+      void refreshSavedProducts(true); // a product saved just now is offered in every product field
       setLoading(false);
     }
   };
@@ -3553,8 +3591,8 @@ export function SalesPipelinePage() {
 
   // Cards visible in List/Calendar views (same rule as Kanban columns below).
   const visibleCards = useMemo(
-    () => cards.filter((c) => canView(STAGE_MODULE[c.stage] ?? 'sales-pipeline')),
-    [cards, canView],
+    () => boardCards.filter((c) => canView(STAGE_MODULE[c.stage] ?? 'sales-pipeline')),
+    [boardCards, canView],
   );
 
   const addForStage = (stageId: string) => {
@@ -4479,7 +4517,7 @@ export function SalesPipelinePage() {
     const f = dcForm;
     if (!String(f.dcNo || '').trim()) { alert('Enter the DC number.'); return; }
     if (!String(f.date || '').trim()) { alert('Enter the date.'); return; }
-    if (!String(f.partyName || '').trim()) { alert('Enter the party name.'); return; }
+    if (!String(f.partyName || '').trim()) { alert('Enter the company name.'); return; }
     // Product lines (selected rows only).
     const lines = (dcItems || []).filter((i) => i.selected).map((i) => ({
       name: String(i.name || '').trim(),
@@ -4818,7 +4856,7 @@ export function SalesPipelinePage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase.from('cnc_inwards').select('product_name,enquiry_id,project_name,status').neq('status', 'Deleted');
+      const { data, error } = await supabase.from('cnc_inwards').select('product_name,enquiry_id,project_name,sales_order_ref,created_at,inward_date,status').neq('status', 'Deleted');
       if (cancelled || error) return;
       const seen = new Set<string>();
       const out: any[] = [];
@@ -4827,7 +4865,7 @@ export function SalesPipelinePage() {
         const k = name.toLowerCase();
         if (!name || seen.has(k)) continue;
         seen.add(k);
-        out.push({ key: `inward:${k}`, name, quantity: '', enquiryId: (r as any).enquiry_id || '', leadNo: (r as any).project_name || '', customer: '', saleLabel: 'earlier inward' });
+        out.push({ key: `inward:${k}`, name, quantity: '', enquiryId: (r as any).enquiry_id || '', leadNo: (r as any).project_name || '', soRef: (r as any).sales_order_ref || '', stampAt: (r as any).created_at || (r as any).inward_date || '', customer: '', saleLabel: 'earlier inward' });
       }
       setInwardProdOptions(out);
     })();
@@ -4972,22 +5010,22 @@ export function SalesPipelinePage() {
       if (dupe) { alert(`"${masterHit.name}" is already on line ${dupe.jj + 1}. Change the quantity there instead of adding it twice.`); return; }
       const supplier = group.partyName ?? inwardForm.partyName ?? '';
       const r = resolvePurchasePrice(masterHit, supplier);
-      items[ii] = { ...prev, productKey: masterHit.key, productName: masterHit.name, partId: masterHit.id, partCode: masterHit.code, partName: String(prev.partName || '').trim() ? prev.partName : masterHit.name, enquiryId: '', projectName: '', price: r.price, _resolvedPrice: r.price, gst: prev.gst ?? '18', discount: prev.discount ?? '0' };
+      items[ii] = { ...prev, productDisplay: '', productKey: masterHit.key, productName: masterHit.name, partId: masterHit.id, partCode: masterHit.code, partName: String(prev.partName || '').trim() ? prev.partName : masterHit.name, enquiryId: '', projectName: '', price: r.price, _resolvedPrice: r.price, gst: prev.gst ?? '18', discount: prev.discount ?? '0' };
     } else {
-      const leg = inwardLegacyOptions(group).find((o: any) => normStr(o.name) === normStr(v));
+      const leg = inwardLegacyOptions(group).find((o: any) => normStr(o.display) === normStr(v) || normStr(o.name) === normStr(v));
       if (leg) {
         // Expense entries (free-text lines) may repeat an item; only catalogue purchases stay single-line.
         const dupe = opts?.allowFreeText ? undefined : dupeOf(`nm:${normStr(leg.name)}`);
         if (dupe) { alert(`"${leg.name}" is already on line ${dupe.jj + 1}. Change the quantity there instead of adding it twice.`); return; }
-        const patch: any = { productName: leg.name, productKey: leg.key, partId: '', partCode: '', enquiryId: leg.enquiryId || '', projectName: leg.leadNo || '' };
+        const patch: any = { productName: leg.name, productDisplay: leg.display || '', productKey: leg.key, partId: '', partCode: '', enquiryId: leg.enquiryId || '', projectName: leg.leadNo || '' };
         items[ii] = { ...prev, ...patch };
       } else if (opts?.allowFreeText) {
         // Expense items are bought repeatedly (e.g. a battery on several days), so the same name may be entered again.
-        items[ii] = { ...prev, productName: v, productKey: v.trim() ? 'expense' : '', partId: '', partCode: '', enquiryId: '', projectName: v };
+        items[ii] = { ...prev, productDisplay: '', productName: v, productKey: v.trim() ? 'expense' : '', partId: '', partCode: '', enquiryId: '', projectName: v };
       } else {
         // Catalogue purchase: typed text that matches nothing stays visible so
         // the user can keep typing, but it carries no product link.
-        items[ii] = { ...prev, productName: v, productKey: '', partId: '', partCode: '', enquiryId: '', projectName: '' };
+        items[ii] = { ...prev, productDisplay: '', productName: v, productKey: '', partId: '', partCode: '', enquiryId: '', projectName: '' };
       }
     }
     group.items = items; parts[index] = group;
@@ -5328,7 +5366,7 @@ export function SalesPipelinePage() {
             <div key={item.id || idx} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5">
               <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_6rem_2rem] gap-2 items-center">
                 <span className="text-[11px] font-bold text-slate-400 text-center">{idx + 1}</span>
-                <input className={compactCell} placeholder="Product name" value={item.partName || ''} onChange={e=>upd({ partName: e.target.value })} />
+                <input className={compactCell} placeholder="Product name" list="saved-products" value={item.partName || ''} onChange={e=>upd({ partName: e.target.value })} />
                 <input type="number" min={0} className={compactCell} placeholder="Qty" value={item.quantity ?? ''} onChange={e=>upd({ quantity: e.target.value })} />
                 <input type="number" min={0} className={compactCell} placeholder="Unit Price (₹)" value={item.unitPrice ?? ''} onChange={e=>upd({ unitPrice: e.target.value })} />
                 <input type="number" min={0} className={compactCell} placeholder="GST %" value={item.gst ?? ''} onChange={e=>upd({ gst: e.target.value })} />
@@ -5450,7 +5488,7 @@ export function SalesPipelinePage() {
             <FormField label="DC No" required inline><input className={`${compactInput} w-[9rem]`} value={dcForm.dcNo || ''} onChange={e=>setDcForm({...dcForm, dcNo: e.target.value})} /></FormField>
             <FormField label="Date" required inline><input type="date" className={`${compactInput} w-[10.5rem]`} value={dcForm.date || ''} onChange={e=>setDcForm({...dcForm, date: e.target.value})} /></FormField>
             <CustomerAutocomplete
-              label="Party Name"
+              label="Company Name"
               required
               inlineLabel
               value={dcForm.partyName || ''}
@@ -5468,14 +5506,14 @@ export function SalesPipelinePage() {
               }}
               companies={allKnownCompanies}
               inputClass={`${compactInput} w-[14rem]`}
-              placeholder="Type or select party..."
+              placeholder="Type or select company..."
             />
-            <FormField label="Party Address" inline><input className={`${compactInput} w-[14rem]`} value={dcForm.partyAddress || ''} onChange={e=>setDcForm({...dcForm, partyAddress: e.target.value})} /></FormField>
-            <FormField label="Party GSTIN" inline><input className={`${compactInput} w-[11rem]`} value={dcForm.partyGstin || ''} onChange={e=>setDcForm({...dcForm, partyGstin: e.target.value})} /></FormField>
+            <FormField label="Company Address" inline><input className={`${compactInput} w-[14rem]`} value={dcForm.partyAddress || ''} onChange={e=>setDcForm({...dcForm, partyAddress: e.target.value})} /></FormField>
+            <FormField label="Company GSTIN" inline><input className={`${compactInput} w-[11rem]`} value={dcForm.partyGstin || ''} onChange={e=>setDcForm({...dcForm, partyGstin: e.target.value})} /></FormField>
           </div>
           {/* Row 2 - dispatch references. */}
           <div className="flex flex-wrap items-center gap-2">
-            <FormField label="Party Code" inline><input className={`${compactInput} w-[8rem]`} value={dcForm.partyCode || ''} onChange={e=>setDcForm({...dcForm, partyCode: e.target.value})} /></FormField>
+            <FormField label="Company Code" inline><input className={`${compactInput} w-[8rem]`} value={dcForm.partyCode || ''} onChange={e=>setDcForm({...dcForm, partyCode: e.target.value})} /></FormField>
             <FormField label="E-Way Bill No" inline><input className={`${compactInput} w-[10rem]`} value={dcForm.ewayBill || ''} onChange={e=>setDcForm({...dcForm, ewayBill: e.target.value})} /></FormField>
             <FormField label="PO Number" inline><input className={`${compactInput} w-[10rem]`} value={dcForm.poNumber || ''} onChange={e=>setDcForm({...dcForm, poNumber: e.target.value})} /></FormField>
             <FormField label="Place of Supply" inline><input className={`${compactInput} w-[11rem]`} value={dcForm.placeOfSupply || ''} onChange={e=>setDcForm({...dcForm, placeOfSupply: e.target.value})} /></FormField>
@@ -5551,10 +5589,13 @@ export function SalesPipelinePage() {
               );
             })}
             <datalist id="dc-product-list">
-              {Array.from(new Set([
-                ...enquiryProductOptions(rawLeadsList, undefined, salesOrdersList).map((o: any) => o.name),
-                ...partsMaster.map((p: any) => p.part_name),
-              ].filter(Boolean))).map((n: string) => <option key={n} value={n} />)}
+              {(() => {
+                // Sales-order products carry their company and date/time as the second line; parts-master names follow.
+                const so = enquiryProductOptions(rawLeadsList, undefined, salesOrdersList).filter((o: any) => o.saleOrderRef || o.saleStamp);
+                const label = new Map<string, string>(so.map((o: any) => [o.name, [o.customer, o.saleLabel].filter(Boolean).join(' · ')]));
+                return Array.from(new Set([...so.map((o: any) => o.name), ...partsMaster.map((p: any) => p.part_name)].filter(Boolean)))
+                  .map((n: string) => <option key={n} value={n} label={label.get(n) || undefined} />);
+              })()}
             </datalist>
             <button type="button" onClick={() => setDcItems((prev) => [...prev, { name: '', avail: null, qty: '', selected: true, hsn: '', unit: 'Nos', price: '' }])} className="mt-1 flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] font-semibold text-brand-600 hover:text-brand-700">
               <span className="text-sm">+</span> Add Part
@@ -5729,16 +5770,16 @@ export function SalesPipelinePage() {
                         </>
                       ) : (
                         <>
-                          <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[12.5rem]`} list={`inward-products-${index}-${ii}`} placeholder="Search & select product" title="Product" value={item.productName || ''}
+                          <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[12.5rem]`} list={`inward-products-${index}-${ii}`} placeholder="Search & select product" title="Product" value={item.productDisplay || item.productName || ''}
                             onChange={e => onInwardProductInput(index, ii, e.target.value)} />
                           <datalist id={`inward-products-${index}-${ii}`}>
                             {eligibleCatalogue.map((m: any) => <option key={m.key} value={m.name}>{[m.code, m.unit ? `per ${m.unit}` : '', m.unitPrice ? `₹${m.unitPrice}` : ''].filter(Boolean).join(' · ')}</option>)}
-                            {productOptions.map((option: any) => <option key={option.key} value={option.name}>{[option.customer, option.saleLabel || option.leadNo].filter(Boolean).join(' · ')}</option>)}
+                            {productOptions.map((option: any) => <option key={option.key} value={option.display || option.name} />)}
                           </datalist>
                         </>
                       )}
                     </div>
-                    <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[9.5rem] shrink-0`} placeholder="Part Name *" title="Part Name" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} />
+                    <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[9.5rem] shrink-0`} placeholder="Part Name *" title="Part Name" list="saved-products" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} />
                     <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[8.5rem] shrink-0`} placeholder="Remarks..." title="Remarks" value={item.remarks ?? ''} onChange={e=>setItem(ii, { remarks: e.target.value })} />
                     <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-1'}><span className={inlineLbl}>Qty *</span>
                       <input type="number" min="0" className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[4.25rem]`} placeholder="Qty" value={item.quantity || ''} onChange={e=>setItem(ii, { quantity: e.target.value })} /></div>
@@ -5934,7 +5975,16 @@ export function SalesPipelinePage() {
       });
     });
 
-    return Array.from(optionsMap.values());
+    // The same product reached through its inward (plain name) and through its sales order (name + date/time)
+    // is one product: keep the sales-order original, once per company.
+    const byBase = new Map<string, { company: string; product: string }>();
+    for (const o of optionsMap.values()) {
+      const k = `${norm(o.company)}||${norm(getProductBaseName(o.product))}`;
+      const have = byBase.get(k);
+      const stamped = getProductBaseName(o.product) !== o.product;
+      if (!have || (stamped && getProductBaseName(have.product) === have.product)) byBase.set(k, o);
+    }
+    return Array.from(byBase.values());
   }, [cards, salesOrdersList]);
 
   const fgPickCompanies = useMemo(() => {
@@ -6292,7 +6342,7 @@ export function SalesPipelinePage() {
             MODULE_THEMES.Invoice.kanban,
           ].filter(stage => canView(STAGE_MODULE[stage.id] ?? 'sales-pipeline')).map(stage => {
             const term = (columnSearch[stage.id] || '').trim().toLowerCase();
-            const stageCards = cards
+            const stageCards = boardCards
               .filter(c => c.stage === stage.id && (customerFilter === 'All Companies' || c.customer === customerFilter))
               .filter(c => !term ||
                 (c.refNo || '').toLowerCase().includes(term) ||
@@ -6743,20 +6793,20 @@ export function SalesPipelinePage() {
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Document Type" required><select className={inputClass}><option>Tax Invoice</option></select></FormField>
           <CustomerAutocomplete
-            label="Party Name"
+            label="Company Name"
             required
             value={invoiceForm.partyName || ''}
             onChange={val => setInvoiceForm((prev: any) => ({ ...prev, partyName: val }))}
             companies={allKnownCompanies}
             inputClass={inputClass}
-            placeholder="Type or select party..."
+            placeholder="Type or select company..."
           />
           <FormField label="DC Number"><input className={inputClass} value={invoiceForm.dcNumber || ''} onChange={e=>setInvoiceForm({...invoiceForm, dcNumber: e.target.value})} /></FormField>
           <FormField label="Date" required><input type="date" className={inputClass} value={invoiceForm.date || ''} onChange={e=>setInvoiceForm({...invoiceForm, date: e.target.value})} /></FormField>
           <div className="col-span-2 border-t border-slate-100 mt-2 pt-4">
-            <h4 className="font-semibold text-sm text-slate-800 mb-3">Item Details</h4>
+            <h4 className="font-semibold text-sm text-slate-800 mb-3">Product Details</h4>
             <div className="grid grid-cols-4 gap-4">
-              <div className="col-span-2"><FormField label="Item Name" required><input className={inputClass} value={invoiceForm.partName || ''} onChange={e=>setInvoiceForm({...invoiceForm, partName: e.target.value})} /></FormField></div>
+              <div className="col-span-2"><FormField label="Product Name" required><input className={inputClass} list="saved-products" value={invoiceForm.partName || ''} onChange={e=>setInvoiceForm({...invoiceForm, partName: e.target.value})} /></FormField></div>
               <FormField label="Qty" required><input type="number" className={inputClass} value={invoiceForm.quantity || ''} onChange={e=>setInvoiceForm({...invoiceForm, quantity: e.target.value})} /></FormField>
               <FormField label="Unit Price" required><input type="number" className={inputClass} value={invoiceForm.price || ''} onChange={e=>setInvoiceForm({...invoiceForm, price: e.target.value})} /></FormField>
               <FormField label="CGST (%)"><input type="number" className={inputClass} value={invoiceForm.cgst || ''} onChange={e=>setInvoiceForm({...invoiceForm, cgst: e.target.value})} /></FormField>

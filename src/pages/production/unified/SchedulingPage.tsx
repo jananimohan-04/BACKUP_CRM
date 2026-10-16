@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { Card, Badge } from '@/components/ui/Card';
 import { Calendar, ChevronLeft, ChevronRight, Plus, User, Settings2, Clock, GripVertical, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/Card';
@@ -504,10 +505,13 @@ function ActualScheduling() {
     return end.toLocaleString('en-US', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
   };
 
-  // Unscheduled vs Scheduled Jobs
+  // Unscheduled vs Scheduled Jobs. The global date range applies to the job's
+  // scheduled start (created_at doubles as the start); All Time changes nothing.
   const isScheduled = (j: any) => j.machine && j.status !== 'Pending' && j.status !== 'New';
-  const unscheduledJobs = jobs.filter(j => !isScheduled(j));
-  const scheduledJobs = jobs.filter(isScheduled);
+  const { inRange: inJobDateRange } = useGlobalDateFilter();
+  const rangedJobs = useMemo(() => jobs.filter((j: any) => inJobDateRange(j.created_at)), [jobs, inJobDateRange]);
+  const unscheduledJobs = rangedJobs.filter(j => !isScheduled(j));
+  const scheduledJobs = rangedJobs.filter(isScheduled);
 
   // Drag and Drop Handlers
   const handleDragStart = (e: React.DragEvent, job: any) => {

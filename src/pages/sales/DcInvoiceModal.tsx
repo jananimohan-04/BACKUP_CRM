@@ -231,7 +231,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
           const code = row.part_no || soRow?.part_no || '';
           const name = row.part_name || row.product_name || soRow?.part_name || '';
           const { unit: approvedUnit, ref: sheetRef, sheet: sheetRow } = unitOf(code, name);
-          if (approvedUnit == null) missing.push(name || code || 'Unnamed item');
+          if (approvedUnit == null) missing.push(name || code || 'Unnamed product');
           const lineQty = num(row.dispatch_qty ?? row.quantity) || 0;
           built.push({
             key: uid(),
@@ -375,7 +375,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
     printHtml(`Invoice - ${dcNo}`, `
       <h2>${companyName} — ${docTitle} (DRAFT)</h2>
       <p>Company: ${customer} | DC: ${dcNo} | SO: ${soOrderNo || soNo} | Date: ${invDate}</p>
-      <table><thead><tr><th>Item</th><th>Qty</th><th>Unit Price</th><th>Amount</th></tr></thead>
+      <table><thead><tr><th>Product</th><th>Qty</th><th>Unit Price</th><th>Amount</th></tr></thead>
       <tbody>${lines.map((l) => row([l.itemName, String(l.qty), formatINR(effUnit(l)), formatINR(num(l.qty) * effUnit(l))])).join('')}</tbody></table>
       <h3>Basic ${formatINR(basic)} | Tax ${formatINR(tax)} | Total ${formatINR(grand)}</h3>`);
   };
@@ -494,11 +494,11 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
 
           {/* items */}
           <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-3 border-b border-brand-100 pb-2">Item Details</h3>
+            <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-3 border-b border-brand-100 pb-2">Product Details</h3>
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[860px]">
                 <thead><tr className="text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-200">
-                  <th className="text-left py-2">Item Name</th><th className="text-left py-2">Product Code</th><th className="text-left py-2">HSN/SAC</th>
+                  <th className="text-left py-2">Product Name</th><th className="text-left py-2">Product Code</th><th className="text-left py-2">HSN/SAC</th>
                   <th className="text-right py-2">Qty</th><th className="text-left py-2">Unit</th>
                   <th className="text-right py-2">System Approved Unit Price</th><th className="text-right py-2">Invoice Unit Price</th>
                   <th className="text-right py-2">Basic Amount</th>
@@ -550,7 +550,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
             const processTotal = ops.reduce((a, o) => a + num(o.process_cost), 0);
             return (
               <div key={`cost-${l.key}`} data-testid="project-costing" className="bg-white rounded-xl border border-slate-200 p-4">
-                <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-1 border-b border-brand-100 pb-2">Project Costing — {l.itemName || l.productCode || 'Item'}</h3>
+                <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-1 border-b border-brand-100 pb-2">Project Costing — {l.itemName || l.productCode || 'Product'}</h3>
                 <p className="text-[11px] text-slate-500 mb-3">Approved costing sheet {l.sheetRef}{sh.costing_date ? ` · ${String(sh.costing_date).slice(0, 10).split('-').reverse().join('-')}` : ''} · costed quantity {num(sh.quantity)} · status {sh.status}</p>
 
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Raw material</p>

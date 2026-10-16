@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { Plus, Eye, Edit, Trash2, Boxes, ArrowRightLeft, AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Package, MapPin, Building, Layout } from 'lucide-react';
 import { PageHeader, FilterButton, ExportButton } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -471,10 +472,16 @@ export function StockMovementsPage() {
     fetchMovements();
   }, []);
 
-  const totalMovements = movementsData.length;
-  const receipts = movementsData.filter(m => m.type === 'Receipt').length;
-  const issues = movementsData.filter(m => m.type === 'Issue').length;
-  const transfers = movementsData.filter(m => m.type === 'Transfer').length;
+  // Global date filter (movement date) drives the stats and the table together.
+  const { inRange: inDateRange } = useGlobalDateFilter();
+  const rangedMovements = useMemo(
+    () => movementsData.filter((m: any) => inDateRange(m.date)),
+    [movementsData, inDateRange],
+  );
+  const totalMovements = rangedMovements.length;
+  const receipts = rangedMovements.filter(m => m.type === 'Receipt').length;
+  const issues = rangedMovements.filter(m => m.type === 'Issue').length;
+  const transfers = rangedMovements.filter(m => m.type === 'Transfer').length;
 
   const columns: Column<any>[] = [
     { key: 'date', label: 'Date', sortable: true, render: (r) => <span className="text-xs text-slate-500">{r.date}</span> },
@@ -499,7 +506,7 @@ export function StockMovementsPage() {
         <StatCard label="Issues" value={issues.toString()} icon={<ArrowUpFromLine size={20} />} accent="warning" />
         <StatCard label="Transfers" value={transfers.toString()} icon={<ArrowRightLeft size={20} />} accent="info" />
       </div>
-      <DataTable data={movementsData} columns={columns} searchKeys={['material', 'reference', 'type']} filterOptions={[{ label: 'Receipt', value: 'Receipt' }, { label: 'Issue', value: 'Issue' }, { label: 'Transfer', value: 'Transfer' }]} />
+      <DataTable data={rangedMovements} columns={columns} searchKeys={['material', 'reference', 'type']} filterOptions={[{ label: 'Receipt', value: 'Receipt' }, { label: 'Issue', value: 'Issue' }, { label: 'Transfer', value: 'Transfer' }]} />
     </div>
   );
 }
@@ -645,7 +652,7 @@ export function WarehousesPage() {
                            <p className="text-2xl font-bold text-slate-800">{locations.length}</p>
                         </div>
                         <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                           <p className="text-xs text-slate-500 font-semibold mb-1">Stored Items</p>
+                           <p className="text-xs text-slate-500 font-semibold mb-1">Stored Products</p>
                            <p className="text-2xl font-bold text-brand-600">{inventory.length}</p>
                         </div>
                      </div>
@@ -695,8 +702,8 @@ export function WarehousesPage() {
                         data={inventory}
                         columns={[
                            { key: 'item_type', label: 'Type', render: (r) => <Badge variant={r.item_type === 'Raw Material' ? 'neutral' : 'warning'}>{r.item_type}</Badge> },
-                           { key: 'code', label: 'Item Code', render: (r) => <span className="font-mono text-xs font-semibold">{r.code}</span> },
-                           { key: 'title', label: 'Item Name', render: (r) => <span className="font-medium text-slate-800">{r.title}</span> },
+                           { key: 'code', label: 'Product Code', render: (r) => <span className="font-mono text-xs font-semibold">{r.code}</span> },
+                           { key: 'title', label: 'Product Name', render: (r) => <span className="font-medium text-slate-800">{r.title}</span> },
                            { key: 'loc', label: 'Zone / Location', render: (r) => {
                               const loc = locations.find(l => l.id === r.location_id);
                               const zone = loc ? zones.find(z => z.id === loc.zone_id) : null;
@@ -741,6 +748,12 @@ export function MaterialRequestsPage() {
   const [issuingId, setIssuingId] = useState<string | null>(null);
   const { profile } = useAuth();
   const userName = profile?.full_name || '';
+  // Global date filter (request date).
+  const { inRange: inRequestDateRange } = useGlobalDateFilter();
+  const rangedRequests = useMemo(
+    () => requests.filter((r: any) => inRequestDateRange(r.request_date ?? r.created_at)),
+    [requests, inRequestDateRange],
+  );
 
   useEffect(() => {
     fetchRequests();
@@ -933,7 +946,7 @@ export function MaterialRequestsPage() {
 
       <Card className="mb-3">
         <DataTable 
-          data={requests}
+          data={rangedRequests}
           columns={[
             { key: 'request_no', label: 'Request No', render: (r) => <span className="font-mono text-brand-600 font-medium">{r.request_no}</span> },
             { key: 'work_order_no', label: 'Work Order', render: (r) => <span className="font-semibold">{r.work_order_no}</span> },
@@ -1181,7 +1194,7 @@ export function LowStockPage() {
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Low Stock Alerts" description="Items below minimum stock level and active production shortages" />
+      <PageHeader title="Low Stock Alerts" description="Products below minimum stock level and active production shortages" />
       
       {loading ? (
         <div className="p-8 text-center text-slate-500">Scanning inventory levels...</div>
@@ -1190,7 +1203,7 @@ export function LowStockPage() {
           <DataTable 
             data={alerts}
             columns={[
-              { key: 'code', label: 'Item Code', render: (r) => <span className="font-mono text-xs font-semibold">{r.code}</span> },
+              { key: 'code', label: 'Product Code', render: (r) => <span className="font-mono text-xs font-semibold">{r.code}</span> },
               { key: 'name', label: 'Material / Component', render: (r) => <span className="font-medium text-slate-800">{r.name}</span> },
               { key: 'stockQty', label: 'Current Stock', align: 'right', render: (r) => <span className="font-bold text-red-600">{r.stockQty} <span className="text-xs font-normal text-slate-500">{r.uom}</span></span> },
               { key: 'minStock', label: 'Min Stock', align: 'right', render: (r) => <span className="text-slate-500">{r.minStock}</span> },

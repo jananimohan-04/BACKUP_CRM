@@ -4,6 +4,7 @@ import { ArrowLeft, Download, Eye, FileText, Plus, Printer, CreditCard, ChevronL
 import { Badge, Button, Card, statusToVariant } from '@/components/ui/Card';
 import { FormField, inputClass, Modal } from '@/components/ui/Modal';
 import { financeApi, type InvoiceDetail, type InvoiceRow, type InvoiceSummary } from '@/lib/finance';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { exportCsv, escapeHtml, printHtml } from '@/lib/reportExport';
 import { formatDate, formatINR, todayISO } from '@/lib/format';
 import { tint } from '@/lib/entryTints';
@@ -42,6 +43,10 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
   const [tab, setTab] = useState('');
   const [filters, setFilters] = useState({ from: '', to: '', customer: '', status: '', search: '' });
   const [draft, setDraft] = useState(filters);
+  // Global Topbar date range feeds the invoice date query (server-side). The page's
+  // own date inputs were removed, so these are empty and the global range applies.
+  const { from: globalFrom, to: globalTo } = useGlobalDateFilter();
+  const effFilters = { ...filters, from: filters.from || globalFrom || '', to: filters.to || globalTo || '' };
   const [rows, setRows] = useState<InvoiceRow[]>([]);
   const [stats, setStats] = useState<InvoiceSummary>(emptySummary);
   const [customers, setCustomers] = useState<any[]>([]);
@@ -63,7 +68,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
   const [lines, setLines] = useState<any[]>([{ description: '', quantity: '', unit: '', rate: '', gst_rate: '', discount_pct: '0' }]);
   const [payment, setPayment] = useState<any>({ account_id: '', amount: '', txn_date: todayISO(), mode: '', reference_no: '' });
 
-  const reload = async (p = page, f = filters, t = tab) => {
+  const reload = async (p = page, f = effFilters, t = tab) => {
     setLoading(true); setError('');
     try {
       const [list, summary] = await Promise.all([
@@ -76,7 +81,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { void reload(1, filters, tab); }, [company?.id, tab]);
+  useEffect(() => { void reload(1, effFilters, tab); }, [company?.id, tab, globalFrom, globalTo]);
   useEffect(() => {
     if (!linkedInvoiceId) return;
     let active = true;
@@ -208,7 +213,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     try {
       const out: InvoiceRow[] = [];
       for (let p = 1; p <= Math.max(1, Math.ceil(total / 500)); p++) {
-        const r = await financeApi.invoices({ type: tab || null, status: filters.status || null, customer: filters.customer || null, search: filters.search, from: filters.from || undefined, to: filters.to || undefined, page: p, pageSize: 500 });
+        const r = await financeApi.invoices({ type: tab || null, status: effFilters.status || null, customer: effFilters.customer || null, search: effFilters.search, from: effFilters.from || undefined, to: effFilters.to || undefined, page: p, pageSize: 500 });
         out.push(...r.rows); if (out.length >= r.total) break;
       }
       exportCsv('Invoices_' + todayISO(), [['Invoice No','Date','Company','PO No','DC No','Basic Value','CGST','SGST','IGST','Total','Received','Balance','Status'], ...out.map(r => [r.invoice_no,r.invoice_date||'',r.customer_name||'',r.po_no||'',r.dc_no||'',r.basic_value,r.cgst,r.sgst,r.igst,r.total,r.received,r.balance,r.status])]);
@@ -218,7 +223,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
   const printInvoice = () => {
     if (!selected) { window.print(); return; }
     const items = (selected.items || []).map((x,i) => '<tr><td>'+(i+1)+'</td><td>'+escapeHtml(x.description)+'</td><td>'+escapeHtml(x.quantity)+'</td><td>'+cash(x.rate)+'</td><td>'+cash(x.amount)+'</td></tr>').join('');
-    printHtml(selected.invoice_no, '<h1>ARGUS CNC</h1><h2>Tax Invoice</h2><p>'+escapeHtml(selected.invoice_no)+' · '+escapeHtml(formatDate(selected.invoice_date))+'</p><p>Bill To: '+escapeHtml(selected.customer_name||'')+'</p><table><thead><tr><th>#</th><th>Item</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>'+items+'</tbody></table><h3>Total: '+cash(selected.total)+'</h3>');
+    printHtml(selected.invoice_no, '<h1>ARGUS CNC</h1><h2>Tax Invoice</h2><p>'+escapeHtml(selected.invoice_no)+' · '+escapeHtml(formatDate(selected.invoice_date))+'</p><p>Bill To: '+escapeHtml(selected.customer_name||'')+'</p><table><thead><tr><th>#</th><th>Product</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>'+items+'</tbody></table><h3>Total: '+cash(selected.total)+'</h3>');
   };
   const downloadInvoice = async () => {
     if (!selected) { setError('Select an invoice first.'); return; }
@@ -324,13 +329,21 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
         <FormField label="Payment Terms" inline><input className={`${compactInput} w-[11rem]`} value={form.payment_terms||''} onChange={e=>setForm({...form,payment_terms:e.target.value})}/></FormField>
       </div>
       <div className="mt-2.5 space-y-2 border-t border-slate-200/70 pt-2.5">
-        <div className="flex items-center justify-between">
-          <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Invoice Items</h3>
-          <Button size="sm" variant="secondary" icon={<Plus size={13}/>} onClick={()=>setLines([...lines,{description:'',quantity:'',unit:'',rate:'',gst_rate:'',discount_pct:'0'}])}>Add Item</Button>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Invoice Products</h3>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button size="sm" variant="secondary" icon={<Plus size={13}/>} onClick={()=>setLines([...lines,{description:'',quantity:'',unit:'',rate:'',gst_rate:'',discount_pct:'0'}])}>Add Product</Button>
+            {!editId && (
+              <>
+                <Button variant="secondary" size="sm" onClick={() => { startNew(); setSavedNote(''); }}>Clear / Reset</Button>
+                <Button size="sm" onClick={() => void save()} disabled={busy || !canCreateInv} title={!canCreateInv ? 'Invoice create permission is required' : undefined}>{busy ? 'Saving...' : 'Save Invoice'}</Button>
+              </>
+            )}
+          </div>
         </div>
         {lines.map((line,index)=>(
           <div key={index} className="flex flex-wrap items-center gap-2 rounded border border-slate-200 bg-white/70 px-2 py-1.5">
-            <FormField label="Item" inline><input className={`${compactInput} w-[16rem]`} value={line.description} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,description:e.target.value}:x))}/></FormField>
+            <FormField label="Product" inline><input className={`${compactInput} w-[16rem]`} value={line.description} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,description:e.target.value}:x))}/></FormField>
             <FormField label="Quantity" inline><input type="number" min="0" className={`${compactInput} w-[5.5rem]`} value={line.quantity} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,quantity:e.target.value}:x))}/></FormField>
             <FormField label="Unit" inline><input className={`${compactInput} w-[5rem]`} value={line.unit} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,unit:e.target.value}:x))}/></FormField>
             <FormField label="Rate" inline><input type="number" min="0" className={`${compactInput} w-[7rem]`} value={line.rate} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,rate:e.target.value}:x))}/></FormField>
@@ -342,25 +355,45 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
       </div>
   </>);
  
-  return <div className="p-4 lg:p-6 space-y-4 bg-slate-50 min-h-full">
-    <div className="flex flex-wrap items-center gap-2">
-      {onBack&&<Button variant="secondary" size="sm" icon={<ArrowLeft size={14}/>} onClick={onBack}>Back</Button>}
-      <h1 className="text-xl font-bold text-slate-800">Invoices</h1>
-      <div className="ml-auto flex items-center gap-2"><Button variant="secondary" size="sm" icon={<Download size={14}/>} onClick={() => void exportRows()} disabled={busy || !canExportInv} title={!canExportInv ? 'Invoice export permission is required' : undefined}>Export</Button><Button variant="secondary" size="sm" icon={<Printer size={14}/>} onClick={printInvoice}>Print</Button></div>
+  return <div className="p-3 sm:p-4 lg:px-4 lg:pt-2 lg:pb-4 space-y-2.5 bg-slate-50 min-h-full">
+    {/* Line 1: Back, Title, Tabs, and Export/Print buttons */}
+    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
+      <div className="flex items-center gap-3 min-w-0">
+        {onBack && <Button variant="secondary" size="sm" icon={<ArrowLeft size={14}/>} onClick={onBack}>Back</Button>}
+        <h1 className="text-lg font-bold text-slate-800 whitespace-nowrap">Invoices</h1>
+        <div className="h-4 w-px bg-slate-300 hidden sm:block" />
+        <div className="flex items-center gap-1 overflow-x-auto">
+          {[['','All Invoices'],['Sales Invoice','Sales Invoice'],['Proforma Invoice','Proforma Invoice'],['Credit Note','Credit Note'],['Cancelled','Cancelled']].map(([v,l]) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => { setTab(v); setPage(1); }}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md whitespace-nowrap transition-colors ${tab === v ? 'bg-brand-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-200/60'}`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+        <Button variant="secondary" size="sm" icon={<Download size={13}/>} onClick={() => void exportRows()} disabled={busy || !canExportInv} title={!canExportInv ? 'Invoice export permission is required' : undefined} className="h-7 py-1 text-xs px-2.5 shadow-xs">
+          Export
+        </Button>
+        <Button variant="secondary" size="sm" icon={<Printer size={13}/>} onClick={printInvoice} className="h-7 py-1 text-xs px-2.5 shadow-xs">
+          Print
+        </Button>
+      </div>
     </div>
     {error && <div className="rounded border border-rose-200 bg-rose-50 p-2 text-sm text-rose-700">{error}</div>}
-    <div className="flex overflow-auto border-b">{[['','All Invoices'],['Sales Invoice','Sales Invoice'],['Proforma Invoice','Proforma Invoice'],['Credit Note','Credit Note'],['Cancelled','Cancelled']].map(([v,l])=><button key={v} onClick={()=>{setTab(v);setPage(1)}} className={'px-4 py-2 text-xs font-semibold border-b-2 whitespace-nowrap '+(tab===v?'border-brand-600 text-brand-700':'border-transparent text-slate-500')}>{l}</button>)}</div>
-    <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
-      <Metric title="Total Invoices" value={String(stats.total_invoices)} color="emerald"/><Metric title="Total Invoice Value" value={cash(stats.total_value)} color="blue"/><Metric title="Total Received" value={cash(stats.total_received)} color="amber"/><Metric title="Outstanding Amount" value={cash(stats.outstanding)} color="rose"/><Metric title="Overdue Invoices" value={String(stats.overdue_count)} color="violet"/>
+
+    {/* Line 2: Small compact metric boxes on a single line */}
+    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
+      <Metric title="Total Invoices" value={String(stats.total_invoices)} color="emerald"/>
+      <Metric title="Total Invoice Value" value={cash(stats.total_value)} color="blue"/>
+      <Metric title="Total Received" value={cash(stats.total_received)} color="amber"/>
+      <Metric title="Outstanding Amount" value={cash(stats.outstanding)} color="rose"/>
+      <Metric title="Overdue Invoices" value={String(stats.overdue_count)} color="violet"/>
     </div>
-    <Card className="p-3"><div className="grid grid-cols-2 lg:grid-cols-7 gap-2 items-end">
-      <FormField label="From Date"><input type="date" className={inputClass} value={draft.from} onChange={e=>setDraft({...draft,from:e.target.value})}/></FormField>
-      <FormField label="To Date"><input type="date" className={inputClass} value={draft.to} onChange={e=>setDraft({...draft,to:e.target.value})}/></FormField>
-      <FormField label="Company"><select className={inputClass} value={draft.customer} onChange={e=>setDraft({...draft,customer:e.target.value})}><option value="">All</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></FormField>
-      <FormField label="Status"><select className={inputClass} value={draft.status} onChange={e=>setDraft({...draft,status:e.target.value})}><option value="">All</option>{['Paid','Partially Paid','Overdue','Pending','Proforma','Credit Note','Cancelled'].map(x=><option key={x}>{x}</option>)}</select></FormField>
-      <FormField label="Search"><input className={inputClass} placeholder="Invoice, company, PO, DC, part..." value={draft.search} onChange={e=>setDraft({...draft,search:e.target.value})}/></FormField>
-      <Button size="sm" onClick={()=>{setFilters(draft);void reload(1,draft,tab)}}>Apply</Button><Button size="sm" variant="secondary" onClick={()=>{const f={from:'',to:'',customer:'',status:'',search:''};setDraft(f);setFilters(f);void reload(1,f,tab)}}>Clear</Button>
-    </div></Card>
     {/* New Invoice entry form. Refactored out of the popup so it is visible as soon as
         the page opens, directly above the invoice table. Fields, validation, the item
         rows and save() are the same code as before - only the modal chrome is gone. */}
@@ -374,10 +407,6 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
             </div>
           )}
           {invoiceFormBody}
-          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-2.5">
-            <Button variant="secondary" size="sm" onClick={() => { startNew(); setSavedNote(''); }}>Clear / Reset</Button>
-            <Button size="sm" onClick={() => void save()} disabled={busy || (!editId && !canCreateInv) || (!!editId && !canEditInv)} title={(!editId && !canCreateInv) ? 'Invoice create permission is required' : (!!editId && !canEditInv) ? 'Invoice edit permission is required' : undefined}>{busy ? 'Saving...' : 'Save Invoice'}</Button>
-          </div>
         </div>
       </section>
     )}
@@ -468,7 +497,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
       <Card className="overflow-hidden"><div className="p-3 border-b bg-slate-50"><h3 className="font-bold text-sm">Invoice Preview</h3><p className="text-[10px] text-slate-500">Selected database record</p></div>{!selected?<div className="p-10 text-center text-sm text-slate-500">Select an invoice.</div>:<div className="p-4 space-y-3 text-xs">
         <div className="flex justify-between"><b className="text-lg">ARGUS CNC</b><Badge variant={statusToVariant(selected.status)}>{selected.status}</Badge></div>
         <div className="grid grid-cols-2 gap-y-1 border-y py-2"><span>Invoice No</span><b>{selected.invoice_no}</b><span>Date</span><b>{formatDate(selected.invoice_date)}</b><span>Company</span><b>{selected.customer_name}</b><span>PO / DC</span><b>{selected.po_no||'-'} / {selected.dc_no||'-'}</b></div>
-        <table className="w-full"><thead><tr className="bg-slate-50"><th className="p-1 text-left">Item</th><th className="p-1 text-right">Qty</th><th className="p-1 text-right">Rate</th><th className="p-1 text-right">Amount</th></tr></thead><tbody>{(selected.items||[]).map(i=><tr key={i.id} className="border-t"><td className="p-1">{i.description}</td><td className="p-1 text-right">{i.quantity} {i.unit||''}</td><td className="p-1 text-right">{cash(i.rate)}</td><td className="p-1 text-right">{cash(i.amount)}</td></tr>)}</tbody></table>
+        <table className="w-full"><thead><tr className="bg-slate-50"><th className="p-1 text-left">Product</th><th className="p-1 text-right">Qty</th><th className="p-1 text-right">Rate</th><th className="p-1 text-right">Amount</th></tr></thead><tbody>{(selected.items||[]).map(i=><tr key={i.id} className="border-t"><td className="p-1">{i.description}</td><td className="p-1 text-right">{i.quantity} {i.unit||''}</td><td className="p-1 text-right">{cash(i.rate)}</td><td className="p-1 text-right">{cash(i.amount)}</td></tr>)}</tbody></table>
         <Total label="Basic Value" value={cash(selected.basic_value)}/><Total label="CGST / SGST / IGST" value={cash(selected.cgst)+' / '+cash(selected.sgst)+' / '+cash(selected.igst)}/><Total label="Received" value={cash(selected.received)}/><Total label="Balance" value={cash(selected.balance)} bold/><Total label="Total" value={cash(selected.total)} bold/>
         <div className="flex flex-wrap gap-1.5 border-t pt-3"><Button size="sm" variant="secondary" onClick={()=>void downloadInvoice()} disabled={!canExportInv} title={!canExportInv ? 'Invoice export permission is required' : undefined}><Download size={13}/> Download PDF</Button><Button size="sm" variant="secondary" onClick={printInvoice}><Printer size={13}/> Print</Button><Button size="sm" onClick={()=>void recordReceipt()} disabled={Number(selected.balance)<=0||selected.cancelled}><CreditCard size={13}/> Receipt</Button><Button size="sm" variant="secondary" onClick={startEdit} disabled={Number(selected.received)!==0||selected.cancelled||selected.invoice_type==='Credit Note'||!canEditInv} title={!canEditInv ? 'Invoice edit permission is required' : undefined}>Edit</Button>{selected.invoice_type==='Sales Invoice'&&!selected.cancelled&&(<><Button size="sm" variant="secondary" onClick={()=>void createCreditNote()}>Credit Note</Button><Button size="sm" variant="danger" onClick={()=>void cancelInvoice()}>Cancel</Button></>)}</div>
       </div>}</Card>
@@ -485,5 +514,20 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
   </div>;
 }
 
-function Metric({title,value,color}:{title:string;value:string;color:string}) { const styles:Record<string,string>={emerald:'bg-emerald-100 text-emerald-700',blue:'bg-blue-100 text-blue-700',amber:'bg-amber-100 text-amber-700',rose:'bg-rose-100 text-rose-700',violet:'bg-violet-100 text-violet-700'}; return <Card className="p-3"><div className="text-[10px] text-slate-500">{title}</div><div className="font-bold truncate">{value}</div><div className={'mt-2 h-1 rounded '+styles[color]}/></Card>; }
+function Metric({title,value,color}:{title:string;value:string;color:string}) {
+  const styles:Record<string, { bg: string; text: string; label: string; border: string }> = {
+    emerald: { bg: 'bg-emerald-50/70', text: 'text-emerald-950', label: 'text-emerald-700', border: 'border-emerald-200' },
+    blue: { bg: 'bg-blue-50/70', text: 'text-blue-950', label: 'text-blue-700', border: 'border-blue-200' },
+    amber: { bg: 'bg-amber-50/70', text: 'text-amber-950', label: 'text-amber-700', border: 'border-amber-200' },
+    rose: { bg: 'bg-rose-50/70', text: 'text-rose-950', label: 'text-rose-700', border: 'border-rose-200' },
+    violet: { bg: 'bg-violet-50/70', text: 'text-violet-950', label: 'text-violet-700', border: 'border-violet-200' },
+  };
+  const s = styles[color] || styles.blue;
+  return (
+    <div className={`flex items-center justify-between px-3 py-1.5 rounded-lg border shadow-xs ${s.bg} ${s.border}`}>
+      <span className={`text-[10px] font-bold uppercase tracking-wider ${s.label}`}>{title}</span>
+      <span className={`text-sm font-black tabular-nums ${s.text}`}>{value}</span>
+    </div>
+  );
+}
 function Total({label,value,bold=false}:{label:string;value:string;bold?:boolean}) { return <div className={'flex justify-between py-1 text-xs '+(bold?'font-bold text-slate-900':'text-slate-600')}><span>{label}</span><span>{value}</span></div>; }

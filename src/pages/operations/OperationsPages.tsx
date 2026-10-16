@@ -8,6 +8,8 @@ import { supabase } from '@/lib/supabase';
 import { exportCsv, escapeHtml, printHtml } from '@/lib/reportExport';
 import { formatDate, todayISO } from '@/lib/format';
 import { useAuth } from '@/contexts/AuthContext';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
+import { intersectRange } from '@/lib/globalDate';
 import { downloadBrandedDocument } from '@/lib/brandedDocument';
 
 type Delivery = Record<string, any> & { id: string; delivery_no: string; delivery_date: string | null; customer_name: string | null; part_name: string | null; quantity: number | null; dispatch_qty: number | null; status: string | null; sales_order_id: string | null; sales_order_no: string | null };
@@ -39,6 +41,7 @@ const statusFor = (d: Delivery, records: Delivery[] = [], order?: SalesOrder) =>
 
 export function DeliveriesPage() {
   const { company } = useAuth();
+  const { from: globalFrom, to: globalTo } = useGlobalDateFilter();
   const navigate = useNavigate();
   const [records, setRecords] = useState<Delivery[]>([]);
   const [orders, setOrders] = useState<SalesOrder[]>([]);
@@ -95,17 +98,19 @@ export function DeliveriesPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    // The global Topbar date range intersects this page's own From/To.
+    const { from: effFrom, to: effTo } = intersectRange(from, to, globalFrom, globalTo);
     return records.filter(r => {
       const so = orders.find(x => x.id === r.sales_order_id);
       const rowStatus = statusFor(r, records, so);
       const text = [r.delivery_no, r.invoice_no, r.customer_name, so?.customer, r.project_name, r.part_name, r.sales_order_no, so?.part_no].filter(Boolean).join(' ').toLowerCase();
       const date = String(r.delivery_date || '').slice(0, 10);
-      return (!q || text.includes(q)) && (!from || date >= from) && (!to || date <= to)
+      return (!q || text.includes(q)) && (!effFrom || date >= effFrom) && (!effTo || date <= effTo)
         && (!customer || (r.customer_name || so?.customer) === customer)
         && (!status || rowStatus === status)
         && (tab === tabs[0] || rowStatus === tab.replace(' Deliveries', '') || (tab === 'Returns' && rowStatus === 'Returned'));
     });
-  }, [records, orders, search, from, to, customer, status, tab]);
+  }, [records, orders, search, from, to, globalFrom, globalTo, customer, status, tab]);
   const customers = useMemo(() => [...new Set(records.map(r => r.customer_name).filter(Boolean))] as string[], [records]);
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const visible = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);

@@ -3,8 +3,11 @@ import { ArrowLeft, Plus, Search } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
+import { SearchSelect } from '@/components/ui/SearchSelect';
+import { attachDateTimeToProduct } from './SalesPipelinePage';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { REJECTION_TYPES, recordProductionBatch, summarizeSalesOrder, type OrderQtySummary } from '@/lib/orderQuantities';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 import { tint } from '@/lib/entryTints';
@@ -27,9 +30,9 @@ const emptyLine = (): Line => ({ product: '', qty: '', type: '', reason: '', not
 const lineOf = (b: any): Line => ({ id: String(b.id), product: String(b.product_name ?? ''), qty: String(b.rejected_qty ?? ''), type: String(b.rejection_type ?? ''), reason: String(b.rejection_reason ?? ''), notes: String(b.notes ?? '') });
 
 const Tile = ({ label, value, tone }: { label: string; value: number; tone: string }) => (
-  <div className={`rounded-lg border px-3 py-2 ${tone}`} data-testid="rej-tile">
-    <p className="text-[10px] font-bold uppercase tracking-wider opacity-70">{label}</p>
-    <p className="text-xl font-bold tabular-nums">{value}</p>
+  <div className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs shadow-2xs ${tone}`} data-testid="rej-tile">
+    <span className="text-[10px] font-bold uppercase tracking-wider opacity-75">{label}</span>
+    <span className="text-xs font-black tabular-nums">{value}</span>
   </div>
 );
 
@@ -37,7 +40,7 @@ function Summary({ q }: { q: OrderQtySummary | null }) {
   if (!q) return null;
   return (
     <div className="space-y-2" data-testid="rej-summary">
-      <div className="grid grid-cols-4 gap-2">
+      <div className="flex flex-wrap items-center gap-1.5">
         <Tile label="Ordered" value={q.ordered} tone="border-blue-200 bg-blue-50 text-blue-800" />
         <Tile label="Finished" value={q.good} tone="border-emerald-200 bg-emerald-50 text-emerald-800" />
         <Tile label="Rejected" value={q.rejected} tone="border-red-200 bg-red-50 text-red-700" />
@@ -103,15 +106,21 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
     try { return summarizeSalesOrder(o, wos, dcs, invs, batches); } catch { return null; }
   }, [orderByNo, wos, dcs, invs, batches]);
 
+  // Global date filter applies to the rejection event date (batch created_at).
+  const { from: globalFrom, to: globalTo, inRange: inDateRange } = useGlobalDateFilter();
+  const rangedRejected = useMemo(
+    () => rejected.filter((b: any) => inDateRange(b?.created_at)),
+    [rejected, inDateRange],
+  );
   // One entry per order that has rejections.
   const groups = useMemo(() => {
     const m = new Map<string, any[]>();
-    for (const b of rejected) { const k = String(b.sales_order_no ?? ''); m.set(k, [...(m.get(k) ?? []), b]); }
+    for (const b of rangedRejected) { const k = String(b.sales_order_no ?? ''); m.set(k, [...(m.get(k) ?? []), b]); }
     return [...m.entries()].map(([orderNo, rows]) => {
       const o = orderByNo.get(orderNo);
       return { orderNo, rows, company: String(o?.customer || o?.customer_name || ''), ref: String(o?.lead_no || orderNo), total: rows.reduce((n, r) => n + (Number(r.rejected_qty) || 0), 0), q: summaryOf(orderNo), last: String(rows[0]?.created_at ?? '') };
     }).sort((a, b) => b.last.localeCompare(a.last));
-  }, [rejected, orderByNo, summaryOf]);
+  }, [rangedRejected, orderByNo, summaryOf]);
 
   const q = search.trim().toLowerCase();
   const shown = groups.filter(g => {
@@ -141,7 +150,33 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
   const dlgSummary = dlg?.orderNo ? summaryOf(dlg.orderNo) : null;
   const baseProducts = chosenOrder ? itemsOf(chosenOrder) : [];
   const products = [...baseProducts, ...(dlg?.lines ?? []).filter(l => l.product && !baseProducts.some(p => p.name === l.product)).map(l => ({ name: l.product, qty: 0 }))];
-  const companyOrders = dlg ? orders.filter(o => String(o.customer || o.customer_name || '').trim() === dlg.company) : [];
+  // Every product on every order, as "Company - Product - date time". Choosing one fixes the order (and company) for the form.
+  const allProductOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { key: string; orderNo: string; company: string; name: string; qty: number; label: string }[] = [];
+    for (const o of orders) {
+      if (String(o.status ?? '') === 'Cancelled') continue;
+      const company = String(o.customer || o.customer_name || '').trim();
+      for (const it of itemsOf(o)) {
+        const key = `${o.order_no}||${it.name}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ key, orderNo: String(o.order_no), company, name: it.name, qty: it.qty, label: [company, attachDateTimeToProduct(it.name, o)].filter(Boolean).join(' - ') });
+      }
+    }
+    return out.sort((a, b) => a.label.localeCompare(b.label));
+  }, [orders]);
+  const pickProductOption = (i: number, key: string) => {
+    const opt = allProductOptions.find(o => o.key === key);
+    if (!opt) return;
+    setDlg(d => {
+      if (!d) return d;
+      if (d.orderNo === opt.orderNo) return { ...d, lines: d.lines.map((l, j) => (j === i ? { ...l, product: opt.name } : l)) };
+      // A different order: its earlier rejections load (an order is listed once) and the chosen product starts a new one.
+      const existing = rejected.filter(b => String(b.sales_order_no ?? '') === opt.orderNo);
+      return { ...d, company: opt.company, orderNo: opt.orderNo, lines: [...existing.map(lineOf), { ...emptyLine(), product: opt.name }], origIds: existing.map(r => String(r.id)) };
+    });
+  };
 
   const setLine = (i: number, patch: Partial<Line>) => setDlg(d => d && ({ ...d, lines: d.lines.map((l, j) => (j === i ? { ...l, ...patch } : l)) }));
   // An order is listed once: choosing one that already has rejections loads them, so more are added to the same order.
@@ -204,7 +239,7 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
 
   const view = dlg?.mode === 'view';
 
-  const pager = usePager(shown, `${search}||${companyFilter}`);
+  const pager = usePager(shown, `${search}||${companyFilter}||${globalFrom}||${globalTo}`);
 
   const searchInput = (
     <div className="relative shrink-0">
@@ -219,36 +254,48 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
   // validation behind save() exist in exactly one place.
   const rejDialogBody = (<>
         {dlg && (
-          <div className="space-y-4" data-testid="rej-dialog">
+          <div className="space-y-3" data-testid="rej-dialog">
             {view || dlg.mode === 'edit' ? (
-              <p className="text-base font-bold text-slate-900">{dlg.company} <span className="font-mono text-sm font-medium text-slate-500">({chosenOrder?.lead_no || dlg.orderNo})</span></p>
+              <>
+                <p className="text-base font-bold text-slate-900">{dlg.company} <span className="font-mono text-sm font-medium text-slate-500">({chosenOrder?.lead_no || dlg.orderNo})</span></p>
+                <Summary q={dlgSummary} />
+              </>
             ) : (
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1.5 shrink-0 mr-1">
-                  <button type="button" onClick={onBack} title="Back to Pipeline" className="p-1 hover:bg-slate-200/80 rounded-md transition-colors text-slate-600 shrink-0 cursor-pointer">
-                    <ArrowLeft className="w-4 h-4" />
-                  </button>
-                  <h2 className="text-sm font-bold text-slate-800 shrink-0">Rejected</h2>
-                  <span className="h-5 w-px shrink-0 bg-slate-300 ml-1" aria-hidden="true" />
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 shrink-0 mr-1">
+                    <button type="button" onClick={onBack} title="Back to Pipeline" className="p-1 hover:bg-slate-200/80 rounded-md transition-colors text-slate-600 shrink-0 cursor-pointer">
+                      <ArrowLeft className="w-4 h-4" />
+                    </button>
+                    <h2 className="text-sm font-bold text-slate-800 shrink-0">Rejected</h2>
+                    <span className="h-5 w-px shrink-0 bg-slate-300 ml-1" aria-hidden="true" />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5" data-testid="rej-summary">
+                    <Tile label="Ordered" value={dlgSummary?.ordered ?? 0} tone="border-blue-200 bg-blue-50 text-blue-800" />
+                    <Tile label="Finished" value={dlgSummary?.good ?? 0} tone="border-emerald-200 bg-emerald-50 text-emerald-800" />
+                    <Tile label="Rejected" value={dlgSummary?.rejected ?? 0} tone="border-red-200 bg-red-50 text-red-700" />
+                    <Tile label="Remaining" value={dlgSummary?.remaining ?? 0} tone="border-amber-200 bg-amber-50 text-amber-800" />
+                  </div>
+                  <div className="ml-auto flex shrink-0 items-center gap-2">
+                    <span className="h-6 w-px shrink-0 bg-slate-300 mx-0.5" aria-hidden="true" />
+                    {searchInput}
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5"><span className={inlineLbl}>Company *</span>
-                  <select className={`${compactInput} w-[14rem]`} value={dlg.company} onChange={e => setDlg({ ...dlg, company: e.target.value, orderNo: '', lines: [emptyLine()], origIds: [] })}>
-                    <option value="">Select company</option>
-                    {companies.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select></div>
-                <div className="flex items-center gap-1.5"><span className={inlineLbl}>Order *</span>
-                  <select className={`${compactInput} w-[16rem]`} value={dlg.orderNo} disabled={!dlg.company} onChange={e => pickOrder(e.target.value)}>
-                    <option value="">Select order</option>
-                    {companyOrders.map(o => <option key={o.id} value={o.order_no}>{o.lead_no || o.order_no}{o.lead_no ? ` (${o.order_no})` : ''}</option>)}
-                  </select></div>
-                <div className="ml-auto flex shrink-0 items-center gap-2">
-                  <span className="h-6 w-px shrink-0 bg-slate-300 mx-0.5" aria-hidden="true" />
-                  {searchInput}
-                </div>
+                {dlgSummary && dlgSummary.products.length > 1 && (
+                  <table className="w-full text-xs">
+                    <thead className="text-slate-500"><tr><th className="py-1 text-left">Product</th><th className="py-1 text-right">Ordered</th><th className="py-1 text-right">Finished</th><th className="py-1 text-right">Rejected</th><th className="py-1 text-right">Remaining</th></tr></thead>
+                    <tbody>
+                      {dlgSummary.products.map(p => (
+                        <tr key={p.name} className="border-t border-slate-100">
+                          <td className="py-1 font-medium text-slate-800">{p.name}</td><td className="py-1 text-right tabular-nums">{p.ordered}</td>
+                          <td className="py-1 text-right tabular-nums">{p.good}</td><td className="py-1 text-right tabular-nums text-red-600">{p.rejected}</td><td className="py-1 text-right tabular-nums">{p.remaining}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             )}
-
-            <Summary q={dlgSummary} />
 
             {dlg.mode === 'add' && dlg.origIds.length > 0 && (
               <p className="text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2" data-testid="rej-existing">This order already has {dlg.origIds.length} rejection{dlg.origIds.length === 1 ? '' : 's'}. They are shown below, so add the new one to the same order.</p>
@@ -274,10 +321,21 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-500">Rejection {i + 1}{l.id ? '' : ' · new'}</span>
                         <div className="flex items-center gap-1.5"><span className={inlineLbl}>Product *</span>
+                          {dlg.mode === 'add' ? (
+                            <SearchSelect
+                              className="w-[26rem] max-w-[60vw]"
+                              placeholder="Type company or product, or select"
+                              options={i === 0 || !dlg.orderNo ? allProductOptions : allProductOptions.filter(o => o.orderNo === dlg.orderNo)}
+                              value={l.product && dlg.orderNo ? (allProductOptions.find(o => o.orderNo === dlg.orderNo && o.name === l.product)?.label ?? l.product) : ''}
+                              onPick={k => pickProductOption(i, k)}
+                              onClear={() => setLine(i, { product: '' })}
+                              emptyText="No product matches what you typed"
+                            />
+                          ) : (
                           <select className={`${compactInput} w-[13rem]`} value={l.product} disabled={!dlg.orderNo} onChange={e => setLine(i, { product: e.target.value })}>
                             <option value="">Select product</option>
                             {products.map(p => <option key={p.name} value={p.name}>{p.name}{p.qty ? ` · ordered ${p.qty}` : ''}</option>)}
-                          </select></div>
+                          </select>)}</div>
                         <div className="flex items-center gap-1.5"><span className={inlineLbl}>Rejected Qty *</span>
                           <input type="number" min={0} className={`${compactInput} w-[5rem]`} value={l.qty} onChange={e => setLine(i, { qty: e.target.value })} placeholder="Qty" /></div>
                         <div className="flex items-center gap-1.5"><span className={inlineLbl}>Type *</span>
@@ -297,9 +355,17 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
                     </div>
                   ))}
                 </div>
-                <button type="button" disabled={!dlg.orderNo} onClick={() => setDlg(d => d && ({ ...d, lines: [...d.lines, emptyLine()] }))} className="inline-flex items-center gap-1 text-sm font-semibold text-brand-600 hover:text-brand-800 disabled:opacity-40">
-                  <Plus size={14} /> Add another rejection for this order
-                </button>
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                  <button type="button" disabled={!dlg.orderNo} onClick={() => setDlg(d => d && ({ ...d, lines: [...d.lines, emptyLine()] }))} className="inline-flex items-center gap-1 text-sm font-semibold text-brand-600 hover:text-brand-800 disabled:opacity-40 cursor-pointer">
+                    <Plus size={14} /> Add another rejection for this order
+                  </button>
+                  {dlg.mode === 'add' && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button variant="secondary" size="sm" onClick={openAdd}>Clear / Reset</Button>
+                      <Button size="sm" onClick={() => void save()} disabled={saving} className="!bg-rose-600 hover:!bg-rose-500 text-white shadow-md shadow-rose-500/25 !border-rose-600">{saving ? 'Saving…' : 'Save'}</Button>
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </div>
@@ -329,10 +395,6 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
               </div>
             )}
             {rejDialogBody}
-            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-3">
-              <Button variant="secondary" size="sm" onClick={openAdd}>Clear / Reset</Button>
-              <Button size="sm" onClick={() => void save()} disabled={saving} className="!bg-rose-600 hover:!bg-rose-500 text-white shadow-md shadow-rose-500/25 !border-rose-600">{saving ? 'Saving…' : 'Save'}</Button>
-            </div>
           </div>
         </section>
       )}

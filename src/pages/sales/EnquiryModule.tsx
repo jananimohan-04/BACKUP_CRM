@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo, type ReactNode } from 'react';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
+import { recordDateOf } from '@/lib/globalDate';
 import { supabase } from '@/lib/supabase';
 import { Search, ArrowLeft, FileText } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
@@ -46,6 +48,7 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
   const companies = useMemo(() => Array.from(new Set([...companyOptions, ...enquiries.map(e => e.customer)])).filter(Boolean).sort(), [companyOptions, enquiries]);
   const statuses = useMemo(() => Array.from(new Set(enquiries.map(e => e.status || 'New'))).filter(Boolean).sort(), [enquiries]);
 
+  const { from: globalFrom, to: globalTo, inRange: inDateRange } = useGlobalDateFilter();
   const filteredEnquiries = enquiries.filter(e => {
     const matchesSearch = (e.enquiry_no || '').toLowerCase().includes(search.toLowerCase()) || 
       (e.customer || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -53,7 +56,9 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
     const matchesCompany = !companyFilter || companyFilter === 'All Companies' || 
       (e.customer || '').trim().toLowerCase() === companyFilter.trim().toLowerCase();
     const matchesStatus = statusFilter === 'All' || (e.status || 'New').toLowerCase() === statusFilter.toLowerCase();
-    return matchesSearch && matchesCompany && matchesStatus;
+    // Global date filter uses the enquiry's received date.
+    const matchesDate = inDateRange(recordDateOf(e, ['received_date', 'created_at']));
+    return matchesSearch && matchesCompany && matchesStatus && matchesDate;
   });
 
   const productNames = (enq: any): string => {
@@ -80,7 +85,7 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
     return '—';
   };
 
-  const pager = usePager(filteredEnquiries, `${search}||${companyFilter}||${statusFilter}`);
+  const pager = usePager(filteredEnquiries, `${search}||${companyFilter}||${statusFilter}||${globalFrom}||${globalTo}`);
 
   const searchInput = (
     <div className="relative shrink-0">

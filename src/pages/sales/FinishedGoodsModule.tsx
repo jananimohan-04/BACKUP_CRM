@@ -5,6 +5,8 @@ import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
+import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
+import { recordDateOf } from '@/lib/globalDate';
 
 export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, onView, entryForm }: { onBack: () => void; onView?: (record: any) => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; entryForm?: ReactNode | ((slots: { searchSlot: ReactNode; titleSlot: ReactNode }) => ReactNode) }) {
   const { companyFilter, setCompanyFilter, companyOptions } = useHeaderKpis();
@@ -54,6 +56,7 @@ export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, o
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [records]);
 
+  const { from: globalFrom, to: globalTo, inRange: inDateRange } = useGlobalDateFilter();
   const filteredRecords = records.filter(r => {
     const matchesSearch = (r.wo_no || '').toLowerCase().includes(search.toLowerCase()) ||
       (r.customer || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -62,10 +65,12 @@ export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, o
       (r.customer || '').trim().toLowerCase() === companyFilter.trim().toLowerCase();
     const matchesStatus = !statusFilter || statusFilter === 'All Status' ||
       (r.status || '').trim().toLowerCase() === statusFilter.trim().toLowerCase();
-    return matchesSearch && matchesCompany && matchesStatus;
+    // Global date filter uses the finished-goods completion record date.
+    const matchesDate = inDateRange(recordDateOf(r, ['created_at']));
+    return matchesSearch && matchesCompany && matchesStatus && matchesDate;
   });
 
-  const pager = usePager(filteredRecords, `${search}||${companyFilter}||${statusFilter}`);
+  const pager = usePager(filteredRecords, `${search}||${companyFilter}||${statusFilter}||${globalFrom}||${globalTo}`);
 
   const searchInput = (
     <div className="relative shrink-0">
