@@ -20,17 +20,15 @@ import { Modal, inputClass } from '@/components/ui/Modal';
 import { attachDateTimeToProduct, getProductBaseName } from './SalesPipelinePage';
 import { fetchOrderQty, recordProductionBatch, type OrderQtySummary } from '@/lib/orderQuantities';
 import { insertTolerant } from '@/lib/partRouting';
-import { downloadCostingDocument, viewCostingDocument } from '@/lib/brandedDocument';
-import { printHtml } from '@/lib/reportExport';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   costInr as inr, costNum as num, costUid as uid,
   buildMaterialLines, buildOpLines, computeTotals, computeWarnings,
   applyMatPatch, applyOpPatch,
-  buildVersionPayload, buildCostingPdfInput, parseQuoteProducts,
+  buildVersionPayload, parseQuoteProducts,
   type MaterialLine, type OpLine,
 } from '@/lib/costingEngine';
-import { CheckCheck, Download, Eye, Printer, Save, AlertTriangle, X, Plus, Trash2, Pencil, ChevronDown } from 'lucide-react';
+import { CheckCheck, Save, AlertTriangle, X, Plus, Trash2, Pencil, ChevronDown } from 'lucide-react';
 
 const cellInputClass = `${inputClass} text-xs !px-2 !py-1 w-full min-w-[3.5rem] tabular-nums`;
 
@@ -119,7 +117,6 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   // costing approve permission plus the Finished Goods edit permission that
   // already gates the Inward → Finished Goods move.
   const canApproveCosting = costPerm('approve') && fgEdit;
-  const canExportCosting = costPerm('export');
 
   const inward = card?.raw ?? {};
   const maxQ = num(card?.qty) || 0;
@@ -690,32 +687,6 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
     setNewOp({ process: '', machine: '', hours: '', mRate: '', lHours: '', lRate: '' });
   };
 
-  const pdfInput = () => buildCostingPdfInput({
-    companyName,
-    documentNo: `FG-${inward.inward_no ?? 'INW'}-V${nextVersion}`,
-    date: fgDate,
-    quote, so,
-    product: { code, name: productName, qty: baseQty, unitPrice: qUnitEff },
-    productCode: code, baseQty,
-    inwardNo: inward.inward_no ?? '',
-    status: versions[0]?.status ?? 'Draft',
-    matLines: effMatLines, opLines: effOpLines, totals,
-    approved: effectiveApproved, latestVersion: versions[0] ?? null, userName,
-  });
-
-  const handlePrint = () => {
-    const row = (cells: string[]) => `<tr>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
-    printHtml(`Finished Goods Costing - ${inward.inward_no ?? ''}`, `
-      <h2>${companyName} — Finished Goods / Costing (${inward.inward_no ?? ''})</h2>
-      <p>Inward: ${inward.inward_no ?? ''} | SO: ${so?.order_no ?? ''} | Company: ${card?.customer ?? ''} | Product: ${productName} (${code || '—'}) | Qty: ${baseQty}</p>
-      <p>Project Costing ${inr(totals.calculated)} | Material ${inr(totals.material)} | Machine & Labour ${inr(totals.machineLabour)} | Process ${inr(totals.process)}</p>
-      <h3>Calculated ${inr(totals.calculated)} | Approved ${inr(effectiveApproved)} | Adjustment ${adjustment >= 0 ? '+' : ''}${inr(adjustment)}</h3>
-      <table><thead><tr><th>Material</th><th>Qty</th><th>Total</th></tr></thead>
-      <tbody>${effMatLines.map((m) => row([m.material_name, `${m.req_qty} ${m.unit}`, inr(m.total)])).join('')}</tbody></table>
-      <table><thead><tr><th>Op</th><th>Process</th><th>Machine</th><th>Mc Cost</th><th>Lab Cost</th><th>Process Cost</th></tr></thead>
-      <tbody>${effOpLines.map((o) => row([String(o.seq), o.process_name, o.machine, inr(o.machine_cost), inr(o.labour_cost), inr(o.process_cost)])).join('')}</tbody></table>`);
-  };
-
   const persistVersion = async (status: 'Draft' | 'Calculated' | 'Approved', approved: number) => {
     // Commit any typed-but-unadded input first so the saved version matches the screen.
     if (draftMat) setExtraMats((ls) => [...ls, draftMat]);
@@ -1024,19 +995,6 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
       width={960}
       footer={
         <>
-          {hasCostView && (
-          <Button variant="secondary" icon={<Eye size={14} />} onClick={() => { try { viewCostingDocument(pdfInput()); } catch (e: any) { alert(e?.message ?? e); } }}>
-            Preview PDF
-          </Button>
-          )}
-          {hasCostView && canExportCosting && (
-          <Button variant="secondary" icon={<Download size={14} />} onClick={() => { downloadCostingDocument(pdfInput()).catch((e: any) => alert(e?.message ?? e)); }}>
-            Download PDF
-          </Button>
-          )}
-          {hasCostView && (
-          <Button variant="secondary" icon={<Printer size={14} />} onClick={handlePrint}>Print</Button>
-          )}
           {mode === 'add' && (canApproveCosting || fgEdit) && !canApprove && (
             <p className="mr-auto min-w-0 truncate text-xs text-amber-800" title={`Before approval — fix ${blockReasons.length === 1 ? 'this' : 'these'}:\n- ${blockReasons.join('\n- ')}`}>
               <b className="text-[10px] uppercase tracking-wider">Before approval — fix this: </b>
