@@ -1907,8 +1907,18 @@ export function SalesPipelinePage() {
       if (!String(o.key || '').startsWith('inward:')) return o;
       const order = orders.find((s: any) => (o.soRef && s.order_no === o.soRef) || (o.leadNo && base(s.lead_no) === base(o.leadNo)));
       const lead = leads.find((l: any) => (o.enquiryId && String(l.id) === String(o.enquiryId)) || (o.leadNo && (base(l.lead_no) === base(o.leadNo) || base(l.enquiry_no) === base(o.leadNo))));
+      // Quantity: what the order says for this product (older inwards never stored it).
+      let qty: any = o.quantity;
+      if (!qty && order) {
+        try {
+          const raw = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+          const hit = Array.isArray(raw) ? raw.find((it: any) => getProductBaseName(String(it.partName || it.productName || it.part_name || '')).toLowerCase() === getProductBaseName(String(o.name)).toLowerCase()) : null;
+          qty = hit?.quantity ?? hit?.qty ?? (Array.isArray(raw) && raw.length === 1 ? undefined : order.quantity);
+        } catch { qty = order.quantity; }
+      }
       return {
         ...o,
+        quantity: qty || '',
         name: attachDateTimeToProduct(o.name, order || (o.stampAt ? { created_at: o.stampAt, order_date: o.stampAt } : null)),
         customer: o.customer || order?.customer || order?.customer_name || lead?.customer || '',
         saleOrderRef: order?.order_no || o.soRef || '',
