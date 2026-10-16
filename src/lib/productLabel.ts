@@ -32,3 +32,10 @@ export function productWithCompany(product: string, company: string, qty?: numbe
   }
   return `${name} - ${co}${tail}`;
 }
+
+/** The product name alone, without the sale date/time it was saved with: what a printed document should show. */
+export function productOnly(product: string): string {
+  let name = String(product ?? '').trim();
+  for (const rx of STAMPS) name = name.replace(rx, '');
+  return name.trim();
+}

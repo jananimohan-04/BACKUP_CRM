@@ -30,11 +30,12 @@ import { RejectedModule } from './RejectedModule';
 import { FinishedGoodsModule } from './FinishedGoodsModule';
 import { DeliveryChallanModule } from './DeliveryChallanModule';
 import { InvoiceModule } from './InvoiceModule';
+import { QuantityTrackingPage } from '../reports/QuantityTrackingPage';
 import { FgCostingModal } from './FgCostingModal';
 import { DcInvoiceModal } from './DcInvoiceModal';
 import { SignaturePad } from '@/components/ui/SignaturePad';
 import { SalesOrderSection } from './SalesOrderSection';
-import { downloadBrandedDocument, viewBrandedDocument, downloadDeliveryChallan, viewDeliveryChallan, downloadSalesInvoice, fetchCompanyPrintDetails, viewSalesInvoice } from '@/lib/brandedDocument';
+import { downloadBrandedDocument, viewBrandedDocument, downloadDeliveryChallan, viewDeliveryChallan, downloadSalesInvoice, fetchCompanyPrintDetails, viewSalesInvoice, deliveryChallanPreviewUrl, salesInvoicePreviewUrl } from '@/lib/brandedDocument';
 import { generateUniqueProjectNo } from '@/lib/projectNumber';
 import { summarizeSalesOrder, fetchOrderQty, recordProductionBatch, REJECTION_TYPES, type OrderQtySummary } from '@/lib/orderQuantities';
 import { QtyProgress, QtySummaryGrid, QtyBreakdown } from '@/components/ui/QuantitySummary';
@@ -435,12 +436,14 @@ const ContactsList = ({ form, setForm, readOnly = false }: { form: any, setForm?
 /** Quantity Tracking section (detail view + FG approval): summary +
  *  reconciliation + record-rejected entry. Rejections save as traceable batch
  *  rows (good quantity untouched) and the summary refreshes from live rows. */
-export function QtyTrackingSection({ q, userName, onSaved, allowReject = true, compact = false }: {
+export function QtyTrackingSection({ q, userName, onSaved, allowReject = true, compact = false, showReconciliation = true }: {
   q: OrderQtySummary; userName: string; onSaved: (q: OrderQtySummary) => void;
   /** Show the Record rejected quantity form (not wanted on the Inward details). */
   allowReject?: boolean;
   /** Tight paddings for dense pages (Finished Goods entry). */
   compact?: boolean;
+  /** Hide the Full reconciliation breakdown (used on the Finished Goods page). */
+  showReconciliation?: boolean;
 }) {
   const [rejQty, setRejQty] = useState('');
   const [rejProduct, setRejProduct] = useState('');
@@ -496,10 +499,12 @@ export function QtyTrackingSection({ q, userName, onSaved, allowReject = true, c
       <h4 className={compact ? 'font-bold text-xs text-violet-900 uppercase mb-1' : 'font-bold text-sm text-violet-900 uppercase mb-2'}>Quantity Tracking</h4>
       <QtySummaryGrid q={q} compact={compact} />
       <div className={compact ? 'mt-1' : 'mt-2'}><QtyProgress q={q} /></div>
+      {showReconciliation && (
       <details className={compact ? 'mt-1' : 'mt-2'}>
         <summary className="text-xs font-semibold text-violet-700 cursor-pointer">Full reconciliation (batches · delivery · invoice)</summary>
         <div className="mt-2"><QtyBreakdown q={q} /></div>
       </details>
+      )}
       {allowReject && (
       <div className="mt-3 rounded-xl border border-rose-200 bg-white p-3">
         <p className="text-[10px] font-bold uppercase tracking-widest text-rose-700">Record rejected quantity</p>
@@ -1432,7 +1437,7 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
 export function SalesPipelinePage() {
   const { profile, company, canView, canDo, permissions } = useAuth();
   const userName = profile?.full_name || '';
-  const [activeView, setActiveView] = useState<'pipeline' | 'enquiry_list' | 'quotation_list' | 'sales_order_list' | 'inward_list' | 'rejected_list' | 'fg_list' | 'dc_list' | 'invoice_list'>('pipeline');
+  const [activeView, setActiveView] = useState<'pipeline' | 'enquiry_list' | 'quotation_list' | 'sales_order_list' | 'inward_list' | 'rejected_list' | 'fg_list' | 'dc_list' | 'invoice_list' | 'tracking_list'>('pipeline');
   const columns: Stage[] = ['Enquiry', 'Quotation', 'Sales Order', 'Inward', 'Finished Goods', 'DC', 'Invoice'];
   const [cards, setCards] = useState<KanbanCard[]>([]);
   // ERP-wide date filter: board, list/calendar views and KPI counts show only cards
@@ -1446,6 +1451,9 @@ export function SalesPipelinePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [cards, inGlobalDateRange],
   );
+  // All sales orders (same source as Order Quantity Tracking) — declared up here
+  // so the top KPI strip can show the tracked-order count.
+  const [salesOrdersList, setSalesOrdersList] = useState<any[]>([]);
   const [draggedCard, setDraggedCard] = useState<KanbanCard | null>(null);
   // Single tap selects (multi-select), double tap opens the edit page.
   const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
@@ -1648,6 +1656,7 @@ export function SalesPipelinePage() {
     'Finished Goods': () => setActiveView(cur => cur === 'fg_list' ? 'pipeline' : 'fg_list'),
     DC: () => setActiveView(cur => cur === 'dc_list' ? 'pipeline' : 'dc_list'),
     Invoice: () => setActiveView(cur => cur === 'invoice_list' ? 'pipeline' : 'invoice_list'),
+    'Qty Tracking': () => setActiveView(cur => cur === 'tracking_list' ? 'pipeline' : 'tracking_list'),
   };
   const kpiStats = [
     { key: 'enquiry', title: 'Enquiries', iconPath: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', stage: 'Enquiry' },
@@ -1658,6 +1667,7 @@ export function SalesPipelinePage() {
     { key: 'rejected', title: 'Rejected', iconPath: 'M6 18L18 6M6 6l12 12', stage: 'Rejected' },
     { key: 'dc', title: 'Delivery Challans', iconPath: 'M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z', stage: 'DC' },
     { key: 'invoice', title: 'Invoices', iconPath: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', stage: 'Invoice' },
+    { key: 'qty-tracking', title: 'Qty Tracking', iconPath: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4', stage: 'Qty Tracking' },
   ];
   useEffect(() => {
     // Rejected counts pieces rejected (it is not a stage of the board); the others count cards.
@@ -1670,6 +1680,7 @@ export function SalesPipelinePage() {
       if (stage === 'Finished Goods') return activeView === 'fg_list';
       if (stage === 'DC') return activeView === 'dc_list';
       if (stage === 'Invoice') return activeView === 'invoice_list';
+      if (stage === 'Qty Tracking') return activeView === 'tracking_list';
       return false;
     };
     setKpis(kpiStats.filter(s => canView(STAGE_MODULE[s.stage] ?? s.stage)).map(s => {
@@ -1677,7 +1688,7 @@ export function SalesPipelinePage() {
       return {
         key: s.key,
         label: s.title,
-        count: s.stage === 'Rejected' ? rejectedTotal : boardCards.filter(c => c.stage === s.stage).length,
+        count: s.stage === 'Rejected' ? rejectedTotal : s.stage === 'Qty Tracking' ? salesOrdersList.length : boardCards.filter(c => c.stage === s.stage).length,
         tile: theme.kpiTile,
         icon: theme.kpiIcon,
         iconPath: s.iconPath,
@@ -1689,7 +1700,7 @@ export function SalesPipelinePage() {
     }));
     return () => setKpis([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boardCards, rejectedTotal, setKpis, activeView, permissions]);
+  }, [boardCards, rejectedTotal, salesOrdersList, setKpis, activeView, permissions]);
 
   // The enquiry form is always visible at the top of the Enquiries list, so it has no
   // open/closed flag any more. savingEnquiry blocks duplicate submits while a save is in
@@ -2787,8 +2798,28 @@ export function SalesPipelinePage() {
     catch (error) { alert(error instanceof Error ? error.message : 'Unable to preview the document PDF.'); }
   };
 
+  // A challan / invoice popup shows the document itself beside its details; it is rebuilt whenever the record is saved.
+  const docKind: 'dc' | 'invoice' | null = viewModalTarget?.stage === 'DC' ? 'dc' : viewModalTarget?.stage === 'Invoice' ? 'invoice' : null;
+  const [docPreviewUrl, setDocPreviewUrl] = useState('');
+  const [docPreviewErr, setDocPreviewErr] = useState('');
+  useEffect(() => {
+    if (!docKind || !viewModalData?.[docKind]) { setDocPreviewUrl(''); setDocPreviewErr(''); return; }
+    let dead = false;
+    let made = '';
+    (async () => {
+      try {
+        const input: any = await pipelineDocumentInput(docKind);
+        if (!input || dead) return;
+        const url = docKind === 'dc' ? await deliveryChallanPreviewUrl(input) : await salesInvoicePreviewUrl(input);
+        if (dead) { URL.revokeObjectURL(url); return; }
+        made = url; setDocPreviewUrl(url); setDocPreviewErr('');
+      } catch (e: any) { if (!dead) setDocPreviewErr(e?.message ?? 'Unable to build the preview.'); }
+    })();
+    return () => { dead = true; if (made) URL.revokeObjectURL(made); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docKind, viewModalData]);
+
   const [rawLeadsList, setRawLeadsList] = useState<any[]>([]);
-  const [salesOrdersList, setSalesOrdersList] = useState<any[]>([]);
 
   const resetEnquiryForm = (leads = rawLeadsList) => ({
     leadNo: generateUniqueProjectNo(leads),
@@ -3590,7 +3621,7 @@ export function SalesPipelinePage() {
   const ACTIVE_VIEW_MODULE: Record<string, string> = {
     enquiry_list: 'enquiries', quotation_list: 'quotations', sales_order_list: 'sales-orders',
     inward_list: 'inward', rejected_list: 'rejected', fg_list: 'finished-goods',
-    dc_list: 'delivery', invoice_list: 'invoices',
+    dc_list: 'delivery', invoice_list: 'invoices', tracking_list: 'reports',
   };
   useEffect(() => {
     const m = ACTIVE_VIEW_MODULE[activeView];
@@ -4337,8 +4368,20 @@ export function SalesPipelinePage() {
   const saveInward = async (another = false) => {
     if (!inwardModalTarget || savingInward) return;
     const cStr = getContactStrings(inwardForm);
+    // An EXPENSES line needs only an amount: product, part name and company are optional, so a line with a
+    // price (or any text) counts, its part name falls back to the product / "Expense" and its quantity to 1.
+    const isExp = (g: any) => String(g.category || inwardForm.category || '').trim().toUpperCase() === 'EXPENSES';
     const groups = (inwardForm.parts || [])
-      .map((g: any) => ({ ...g, items: (g.items || []).filter((it: any) => String(it.partName || '').trim()) }))
+      .map((g: any) => ({
+        ...g,
+        items: (g.items || [])
+          .filter((it: any) => (isExp(g)
+            ? [it.partName, it.productName, it.price, it.quantity, it.remarks].some((v: any) => String(v ?? '').trim() !== '')
+            : String(it.partName || '').trim()))
+          .map((it: any) => (isExp(g)
+            ? { ...it, partName: String(it.partName || '').trim() || String(it.productName || '').trim() || 'Expense', quantity: String(it.quantity ?? '').trim() === '' ? '1' : it.quantity }
+            : it)),
+      }))
       .filter((g: any) => g.items.length);
 
     if (!groups.length) { alert('Add at least one part to inward for this product.'); return; }
@@ -4350,7 +4393,8 @@ export function SalesPipelinePage() {
     for (const g of groups) {
       const cat = String(g.category || inwardForm.category || '').trim().toUpperCase();
       const party = String(g.partyName || inwardForm.partyName || '').trim();
-      if (!party) { alert('Select a company/supplier for each inward.'); return; }
+      if (!party && cat !== 'EXPENSES') { alert('Select a company/supplier for each inward.'); return; }
+      if (g.pettyCash && !String(g.paidBy || '').trim()) { alert('Petty cash: enter which member paid, so it can be reimbursed.'); return; }
       // Any name is accepted: the company is simply who the goods came from (a known supplier just gets its price terms).
       void cat;
     }
@@ -4359,7 +4403,7 @@ export function SalesPipelinePage() {
       const cat = String(g.category || inwardForm.category || '').trim().toUpperCase();
       const label = it.productName || it.partName || 'this line';
       if (cat !== 'EXPENSES' && !it.productKey) { alert(`Select "${it.productName || 'the product'}" from the product catalogue or enquiry list — arbitrary names are not allowed.`); return; }
-      if (!it.productName && !it.partName) { alert('Select a product for each line.'); return; }
+      if (!it.productName && !it.partName && cat !== 'EXPENSES') { alert('Select a product for each line.'); return; }
       if ((Number(it.quantity) || 0) <= 0) { alert('Enter a quantity greater than zero for each part.'); return; }
       // A purchase price is never assumed: zero/blank blocks the save.
       if ((Number(it.price) || 0) <= 0) { alert(`Enter the purchase price for "${label}". A price is never assumed to be zero.`); return; }
@@ -4414,6 +4458,9 @@ export function SalesPipelinePage() {
           inward_date: g.inwardDate || inwardForm.inwardDate || null, party_name: g.partyName || it.partyName || inwardForm.partyName, remarks: it.remarks ?? g.remarks ?? inwardForm.remarks,
           part_name: it.partName, part_number: it.partNumber || it.partCode || '', quantity: q, price: p,
           discount_percent: d, gst_percent: gg, total_amount: total, status: 'Pending', attachments,
+          // Petty cash (any category): a member paid out of pocket, so the company owes it back (settled at month end).
+          petty_cash: !!g.pettyCash,
+          paid_by: g.pettyCash ? String(g.paidBy || '').trim() : null,
         });
       }
       let payload: any[] = rows;
@@ -4444,6 +4491,9 @@ export function SalesPipelinePage() {
         })));
       } catch (woErr) {
         console.error('Draft work order auto-create failed:', woErr);
+      }
+      if (dropped.includes('petty_cash') || dropped.includes('paid_by')) {
+        if (rows.some((r: any) => r.petty_cash)) alert('Saved, but your database has no petty cash columns yet, so the petty cash / paid-by detail was not stored. Run the 20261019000000_expense_accounting.sql migration, then enter it again.');
       }
       if (dropped.includes('product_name')) {
         // Preserve the product link inside remarks (parsed back on display)
@@ -4864,6 +4914,17 @@ export function SalesPipelinePage() {
   // Products already received on earlier inwards (their stored product name already carries the sale date/time),
   // offered next to the sales-order products so the same product can be inwarded again.
   const [inwardProdOptions, setInwardProdOptions] = useState<any[]>([]);
+  // Company members, offered as "Paid by" on a petty cash expense (any name can still be typed).
+  const [memberNames, setMemberNames] = useState<string[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const r = await supabase.from('company_users').select('full_name,email');
+      if (cancelled || r.error) return;
+      setMemberNames([...new Set((r.data ?? []).map((u: any) => String(u.full_name || u.email || '').trim()).filter(Boolean))].sort());
+    })();
+    return () => { cancelled = true; };
+  }, [company?.id]);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -5667,6 +5728,7 @@ export function SalesPipelinePage() {
     <section className={`rounded-xl border shadow-sm ${tint('Inward').panel}`} data-testid="inward-entry-form">
       <div className="space-y-2.5 p-3">
         <div className="flex flex-col gap-4">
+          <datalist id="inward-members">{memberNames.map((n: string) => <option key={n} value={n} />)}</datalist>
           <datalist id="inward-customer-list">
             {(allKnownCompanies || []).map((c: any) => <option key={c.company} value={c.company} />)}
           </datalist>
@@ -5764,6 +5826,17 @@ export function SalesPipelinePage() {
                     )}
                   </div>
                   {addPartBtn}
+                  {(
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <label className="inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-700" title="A member paid this from their own pocket; it is reimbursed at month end">
+                        <input type="checkbox" className="h-3.5 w-3.5" checked={!!group.pettyCash} onChange={e => setGroup({ pettyCash: e.target.checked })} />
+                        Petty cash
+                      </label>
+                      {group.pettyCash && (
+                        <input className={`${compactInput} w-[11rem]`} list="inward-members" placeholder="Paid by (member) *" value={group.paidBy || ''} onChange={e => setGroup({ paidBy: e.target.value })} />
+                      )}
+                    </div>
+                  )}
                   {inwardForm.parts.length > 1 && <button type="button" onClick={() => setInwardForm({...inwardForm, parts: inwardForm.parts.filter((_: any, i: number) => i !== index)})} className="ml-auto shrink-0 text-xs font-medium text-rose-600 hover:text-rose-800">Remove</button>}
                 </div>
                 {(group.items || []).map((item: any, ii: number) => (
@@ -5790,7 +5863,7 @@ export function SalesPipelinePage() {
                         </>
                       )}
                     </div>
-                    <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[9.5rem] shrink-0`} placeholder="Part Name *" title="Part Name" list="saved-products" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} />
+                    <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[9.5rem] shrink-0`} placeholder={(group.category || 'GOODS PURCHASE') === 'EXPENSES' ? 'Part Name' : 'Part Name *'} title="Part Name" list="saved-products" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} />
                     <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[8.5rem] shrink-0`} placeholder="Remarks..." title="Remarks" value={item.remarks ?? ''} onChange={e=>setItem(ii, { remarks: e.target.value })} />
                     <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-1'}><span className={inlineLbl}>Qty *</span>
                       <input type="number" min="0" className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[4.25rem]`} placeholder="Qty" value={item.quantity || ''} onChange={e=>setItem(ii, { quantity: e.target.value })} /></div>
@@ -6265,6 +6338,10 @@ export function SalesPipelinePage() {
       ) : activeView === 'invoice_list' ? (
         <div className="mb-2.5">
           <InvoiceModule key={listRefresh} onBack={() => setActiveView('pipeline')} />
+        </div>
+      ) : activeView === 'tracking_list' ? (
+        <div className="mb-2.5">
+          <QuantityTrackingPage embedded />
         </div>
       ) : pipelineViewMode === 'companies' ? (
         // All Companies is the existing /sales/leads view, reused verbatim as another
@@ -6868,7 +6945,7 @@ export function SalesPipelinePage() {
       {/* Shared View / Edit modal: opened from every stage list's View / Edit actions.
           The entry forms are inline now, so this popup is only for inspecting or
           revising a record that already exists. */}
-<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Company ID: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" width={900} footer={<>{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {
+<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Company ID: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" width={docKind ? 1500 : 900} maxWidth={docKind ? 1700 : undefined} tall={!!docKind} footer={<>{viewModalData?.dc && viewModalTarget?.stage !== 'Invoice' && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {
                       if (viewEditMode && viewModalTarget?.stage === 'Sales Order' && soSaveRef.current) {
                         const ok = await soSaveRef.current();
                         if (!ok) return;
@@ -6883,17 +6960,9 @@ export function SalesPipelinePage() {
                       }
                       setViewEditMode(!viewEditMode);
                     })(); }}>{viewEditMode ? 'Done Editing' : 'Enable Inline Editing'}</Button><Button variant="secondary" onClick={closeViewModal}>Close</Button></>}>
+        <div className={docKind ? 'doc-compact grid grid-cols-1 gap-3 xl:grid-cols-2' : ''}>
         {viewModalData ? (
-          <div className="flex flex-col max-h-[75vh] overflow-y-auto pr-2">
-            {/* Top banner hides where a section renders its own live strip (enquiry form, quotation). */}
-            {(viewModalTarget?.stage === 'Finished Goods' || viewModalTarget?.stage === 'Inward') && viewModalData?.qtyTracking && (
-              <QtyTrackingSection
-                q={viewModalData.qtyTracking}
-                userName={userName}
-                allowReject={viewModalTarget?.stage !== 'Inward'}
-                onSaved={(summary) => setViewModalData((prev: any) => (prev ? { ...prev, qtyTracking: summary } : prev))}
-              />
-            )}
+          <div className={docKind ? 'flex flex-col' : 'flex flex-col max-h-[75vh] overflow-y-auto pr-2'}>
             {(() => {
               // Show the opened card's own stage details first, then the rest in pipeline order.
               const sections = [
@@ -7125,7 +7194,9 @@ export function SalesPipelinePage() {
               // From a Sales Order card the quotation block would repeat the same
               // products, so it is hidden — the sales-order block carries them.
               const visible = sections.filter(s => s.key !== 'Enquiry' || cur === 'Enquiry')
-                .filter(s => !(cur === 'Sales Order' && s.key === 'Quotation'));
+                .filter(s => !(cur === 'Sales Order' && s.key === 'Quotation'))
+                // An invoice shows its own details only; the challan it was raised from is not repeated here.
+                .filter(s => !(cur === 'Invoice' && s.key === 'DC'));
               const ordered = [...visible.filter(s => s.key === cur), ...visible.filter(s => s.key !== cur)];
               return <>{ordered.map(s => <div key={s.key} className="contents">{s.node}</div>)}</>;
             })()}
@@ -7133,6 +7204,16 @@ export function SalesPipelinePage() {
         ) : (
           <div className="p-8 text-center text-slate-500">Loading historical data...</div>
         )}
+        {docKind && (
+          <div className="h-[calc(95vh-10rem)] min-h-[420px] overflow-hidden rounded-lg border border-slate-200 bg-slate-100" data-testid="doc-preview">
+            {docPreviewUrl ? (
+              <iframe title={docKind === 'dc' ? 'Delivery challan preview' : 'Invoice preview'} src={`${docPreviewUrl}#navpanes=0&view=Fit`} className="h-full w-full" />
+            ) : (
+              <div className="flex h-full items-center justify-center p-6 text-center text-sm text-slate-500">{docPreviewErr || 'Preparing the document…'}</div>
+            )}
+          </div>
+        )}
+        </div>
       </Modal>
 
       {activeCommentTarget && (

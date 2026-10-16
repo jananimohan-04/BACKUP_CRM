@@ -203,3 +203,27 @@ body { font-size: 15px; }
 .text-sm { font-size: 15px; }
 .text-base { font-size: 17px; }
 .text-lg { font-size: 19px; }
+
+/* Compact record view (delivery challan / invoice popup): tighter fields, labels and gaps so the details fit
+   beside the document without scrolling. Scoped to .doc-compact so no other screen changes. */
+.doc-compact { font-size: 12px; }
+.doc-compact input:not([type='checkbox']):not([type='radio']),
+.doc-compact select,
+.doc-compact textarea {
+  padding: 2px 8px !important;
+  font-size: 12px !important;
+  min-height: 0 !important;
+  height: 26px !important;
+}
+.doc-compact textarea { height: auto !important; min-height: 44px !important; }
+.doc-compact label, .doc-compact [class*='uppercase'] { margin-bottom: 1px !important; line-height: 1.15 !important; }
+.doc-compact [class*='gap-6'], .doc-compact [class*='gap-5'], .doc-compact [class*='gap-4'] { gap: 0.4rem !important; }
+.doc-compact [class*='gap-3'] { gap: 0.3rem !important; }
+.doc-compact [class*='space-y-6'] > * + *, .doc-compact [class*='space-y-5'] > * + *, .doc-compact [class*='space-y-4'] > * + * { margin-top: 0.4rem !important; }
+.doc-compact [class*='space-y-3'] > * + * { margin-top: 0.3rem !important; }
+.doc-compact [class*='p-6'], .doc-compact [class*='p-5'], .doc-compact [class*='p-4'] { padding: 0.5rem !important; }
+.doc-compact [class*='py-6'], .doc-compact [class*='py-5'], .doc-compact [class*='py-4'] { padding-top: 0.35rem !important; padding-bottom: 0.35rem !important; }
+.doc-compact [class*='mb-6'], .doc-compact [class*='mb-5'], .doc-compact [class*='mb-4'] { margin-bottom: 0.4rem !important; }
+.doc-compact [class*='mt-6'], .doc-compact [class*='mt-5'], .doc-compact [class*='mt-4'] { margin-top: 0.4rem !important; }
+.doc-compact td, .doc-compact th { padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
+.doc-compact h2, .doc-compact h3, .doc-compact h4 { margin-bottom: 0.25rem !important; }

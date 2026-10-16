@@ -12,7 +12,7 @@ const MAX_W = 1100;
 const MIN_H = 400;
 const MAX_H = 850;
 
-const initialWidth = (size: string, vw: number, width?: number): number => {
+const initialWidth = (size: string, vw: number, width?: number, maxW: number = MAX_W): number => {
   const preset =
     size === 'sm' ? 520 :
     size === 'md' ? 640 :
@@ -21,11 +21,11 @@ const initialWidth = (size: string, vw: number, width?: number): number => {
     size === 'full' ? vw - 64 :
     MAX_W; // 2xl, 3xl
   const base = width ?? preset;
-  return Math.min(Math.max(base, Math.min(MIN_W, vw - 32)), Math.min(MAX_W, vw - 32));
+  return Math.min(Math.max(base, Math.min(MIN_W, vw - 32)), Math.min(maxW, vw - 32));
 };
 
-const clampWidth = (w: number, vw: number): number =>
-  Math.min(Math.max(w, Math.min(MIN_W, vw - 32)), Math.min(MAX_W, vw - 32));
+const clampWidth = (w: number, vw: number, maxW: number = MAX_W): number =>
+  Math.min(Math.max(w, Math.min(MIN_W, vw - 32)), Math.min(maxW, vw - 32));
 
 const clampHeight = (h: number, vh: number): number =>
   Math.min(Math.max(h, Math.min(MIN_H, vh - 32)), Math.min(MAX_H, vh * 0.9, vh - 32));
@@ -45,7 +45,13 @@ export function Modal({
   inline = false,
   accent,
   windowControls = false,
+  maxWidth = MAX_W,
+  tall = false,
 }: {
+  /** Lets the popup use almost the whole screen height (for dense, no-scroll layouts). */
+  tall?: boolean;
+  /** Widest the popup may be dragged or opened, in px (default 1100). */
+  maxWidth?: number;
   /** Adds minimize / maximize buttons to the header (popup mode only). */
   windowControls?: boolean;
   open: boolean;
@@ -94,7 +100,7 @@ export function Modal({
   useEffect(() => {
     if (open) {
       const vw = window.innerWidth;
-      setDim({ w: initialWidth(size, vw, width), h: null });
+      setDim({ w: initialWidth(size, vw, width, maxWidth), h: null });
       setTouched(false);
       setMinimized(false);
       setMaximized(false);
@@ -108,7 +114,7 @@ export function Modal({
         const h = el?.offsetHeight ?? 400;
         const vh = window.innerHeight;
         setPos({
-          x: Math.max(16, (vw - (el?.offsetWidth ?? initialWidth(size, vw, width))) / 2),
+          x: Math.max(16, (vw - (el?.offsetWidth ?? initialWidth(size, vw, width, maxWidth))) / 2),
           y: Math.max(16, (vh - h) / 2),
         });
       });
@@ -216,7 +222,7 @@ export function Modal({
     const vh = window.innerHeight;
     let w = r.w;
     let h = r.h;
-    if (r.dir === 'se' || r.dir === 'e') w = clampWidth(r.w + e.clientX - r.sx, vw);
+    if (r.dir === 'se' || r.dir === 'e') w = clampWidth(r.w + e.clientX - r.sx, vw, maxWidth);
     if (r.dir === 'se' || r.dir === 's') h = clampHeight(r.h + e.clientY - r.sy, vh);
     setDim({ w, h });
     setPos((p) => clampPos(p.x, p.y, w, h));
@@ -250,12 +256,12 @@ export function Modal({
           width: dim.w,
           maxWidth: 'calc(100vw - 2rem)',
           height: minimized ? undefined : dim.h ?? undefined,
-          maxHeight: 'min(80vh, 850px)',
+          maxHeight: tall ? 'min(95vh, 1100px)' : 'min(80vh, 850px)',
         }}
       >
         <div
           className="relative bg-white rounded-2xl shadow-2xl w-full border border-slate-200 flex flex-col animate-scale-in overflow-hidden"
-          style={maximized ? { height: '100%' } : { height: dim.h && !minimized ? `${dim.h}px` : undefined, maxHeight: 'min(80vh, 850px)' }}
+          style={maximized ? { height: '100%' } : { height: dim.h && !minimized ? `${dim.h}px` : undefined, maxHeight: tall ? 'min(95vh, 1100px)' : 'min(80vh, 850px)' }}
           onChange={() => setTouched(true)}
         >
           <div

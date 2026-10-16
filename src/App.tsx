@@ -8,6 +8,7 @@ import { AuthProvider, useAuth, type ErpRole } from './contexts/AuthContext';
 import { AdminAssistant } from './components/AdminAssistant';
 import { VoiceControl } from './components/VoiceControl';
 import { SavedProductsDatalist } from './lib/savedProducts';
+import { Time24Normalizer } from './components/Time24Normalizer';
 import { Sidebar } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
 import { HeaderKpiProvider } from './contexts/HeaderKpiContext';
@@ -278,6 +279,7 @@ function MainLayout() {
       <AdminAssistant />
       <VoiceControl />
       <SavedProductsDatalist />
+      <Time24Normalizer />
     </div>
     </HeaderKpiProvider>
   );

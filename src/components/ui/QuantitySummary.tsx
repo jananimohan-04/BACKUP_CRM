@@ -5,7 +5,7 @@
 
 import type { OrderQtySummary } from '@/lib/orderQuantities';
 
-const fmt = (n: number) => Number(n || 0).toLocaleString('en-IN');
+export const fmt = (n: number) => Number(n || 0).toLocaleString('en-IN');
 
 const tones: Record<string, string> = {
   slate: 'border-slate-200 bg-slate-50 text-slate-700',
@@ -18,9 +18,9 @@ const tones: Record<string, string> = {
 
 export function QtyBadge({ label, value, tone = 'slate', compact = false }: { label: string; value: string | number; tone?: keyof typeof tones; compact?: boolean }) {
   return (
-    <div className={compact ? `rounded-lg border px-1.5 py-0.5 ${(tones as any)[tone] ?? tones.slate}` : `rounded-lg border px-2 py-1 ${(tones as any)[tone] ?? tones.slate}`}>
-      <p className="text-[9px] font-bold uppercase tracking-widest opacity-70">{label}</p>
-      <p className={compact ? 'text-xs font-extrabold tabular-nums leading-tight' : 'text-sm font-extrabold tabular-nums leading-tight'}>{value}</p>
+    <div className={compact ? `rounded-md border px-2 py-0.5 shadow-2xs ${(tones as any)[tone] ?? tones.slate}` : `rounded-lg border px-2 py-1 ${(tones as any)[tone] ?? tones.slate}`}>
+      <p className="text-[9px] font-bold uppercase tracking-wider opacity-70">{label}</p>
+      <p className={compact ? 'text-xs font-black tabular-nums leading-tight' : 'text-sm font-extrabold tabular-nums leading-tight'}>{value}</p>
     </div>
   );
 }

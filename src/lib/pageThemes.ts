@@ -287,6 +287,35 @@ export const MODULE_THEMES: Record<string, ModuleTheme> = {
     btnPrimary: '!bg-indigo-600 hover:!bg-indigo-500 text-white shadow-md shadow-indigo-500/25 !border-indigo-600',
     entryPanel: 'border-indigo-400 bg-indigo-100/90 [--entry-border:theme(colors.indigo.400)]',
   },
+
+  'Qty Tracking': {
+    id: 'qty-tracking',
+    name: 'Qty Tracking',
+    stage: 'Qty Tracking',
+    gradient: 'linear-gradient(135deg, #7a2e0e 0%, #96400f 50%, #5e230a 100%)',
+    kpiTile: 'bg-gradient-to-br from-orange-700 to-orange-950 border-orange-600/70 hover:brightness-110',
+    kpiIcon: 'bg-orange-500/30 text-orange-100',
+    kpiActive: '!opacity-100 ring-2 ring-orange-400 ring-offset-2 ring-offset-slate-900 border-2 border-orange-300 shadow-[0_0_16px_rgba(251,146,60,0.85)] brightness-110 font-black scale-[1.04] z-10',
+    kpiDot: 'bg-orange-300',
+    kanban: {
+      id: 'Qty Tracking',
+      title: 'QTY TRACKING',
+      desc: 'Order quantities',
+      bg: 'bg-orange-950/45',
+      border: 'border-orange-500/50',
+      text: 'text-orange-100',
+      card: 'bg-orange-950/85 border-orange-500/50 hover:border-orange-400 hover:bg-orange-900/60 text-white shadow-md',
+      code: 'bg-orange-600/40 text-orange-200 border border-orange-400/30',
+      amount: 'text-orange-300',
+      badge: 'bg-orange-500/30 text-orange-200 border-orange-400/40',
+      button: 'bg-orange-600/20 hover:bg-orange-600/35 text-orange-200 border-orange-500/40',
+      search: 'bg-orange-950/60 border-orange-500/40 text-white placeholder-orange-300/60',
+    },
+    tableClass: 'erp-table-orange',
+    cardBorder: 'border-orange-400/30',
+    btnPrimary: '!bg-orange-600 hover:!bg-orange-500 text-white shadow-md shadow-orange-500/25 !border-orange-600',
+    entryPanel: 'border-orange-400 bg-orange-100/90 [--entry-border:theme(colors.orange.400)]',
+  },
 };
 
 export const STAGE_THEMES: Record<string, PageTheme> = {
@@ -325,6 +354,10 @@ export const STAGE_THEMES: Record<string, PageTheme> = {
   invoice_list: {
     gradient: MODULE_THEMES.Invoice.gradient,
     label: 'Deep Midnight Indigo (Invoices)',
+  },
+  tracking_list: {
+    gradient: MODULE_THEMES['Qty Tracking'].gradient,
+    label: 'Deep Burnt Orange (Quantity Tracking)',
   },
 };
 

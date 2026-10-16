@@ -10,7 +10,6 @@ import { Download, PackageSearch, Search } from 'lucide-react';
 import { Button, Card } from '@/components/ui/Card';
 import { FormField, inputClass } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { QtySummaryGrid } from '@/components/ui/QuantitySummary';
 import { supabase } from '@/lib/supabase';
 import { exportCsv } from '@/lib/reportExport';
 import { todayISO } from '@/lib/format';
@@ -20,7 +19,7 @@ import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 
 const fmt = (n: number) => Number(n || 0).toLocaleString('en-IN');
 
-export function QuantityTrackingPage() {
+export function QuantityTrackingPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [orders, setOrders] = useState<any[]>([]);
   const [wos, setWos] = useState<any[]>([]);
   const [deliveries, setDeliveries] = useState<any[]>([]);
@@ -33,7 +32,6 @@ export function QuantityTrackingPage() {
   const [customer, setCustomer] = useState('');
   const [search, setSearch] = useState('');
   const [hideComplete, setHideComplete] = useState(false);
-  const [selected, setSelected] = useState<OrderQtySummary | null>(null);
   const [activeTab, setActiveTab] = useState<'orders' | 'rejections'>('orders');
 
   useEffect(() => {
@@ -86,6 +84,26 @@ export function QuantityTrackingPage() {
     [rangedOrders, wos, deliveries, invoices, batches],
   );
 
+  // Display rule: unique number only (backend order/delivery numbers stay stored).
+  const uniqueOf = (orderNo: string) =>
+    orders.find((x) => String(x.order_no) === String(orderNo))?.lead_no || orderNo;
+
+  const [colFilters, setColFilters] = useState({ companyId: '', company: '', product: '' });
+  const hasColFilters = !!(colFilters.companyId || colFilters.company || colFilters.product);
+
+  const companyIdOpts = useMemo(
+    () => Array.from(new Set(rows.map((q) => uniqueOf(q.soNo)))).sort((a, b) => a.localeCompare(b)),
+    [rows, orders],
+  );
+  const companyOpts = useMemo(
+    () => Array.from(new Set(rows.map((q) => q.customer).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [rows],
+  );
+  const productOpts = useMemo(
+    () => Array.from(new Set(rows.map((q) => q.product).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [rows],
+  );
+
   const filtered = useMemo(() => rows.filter((q) => {
     if (customer && q.customer !== customers.find((c) => c.id === customer)?.name) return false;
     if (hideComplete && q.remaining <= 0 && q.invoiceable <= 0) return false;
@@ -94,8 +112,11 @@ export function QuantityTrackingPage() {
       const hay = [q.soNo, q.customer, q.product].join(' ').toLowerCase();
       if (!hay.includes(s)) return false;
     }
+    if (colFilters.companyId && uniqueOf(q.soNo) !== colFilters.companyId) return false;
+    if (colFilters.company && (q.customer || '') !== colFilters.company) return false;
+    if (colFilters.product && (q.product || '') !== colFilters.product) return false;
     return true;
-  }), [rows, customers, customer, search, hideComplete]);
+  }), [rows, customers, customer, search, hideComplete, orders, colFilters]);
 
   const totals = useMemo(() => filtered.reduce((a, q) => ({
     ordered: a.ordered + q.ordered, good: a.good + q.good, rejected: a.rejected + q.rejected,
@@ -109,10 +130,6 @@ export function QuantityTrackingPage() {
     }
     return [];
   }, [batches, batchesAvailable]);
-
-  // Display rule: unique number only (backend order/delivery numbers stay stored).
-  const uniqueOf = (orderNo: string) =>
-    orders.find((x) => String(x.order_no) === String(orderNo))?.lead_no || orderNo;
 
   const exportReport = () => exportCsv(`Order_Quantity_Tracking_${todayISO()}`, [
     ['Company ID', 'Date', 'Company', 'Product', 'Status', 'Ordered Qty', 'Good Qty', 'Rejected Qty', 'Remaining to Produce', 'FG Available', 'Delivered Qty', 'Invoiced Qty', 'Invoiceable Qty', 'Progress %'],
@@ -131,6 +148,20 @@ export function QuantityTrackingPage() {
   const { setHeader, setTabActions, setHeaderCenter, setTabs } = useHeaderKpis();
 
   useEffect(() => {
+    // Embedded under the Sales Pipeline top strip (Qty Tracking tile) everything
+    // lives in the page's own second row, so the topbar stays KPI-only.
+    if (embedded) {
+      setHeader(null);
+      setHeaderCenter(null);
+      setTabs([]);
+      setTabActions(null);
+      return () => {
+        setHeader(null);
+        setHeaderCenter(null);
+        setTabs([]);
+        setTabActions(null);
+      };
+    }
     setHeader({ title: 'Order Quantity Tracking' });
     setHeaderCenter(null);
     setTabs([
@@ -195,7 +226,7 @@ export function QuantityTrackingPage() {
       setTabs([]);
       setTabActions(null);
     };
-  }, [setHeader, setHeaderCenter, setTabs, setTabActions, activeTab, customer, customers, search, hideComplete, loading]);
+  }, [setHeader, setHeaderCenter, setTabs, setTabActions, activeTab, customer, customers, search, hideComplete, loading, embedded]);
 
   const summaryBoxes = [
     { label: 'Ordered', value: totals.ordered, tone: 'border-blue-200 bg-blue-50/60 text-blue-900', labelTone: 'text-blue-700' },
@@ -209,6 +240,69 @@ export function QuantityTrackingPage() {
 
   return (
     <div className="p-3 sm:p-4 lg:px-4 lg:pt-1.5 lg:pb-4 bg-grid min-h-full space-y-2">
+      {embedded && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setActiveTab('orders')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${activeTab === 'orders' ? 'bg-orange-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'}`}
+            >
+              Order Quantity Tracking
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('rejections')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${activeTab === 'rejections' ? 'bg-orange-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'}`}
+            >
+              Rejection Breakdown
+            </button>
+          </div>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <select
+              aria-label="Company"
+              title="Company"
+              className="h-8 px-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-brand-500 max-w-[150px] truncate"
+              value={customer}
+              onChange={(e) => setCustomer(e.target.value)}
+            >
+              <option value="">All Companies</option>
+              {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <div className="relative">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={activeTab === 'orders' ? 'Order no, product…' : 'Search rejections…'}
+                className="h-8 w-44 pl-8 pr-2 text-xs rounded-md border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-brand-500/30 focus:border-brand-500 placeholder:text-slate-400"
+              />
+            </div>
+            {activeTab === 'orders' && (
+              <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 whitespace-nowrap cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={hideComplete}
+                  onChange={(e) => setHideComplete(e.target.checked)}
+                  className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                />
+                <span>Hide complete</span>
+              </label>
+            )}
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Download size={14} />}
+              onClick={() => exportReportRef.current()}
+              disabled={loading}
+              className="h-8 text-xs shadow-sm"
+            >
+              Export CSV
+            </Button>
+          </div>
+        </div>
+      )}
+      {!embedded && (
       <div className="lg:hidden">
         <PageHeader
           title="Order Quantity Tracking"
@@ -232,7 +326,9 @@ export function QuantityTrackingPage() {
           </button>
         </div>
       </div>
+      )}
       {error && <div className="rounded border border-rose-200 bg-rose-50 p-2 text-sm text-rose-700">{error}</div>}
+      {!embedded && (
       <div className="lg:hidden">
         <Card className="p-3">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 items-end">
@@ -253,6 +349,7 @@ export function QuantityTrackingPage() {
           </div>
         </Card>
       </div>
+      )}
 
       {activeTab === 'orders' && (
         <>
@@ -273,19 +370,73 @@ export function QuantityTrackingPage() {
               <table className="w-full text-xs min-w-[1100px]">
                 <thead>
                   <tr className="text-left text-slate-500 uppercase text-[10px] border-b border-slate-200 bg-slate-50">
-                    <th className="px-3 py-2">Company ID</th><th className="px-3 py-2">Company</th><th className="px-3 py-2">Product</th>
+                    <th className="px-3 py-2">
+                      <span className="flex items-center gap-1.5">
+                        <span>Company ID</span>
+                        <select
+                          value={colFilters.companyId}
+                          onChange={(e) => setColFilters((p) => ({ ...p, companyId: e.target.value }))}
+                          aria-label="Filter by Company ID"
+                          className="h-6 min-w-[72px] px-1 text-[11px] font-bold normal-case text-slate-700 rounded-md border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-brand-500/30 focus:border-brand-500"
+                        >
+                          <option value="">ALL</option>
+                          {companyIdOpts.map((v) => <option key={v} value={v}>{v}</option>)}
+                        </select>
+                      </span>
+                    </th>
+                    <th className="px-3 py-2">
+                      <span className="flex items-center gap-1.5">
+                        <span>Company</span>
+                        <select
+                          value={colFilters.company}
+                          onChange={(e) => setColFilters((p) => ({ ...p, company: e.target.value }))}
+                          aria-label="Filter by Company"
+                          className="h-6 min-w-[72px] px-1 text-[11px] font-bold normal-case text-slate-700 rounded-md border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-brand-500/30 focus:border-brand-500"
+                        >
+                          <option value="">ALL</option>
+                          {companyOpts.map((v) => <option key={v} value={v}>{v}</option>)}
+                        </select>
+                      </span>
+                    </th>
+                    <th className="px-3 py-2">
+                      <span className="flex items-center gap-1.5">
+                        <span>Product</span>
+                        <select
+                          value={colFilters.product}
+                          onChange={(e) => setColFilters((p) => ({ ...p, product: e.target.value }))}
+                          aria-label="Filter by Product"
+                          className="h-6 min-w-[72px] px-1 text-[11px] font-bold normal-case text-slate-700 rounded-md border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-brand-500/30 focus:border-brand-500"
+                        >
+                          <option value="">ALL</option>
+                          {productOpts.map((v) => <option key={v} value={v}>{v}</option>)}
+                        </select>
+                      </span>
+                    </th>
                     <th className="px-3 py-2 text-right">Ordered</th><th className="px-3 py-2 text-right">Good</th>
                     <th className="px-3 py-2 text-right">Rejected</th><th className="px-3 py-2 text-right">Remaining</th>
                     <th className="px-3 py-2 text-right">FG Avail</th><th className="px-3 py-2 text-right">Delivered</th>
                     <th className="px-3 py-2 text-right">Invoiced</th><th className="px-3 py-2 text-right">Invoiceable</th>
-                    <th className="px-3 py-2">Progress</th>
+                    <th className="px-3 py-2">
+                      <span className="flex items-center gap-1.5">
+                        <span>Progress</span>
+                        {hasColFilters && (
+                          <button
+                            type="button"
+                            onClick={() => setColFilters({ companyId: '', company: '', product: '' })}
+                            className="text-[11px] font-bold normal-case text-brand-600 hover:text-brand-800 hover:underline"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading && <tr><td colSpan={12} className="px-3 py-6 text-center text-slate-500"><PackageSearch className="inline mr-2" size={16} />Loading live quantities…</td></tr>}
                   {!loading && filtered.length === 0 && <tr><td colSpan={12} className="px-3 py-6 text-center text-slate-500">No orders match the filters.</td></tr>}
                   {filtered.map((q) => (
-                    <tr key={`${q.soId ?? ''}-${q.soNo}`} className="border-t border-slate-100 hover:bg-slate-50/60 cursor-pointer" onClick={() => setSelected(selected?.soNo === q.soNo ? null : q)}>
+                    <tr key={`${q.soId ?? ''}-${q.soNo}`} className="border-t border-slate-100 hover:bg-slate-50/60">
                       <td className="px-3 py-2 font-mono font-semibold">{uniqueOf(q.soNo)}</td>
                       <td className="px-3 py-2">{q.customer || '—'}</td>
                       <td className="px-3 py-2">{q.product || '—'}</td>
@@ -306,12 +457,6 @@ export function QuantityTrackingPage() {
                 </tbody>
               </table>
             </div>
-            {selected && (
-              <div className="border-t border-slate-200 bg-violet-50/40 p-4">
-                <h3 className="font-bold text-sm text-violet-900 uppercase mb-2">Quantity Tracking — {selected.soNo}</h3>
-                <QtySummaryGrid q={selected} />
-              </div>
-            )}
           </Card>
         </>
       )}

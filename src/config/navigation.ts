@@ -3,7 +3,6 @@ import {
   TrendingUp,
   Users,
   FileText,
-  Package,
   Cog,
   ClipboardList,
   Boxes,
@@ -95,7 +94,6 @@ export const navSections: NavSection[] = [
     label: 'System',
     items: [
       { label: 'Reports', icon: BarChart3, page: 'reports/production', iconClass: 'text-red-400', module: 'reports' },
-      { label: 'Order Quantity Tracking', icon: Package, page: 'reports/order-tracking', iconClass: 'text-teal-400', module: 'reports' },
       { label: 'User Management', icon: Users, page: 'admin/users', roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'], iconClass: 'text-cyan-400', module: 'admin-users' },
       { label: 'Access Management', icon: Users, page: 'admin/access', roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'], iconClass: 'text-emerald-400', module: 'admin-access' },
       { label: 'Company Management', icon: Building2, page: 'admin/companies', roles: ['SUPER_ADMIN'], iconClass: 'text-indigo-400', module: 'admin-companies' },

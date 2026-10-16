@@ -1,4 +1,5 @@
 import { formatDate } from '@/lib/format';
+import { productOnly } from '@/lib/productLabel';
 
 export interface BrandedDocumentInput {
   companyName: string;
@@ -580,7 +581,14 @@ async function buildDeliveryChallanDocument(input: DeliveryChallanInput) {
 
   // ---- Top row: customer card left, DC card right, items below ----
   const halfW = (contentW - 5) / 2;
-  const topCardH = 5 * 10 + 5;
+  // A value that wraps onto a second line (a long address) gets a taller row, so it never runs into the next label.
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  const custValues = [val(input.customerName), val(input.customerAddress), val(input.customerGstin), val(input.customerCode), val(input.phoneNo)];
+  const custLines = custValues.map((v) => (doc.splitTextToSize(v || '—', halfW - 10) as string[]).slice(0, 2));
+  const custRowH = custLines.map((l) => 10 + (l.length - 1) * 4.4);
+  const custOff = custRowH.map((_, i) => custRowH.slice(0, i).reduce((a, b) => a + b, 0));
+  const topCardH = Math.max(5 * 10, custRowH.reduce((a, b) => a + b, 0)) + 5;
   if (y + 12 + topCardH > 278) {
     doc.addPage();
     y = 15;
@@ -617,8 +625,8 @@ async function buildDeliveryChallanDocument(input: DeliveryChallanInput) {
     ['Place of Supply', val(input.placeOfSupply), 'Transport Number', val(input.transportNo)],
     ['DC Date', challanDate(input.dcDate), 'Enquiry Number', val(input.enquiryNo)],
   ];
-  custRows.forEach(([label, value], i) => {
-    const ry = y + 4.5 + i * 10;
+  custRows.forEach(([label], i) => {
+    const ry = y + 4.5 + custOff[i];
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(...GREY);
@@ -626,12 +634,12 @@ async function buildDeliveryChallanDocument(input: DeliveryChallanInput) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9.5);
     doc.setTextColor(...INK);
-    const wrapped: string[] = doc.splitTextToSize(value || '—', halfW - 10);
-    doc.text(wrapped.slice(0, 2), ML + 4.5, ry + 4.4);
+    doc.text(custLines[i], ML + 4.5, ry + 4.4);
     if (i < custRows.length - 1) {
       doc.setDrawColor(...LINE);
       doc.setLineWidth(0.2);
-      doc.line(ML + 4.5, y + (i + 1) * 10 + 2.5, ML + halfW - 4.5, y + (i + 1) * 10 + 2.5);
+      const sepY = y + custOff[i] + custRowH[i] + 2.5;
+      doc.line(ML + 4.5, sepY, ML + halfW - 4.5, sepY);
     }
   });
   const miniW = (halfW - 9) / 2;
@@ -672,7 +680,7 @@ async function buildDeliveryChallanDocument(input: DeliveryChallanInput) {
     startY: y,
     head: [['S.No', 'Part Name / Description', 'HSN', 'Quantity', 'Unit', 'Price', 'Amount']],
     body: (input.items.length ? input.items : [{ partName: '', hsn: '', qty: '', unit: '', price: '', amount: '' }])
-      .map((it, i) => [String(i + 1).padStart(2, '0'), it.partName || '', it.hsn || '', it.qty || '', it.unit || '', it.price || '', it.amount || '']),
+      .map((it, i) => [String(i + 1).padStart(2, '0'), productOnly(it.partName || ''), it.hsn || '', it.qty || '', it.unit || '', it.price || '', it.amount || '']),
     theme: 'grid',
     headStyles: { fillColor: NAVY, textColor: 255, fontSize: 9, fontStyle: 'bold', halign: 'center' },
     alternateRowStyles: { fillColor: TINT },
@@ -752,6 +760,12 @@ async function buildDeliveryChallanDocument(input: DeliveryChallanInput) {
 export async function downloadDeliveryChallan(input: DeliveryChallanInput) {
   const doc = await buildDeliveryChallanDocument(input);
   doc.save(`${input.dcNo || 'Delivery_Challan'}.pdf`);
+}
+
+/** The challan as a PDF blob URL, for showing inside a popup. The caller revokes it. */
+export async function deliveryChallanPreviewUrl(input: DeliveryChallanInput): Promise<string> {
+  const doc = await buildDeliveryChallanDocument(input);
+  return URL.createObjectURL(doc.output('blob'));
 }
 
 export async function viewDeliveryChallan(input: DeliveryChallanInput) {
@@ -958,7 +972,7 @@ async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
     startY: y,
     head: [['SI No', 'HSN CODE', 'DESCRIPTION', 'QTY', 'UNIT', 'PRICE', 'AMOUNT']],
     body: (input.items.length ? input.items : [{ description: '', hsn: '', qty: 0, unit: '', price: 0, amount: 0 }])
-      .map((it, i) => [String(i + 1), it.hsn || '', it.description || '', it.qty ? fmt(it.qty) : '', it.unit || '', it.price ? fmt(it.price) : '', it.amount ? fmt(it.amount) : '']),
+      .map((it, i) => [String(i + 1), it.hsn || '', productOnly(it.description || ''), it.qty ? fmt(it.qty) : '', it.unit || '', it.price ? fmt(it.price) : '', it.amount ? fmt(it.amount) : '']),
     theme: 'grid',
     headStyles: { fillColor: SHADING, textColor: 0, fontSize: 9, fontStyle: 'bold', halign: 'center', lineColor: GRID, lineWidth: 0.3 },
     styles: { fontSize: 9, cellPadding: 2.2, textColor: INK, lineColor: GRID, lineWidth: 0.3 },
@@ -1083,6 +1097,12 @@ async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
 export async function downloadSalesInvoice(input: SalesInvoiceInput) {
   const doc = await buildSalesInvoiceDocument(input);
   doc.save(`${input.docNo || 'Sales_Invoice'}.pdf`);
+}
+
+/** The invoice as a PDF blob URL, for showing inside a popup. The caller revokes it. */
+export async function salesInvoicePreviewUrl(input: SalesInvoiceInput): Promise<string> {
+  const doc = await buildSalesInvoiceDocument(input);
+  return URL.createObjectURL(doc.output('blob'));
 }
 
 export async function viewSalesInvoice(input: SalesInvoiceInput) {

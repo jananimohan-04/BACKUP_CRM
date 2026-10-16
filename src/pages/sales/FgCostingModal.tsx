@@ -17,7 +17,7 @@ import { tint } from '@/lib/entryTints';
 import { compactInput, inlineLbl } from '@/lib/compactFields';
 import { Badge, Button, statusToVariant } from '@/components/ui/Card';
 import { Modal, inputClass } from '@/components/ui/Modal';
-import { QtyTrackingSection, attachDateTimeToProduct, getProductBaseName } from './SalesPipelinePage';
+import { attachDateTimeToProduct, getProductBaseName } from './SalesPipelinePage';
 import { fetchOrderQty, recordProductionBatch, type OrderQtySummary } from '@/lib/orderQuantities';
 import { insertTolerant } from '@/lib/partRouting';
 import { downloadCostingDocument, viewCostingDocument } from '@/lib/brandedDocument';
@@ -1089,7 +1089,6 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
             <div className={inline ? 'grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_11rem] gap-2 text-sm' : 'grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_11rem] gap-4 text-sm'}>
               <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Company</p><p className={inline ? 'font-semibold text-sm' : 'font-semibold'}>{card?.customer ?? '—'}</p></div>
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-slate-400">Product · how many finish ({selectedProds.length} of {prodRows.length} selected)</p>
                 {prodRows.length === 0 ? (
                   <p className="text-xs text-slate-400 mt-1">Loading products…</p>
                 ) : (
@@ -1139,12 +1138,6 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                 <input type="date" value={fgDate} disabled={!fgEdit} onChange={(e) => setFgDate(e.target.value)} className={inputClass} />
               </div>
             </div>
-            {/* quantity tracking sits right under the product it describes */}
-            {qtySum && (
-              <div className={inline ? 'mt-2' : 'mt-3'}>
-                <QtyTrackingSection q={qtySum} userName={userName} onSaved={(s) => setQtySum(s)} allowReject={false} compact={inline} />
-              </div>
-            )}
             </>
             )}
           </div>
