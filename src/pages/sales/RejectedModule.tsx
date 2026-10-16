@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
 import { SearchSelect } from '@/components/ui/SearchSelect';
+import { productWithCompany } from '@/lib/productLabel';
 import { attachDateTimeToProduct } from './SalesPipelinePage';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
@@ -161,7 +162,7 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
         const key = `${o.order_no}||${it.name}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        out.push({ key, orderNo: String(o.order_no), company, name: it.name, qty: it.qty, label: [company, attachDateTimeToProduct(it.name, o)].filter(Boolean).join(' - ') });
+        out.push({ key, orderNo: String(o.order_no), company, name: it.name, qty: it.qty, label: productWithCompany(attachDateTimeToProduct(it.name, o), company) });
       }
     }
     return out.sort((a, b) => a.label.localeCompare(b.label));

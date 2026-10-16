@@ -9,6 +9,7 @@
 
 import { useState, useEffect, useMemo, useRef, Fragment, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { productWithCompany } from '@/lib/productLabel';
 import { calcWorkings, rowCost, type WorkRow, type Workings } from '@/lib/quotationWorkings';
 import { supabase } from '@/lib/supabase';
 import { todayISO } from '@/lib/format';
@@ -932,7 +933,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
     // One row per product, written as "Company - Product - date time". Typing matches any part of that text,
     // so the company name finds it too.
     const rowsAll = pickOptions
-      .map((o) => ({ key: `${o.company}||${o.product}`, company: String(o.company || '').trim(), product: o.product, label: o.company ? `${String(o.company).trim()} - ${o.product}` : o.product }))
+      .map((o) => ({ key: `${o.company}||${o.product}`, company: String(o.company || '').trim(), product: o.product, label: productWithCompany(o.product, String(o.company || '')) }))
       .sort((a, b) => a.label.localeCompare(b.label));
     const words = key(pickText).split(/\s+/).filter(Boolean);
     const rows = rowsAll.filter((r) => words.every((w) => r.label.toLowerCase().includes(w)));

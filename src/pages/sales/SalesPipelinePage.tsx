@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useLayoutEffect, Fragment } from 'react';
 import { supabase } from '@/lib/supabase';
 import { refreshSavedProducts } from '@/lib/savedProducts';
+import { productWithCompany } from '@/lib/productLabel';
 import { financeApi } from '@/lib/finance';
 import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
@@ -1923,7 +1924,7 @@ export function SalesPipelinePage() {
       if (!(o.saleOrderRef || o.saleStamp || String(o.key || '').startsWith('inward:'))) return false;
       if (String(o.key || '').startsWith('inward:') && soKeys.has(baseKey(o))) return false;
       seen.add(k); return true;
-    }).map((o: any) => ({ ...o, display: [o.customer, o.name].filter(Boolean).join(' - ') }));
+    }).map((o: any) => ({ ...o, display: productWithCompany(o.name, o.customer) }));
   };
   // Approved-price lookup for the DC form (same source as the DC→Invoice
   // gate: latest Approved costing sheet for the quotation).
