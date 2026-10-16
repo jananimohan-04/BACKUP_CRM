@@ -786,12 +786,24 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
       const groupIds: string[] = Array.isArray(inward._groupIds) && inward._groupIds.length
         ? inward._groupIds : (inward.id ? [inward.id] : []);
       if (groupIds.length > 0) {
-        const chk = await supabase.from('cnc_inwards').select('id,status').in('id', groupIds);
-        if (!chk.error && (chk.data ?? []).every((r: any) => r.status === 'Processed')) {
-          alert('This inward was already moved to Finished Goods. Refresh the board.');
-          onMoved();
-          onClose();
-          return;
+        const chk = await supabase.from('cnc_inwards').select('id,status,part_name,product_name').in('id', groupIds);
+        if (!chk.error && (chk.data ?? []).length > 0 && (chk.data ?? []).every((r: any) => r.status === 'Processed')) {
+          // "Processed" only means something while the finished goods it produced still exist. If they were
+          // deleted, the inward is stuck as Processed with nothing in Finished Goods: free it so it can move again.
+          const lc = (v: unknown) => String(v ?? '').trim().toLowerCase();
+          const ref = lc(inward.sales_order_ref);
+          const names = new Set((chk.data ?? []).flatMap((r: any) => [lc(r.part_name), lc(r.product_name)]).filter(Boolean));
+          const fg = await supabase.from('cnc_work_orders').select('id,sales_order,customer,part_name,completed').gt('completed', 0);
+          const stillThere = !fg.error && (fg.data ?? []).some((w: any) =>
+            ref ? lc(w.sales_order) === ref : (lc(w.customer) === lc(card.customer) && names.has(lc(w.part_name))));
+          if (fg.error || stillThere) {
+            alert('This inward was already moved to Finished Goods. Refresh the board.');
+            onMoved();
+            onClose();
+            return;
+          }
+          const reset = await supabase.from('cnc_inwards').update({ status: 'Pending' }).in('id', groupIds);
+          if (reset.error) throw new Error(`Could not re-open this inward: ${reset.error.message}`);
         }
       }
       // 1) Save the Approved costing version (same payload shape as the costing page).
