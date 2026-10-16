@@ -742,8 +742,8 @@ export function LeadsPage({ hideHeader = false, toolbarLeft }: { hideHeader?: bo
 
       <DataTable data={displayLeads} columns={columns} searchKeys={['company', 'leadNo', 'city', 'gst']} onAdd={() => { setEditId(null); setMasterEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Company" inlineAdd toolbarLeft={toolbarLeft} toolbarDate={<DateSelector />} filterOptions={[{ label: 'New', value: 'New' }, { label: 'Converted', value: 'Converted' }, { label: 'Lost', value: 'Lost' }]} />
 
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title={editId || masterEditId ? "Edit Company" : "Add New Company"} size="xl" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>Save Company</Button></>}>
-        <div className="grid grid-cols-2 gap-4">
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title={editId || masterEditId ? "Edit Company" : "Add New Company"} size="sm" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>Save Company</Button></>}>
+        <div className="grid grid-cols-3 gap-3">
           {editId && (
             <FormField label="Company ID" required><input className={inputClass} value={formData.leadNo} onChange={e => setFormData({...formData, leadNo: e.target.value})} placeholder="e.g. 1840 or Custom Company ID" /></FormField>
           )}
@@ -780,7 +780,7 @@ export function LeadsPage({ hideHeader = false, toolbarLeft }: { hideHeader?: bo
           />
           <FormField label="Address"><input className={inputClass} value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} /></FormField>
           <FormField label="GST No."><input className={inputClass} value={formData.gst} onChange={e => setFormData({...formData, gst: e.target.value})} /></FormField>
-          <div className="col-span-2 space-y-3">
+          <div className="col-span-3 space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-500 uppercase">Contact Persons</label>
               <button onClick={() => setFormData({...formData, contacts: [...formData.contacts, { person: '', phone: '', email: '' }]})} className="text-xs text-blue-600 font-bold flex items-center gap-1">+ Add Contact Person</button>

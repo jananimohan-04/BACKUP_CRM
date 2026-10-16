@@ -6611,8 +6611,8 @@ export function SalesPipelinePage() {
       </Modal>
 
       {/* New Lead Modal */}
-      <Modal open={showNewLead} onClose={() => setShowNewLead(false)} title="Create New Company" size="lg" width={720} footer={<><Button variant="secondary" onClick={() => setShowNewLead(false)}>Cancel</Button><Button onClick={saveNewLead}>Save Company</Button></>}>
-        <div className="grid grid-cols-2 gap-4">
+      <Modal open={showNewLead} onClose={() => setShowNewLead(false)} title="Create New Company" size="sm" footer={<><Button variant="secondary" onClick={() => setShowNewLead(false)}>Cancel</Button><Button onClick={saveNewLead}>Save Company</Button></>}>
+        <div className="grid grid-cols-3 gap-3">
           <CustomerAutocomplete
             label="Company Name"
             required
@@ -6646,7 +6646,7 @@ export function SalesPipelinePage() {
           />
           <FormField label="Address"><input className={inputClass} value={newLeadForm.city} onChange={e => setNewLeadForm({...newLeadForm, city: e.target.value})} /></FormField>
           <FormField label="GST No."><input className={inputClass} value={newLeadForm.gst} onChange={e => setNewLeadForm({...newLeadForm, gst: e.target.value})} /></FormField>
-          <div className="col-span-2 space-y-3">
+          <div className="col-span-3 space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-500 uppercase">Contact Persons</label>
               <button type="button" onClick={() => setNewLeadForm({...newLeadForm, contacts: [...(newLeadForm.contacts || []), { person: '', phone: '', email: '' }]})} className="text-xs text-blue-600 font-bold flex items-center gap-1">+ Add Contact Person</button>

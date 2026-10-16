@@ -6,6 +6,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { AccessDenied } from './components/AccessDenied';
 import { AuthProvider, useAuth, type ErpRole } from './contexts/AuthContext';
 import { AdminAssistant } from './components/AdminAssistant';
+import { VoiceControl } from './components/VoiceControl';
 import { Sidebar } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
 import { HeaderKpiProvider } from './contexts/HeaderKpiContext';
@@ -274,6 +275,7 @@ function MainLayout() {
         </main>
       </div>
       <AdminAssistant />
+      <VoiceControl />
     </div>
     </HeaderKpiProvider>
   );
