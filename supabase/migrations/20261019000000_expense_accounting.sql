@@ -8,13 +8,15 @@
 --        Cr  Payable to Members       when petty cash (party = the member who paid)
 --    Editing or deleting the inward rewrites / removes its journal. A Deleted inward posts nothing.
 --    A non-expense inward paid by a member: Dr Trade Payables, Cr Payable to Members.
---  * Paying a member back (Petty Cash Entry page) debits Payable to Members, clearing what is owed.
+--  * Money given to a member (before or after they spend, or to pay them back) is a Petty Cash Entry that debits Payable to Members.
+--    A member's balance = money given to them - what they paid (cnc_inwards.petty_amount): positive = they hold company money, negative = the company owes them.
 -- Re-runnable.
 begin;
 
 alter table public.cnc_inwards
   add column if not exists petty_cash boolean not null default false,
   add column if not exists paid_by text,
+  add column if not exists petty_amount numeric,
   add column if not exists settled_at timestamptz;
 
 -- Creates a system ledger account for a company on first use (code is bumped if it is already taken).
@@ -51,6 +53,8 @@ declare
   v_credit text;
   v_party text;
   v_what text;
+  v_paid numeric;
+  v_lines jsonb;
 begin
   if tg_op = 'DELETE' then
     delete from public.journal_entries
@@ -68,6 +72,8 @@ begin
   end if;
 
   v_amount := round(coalesce(new.total_amount::numeric, 0), 2);
+  -- What the member actually paid out of pocket (defaults to the whole amount, never more than it).
+  v_paid := least(v_amount, round(coalesce(new.petty_amount, v_amount), 2));
 
   -- A purchase / service / other inward paid by a member: the vendor is settled by the member, so the
   -- company now owes the member instead of the vendor (Dr Trade Payables, Cr Payable to Members).
@@ -78,27 +84,33 @@ begin
       'Paid by member: ' || coalesce(nullif(btrim(new.product_name), ''), nullif(btrim(new.part_name), ''), 'Inward') || ' — ' || v_party || ' (petty cash)',
       coalesce(new.reference_no, new.inward_no),
       jsonb_build_array(
-        jsonb_build_object('key', 'TRADE_PAYABLES', 'debit', v_amount, 'party', nullif(btrim(coalesce(new.party_name, '')), '')),
-        jsonb_build_object('key', 'MEMBER_PAYABLE', 'credit', v_amount, 'party', v_party)));
+        jsonb_build_object('key', 'TRADE_PAYABLES', 'debit', v_paid, 'party', nullif(btrim(coalesce(new.party_name, '')), '')),
+        jsonb_build_object('key', 'MEMBER_PAYABLE', 'credit', v_paid, 'party', v_party)));
     return new;
   end if;
   perform public.erp_ensure_account(new.company_id, 'COMPANY_EXPENSES', '5950', 'Company Expenses', 'EXPENSE', '5000', 88);
-  if coalesce(new.petty_cash, false) then
-    perform public.erp_ensure_account(new.company_id, 'MEMBER_PAYABLE', '2545', 'Payable to Members (Petty Cash)', 'LIABILITY', '2500', 52);
-    v_credit := 'MEMBER_PAYABLE';
-    v_party := coalesce(nullif(btrim(new.paid_by), ''), 'Member');
-  else
-    v_credit := 'TRADE_PAYABLES';
-    v_party := nullif(btrim(coalesce(new.party_name, '')), '');
-  end if;
   v_what := coalesce(nullif(btrim(new.product_name), ''), nullif(btrim(new.part_name), ''), 'Expense');
+  if coalesce(new.petty_cash, false) then
+    -- The member paid v_paid; any remainder is still owed to the vendor.
+    perform public.erp_ensure_account(new.company_id, 'MEMBER_PAYABLE', '2545', 'Payable to Members (Petty Cash)', 'LIABILITY', '2500', 52);
+    v_party := coalesce(nullif(btrim(new.paid_by), ''), 'Member');
+    v_lines := jsonb_build_array(
+      jsonb_build_object('key', 'COMPANY_EXPENSES', 'debit', v_amount),
+      jsonb_build_object('key', 'MEMBER_PAYABLE', 'credit', v_paid, 'party', v_party));
+    if v_amount - v_paid > 0 then
+      v_lines := v_lines || jsonb_build_array(
+        jsonb_build_object('key', 'TRADE_PAYABLES', 'credit', v_amount - v_paid, 'party', nullif(btrim(coalesce(new.party_name, '')), '')));
+    end if;
+  else
+    v_party := nullif(btrim(coalesce(new.party_name, '')), '');
+    v_lines := jsonb_build_array(
+      jsonb_build_object('key', 'COMPANY_EXPENSES', 'debit', v_amount),
+      jsonb_build_object('key', 'TRADE_PAYABLES', 'credit', v_amount, 'party', v_party));
+  end if;
 
   perform public.erp_post_system_journal(new.company_id, 'inward_expense', new.id::text, v_date, 'Journal',
     'Expense: ' || v_what || coalesce(' — ' || v_party, '') || case when coalesce(new.petty_cash, false) then ' (petty cash)' else '' end,
-    coalesce(new.reference_no, new.inward_no),
-    jsonb_build_array(
-      jsonb_build_object('key', 'COMPANY_EXPENSES', 'debit', v_amount),
-      jsonb_build_object('key', v_credit, 'credit', v_amount, 'party', v_party)));
+    coalesce(new.reference_no, new.inward_no), v_lines);
   return new;
 end;
 $$;

@@ -110,53 +110,6 @@ export function PettyCashPage() {
     return () => { off = true; };
   }, [cid, load]);
 
-  // Petty cash expenses a member paid out of pocket (entered on Inward > Expenses > Petty cash), still to be paid back.
-  interface Due { id: string; member: string; amount: number; date: string; what: string }
-  const [dues, setDues] = useState<Due[]>([]);
-  const [duesErr, setDuesErr] = useState('');
-  const [paying, setPaying] = useState('');
-  const loadDues = useCallback(async () => {
-    const r = await supabase.from('cnc_inwards').select('id,paid_by,total_amount,inward_date,product_name,part_name,status')
-      .eq('petty_cash', true).is('settled_at', null).neq('status', 'Deleted').order('inward_date');
-    if (r.error) { setDues([]); setDuesErr(/petty_cash|settled_at/.test(r.error.message) ? 'Petty cash tracking is not set up yet. Run the 20261019000000_expense_accounting.sql migration.' : r.error.message); return; }
-    setDuesErr('');
-    setDues(((r.data ?? []) as Record<string, unknown>[]).map(x => ({
-      id: String(x.id), member: String(x.paid_by ?? '').trim() || 'Unnamed member', amount: Number(x.total_amount) || 0,
-      date: String(x.inward_date ?? '').slice(0, 10), what: String(x.product_name || x.part_name || 'Expense'),
-    })));
-  }, []);
-  useEffect(() => { void loadDues(); }, [loadDues, cid]);
-  // One row per member and month, so a month's dues are paid in one go.
-  const dueGroups = useMemo(() => {
-    const m = new Map<string, { key: string; member: string; month: string; ids: string[]; total: number; items: number }>();
-    for (const d of dues) {
-      const month = d.date.slice(0, 7);
-      const k = `${d.member}||${month}`;
-      const g = m.get(k) ?? { key: k, member: d.member, month, ids: [], total: 0, items: 0 };
-      g.ids.push(d.id); g.total += d.amount; g.items += 1; m.set(k, g);
-    }
-    return [...m.values()].sort((a, b) => a.month.localeCompare(b.month) || a.member.localeCompare(b.member));
-  }, [dues]);
-  const payDue = async (g: { key: string; member: string; month: string; ids: string[]; total: number }) => {
-    setNote(null);
-    const payable = chart.find(a => a.system_key === 'MEMBER_PAYABLE');
-    if (!payable) return setNote({ kind: 'err', text: 'The "Payable to Members" ledger does not exist yet. Run the 20261019000000_expense_accounting.sql migration.' });
-    if (!bankId) return setNote({ kind: 'err', text: 'Select the bank / cash account the money is paid from (Bank name above).' });
-    if (!window.confirm(`Pay ${g.member} ${formatINR(g.total)} for ${g.month}? It is paid from the selected bank / cash account.`)) return;
-    setPaying(g.key);
-    try {
-      await financeApi.addBankEntry({
-        direction: 'OUT', account_id: bankId, contra_account_id: payable.id, amount: String(Math.round(g.total * 100) / 100), txn_date: todayISO(),
-        mode: 'Petty cash', description: `Petty cash reimbursement - ${g.member} - ${g.month}`, status: 'Cleared', source_type: SOURCE,
-      });
-      const u = await supabase.from('cnc_inwards').update({ settled_at: new Date().toISOString() }).in('id', g.ids).select('id');
-      if (u.error) throw new Error(u.error.message);
-      setNote({ kind: 'ok', text: `Paid ${g.member} ${formatINR(g.total)} for ${g.month}. Posted to the ledger.` });
-      await Promise.all([load(), loadDues()]);
-    } catch (e) { setNote({ kind: 'err', text: e instanceof Error ? e.message : 'Could not pay this.' }); }
-    finally { setPaying(''); }
-  };
-
   const clearForm = () => { setDate(todayISO()); setDesc(''); setDebit(''); setCredit(''); setLedgerText(''); setNote(null); };
 
   const save = async () => {
@@ -218,34 +171,6 @@ export function PettyCashPage() {
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Petty Cash Entry</h1>
           </div>
         </div>
-
-        {/* ---------- petty cash owed to members ---------- */}
-        {(duesErr || dueGroups.length > 0) && (
-          <section className="bg-white border border-amber-200 rounded-xl shadow-sm overflow-hidden" data-testid="petty-dues">
-            <div className="flex items-center justify-between border-b border-amber-100 bg-amber-50 px-3 py-1.5">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-amber-800">Petty cash owed to members</h2>
-              {!duesErr && <span className="text-xs font-bold text-amber-800">Total {formatINR(dueGroups.reduce((n, g) => n + g.total, 0))}</span>}
-            </div>
-            {duesErr ? <p className="px-3 py-2 text-xs text-amber-700">{duesErr}</p> : (
-              <table className="w-full text-xs">
-                <thead className="text-left text-slate-500"><tr><th className="px-3 py-1">Member</th><th className="px-3 py-1">Month</th><th className="px-3 py-1 text-right">Expenses</th><th className="px-3 py-1 text-right">Amount owed</th><th className="px-3 py-1" /></tr></thead>
-                <tbody>
-                  {dueGroups.map(g => (
-                    <tr key={g.key} className="border-t border-slate-100">
-                      <td className="px-3 py-1 font-semibold text-slate-800">{g.member}</td>
-                      <td className="px-3 py-1 text-slate-600">{g.month}</td>
-                      <td className="px-3 py-1 text-right tabular-nums">{g.items}</td>
-                      <td className="px-3 py-1 text-right font-bold tabular-nums">{formatINR(g.total, { decimals: 'always' })}</td>
-                      <td className="px-3 py-1 text-right">
-                        <button type="button" disabled={!canManage || paying === g.key} onClick={() => void payDue(g)} className="h-7 rounded-md bg-emerald-600 px-3 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-40">{paying === g.key ? 'Paying…' : 'Pay now'}</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </section>
-        )}
 
         {/* ---------- new entry ---------- */}
         <section className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">

@@ -57,6 +57,7 @@ import { InvoicesPage } from './pages/finance/InvoicesPage';
 import { BankCashPage } from './pages/finance/BankCashPage';
 import { BankEntryPage } from './pages/finance/BankEntryPage';
 import { PettyCashPage } from './pages/finance/PettyCashPage';
+import { PettyCashMainPage } from './pages/finance/PettyCashMainPage';
 import { LedgerDashboardPage } from './pages/finance/LedgerDashboardPage';
 
 import {
@@ -174,7 +175,7 @@ function MainLayout() {
             <Route path="/finance/invoices" element={<InvoicesPage />} />
             <Route path="/finance/bank-entries" element={<BankCashPage />} />
             <Route path="/finance/bank-entry" element={<BankEntryPage />} />
-            <Route path="/finance/petty-cash" element={<PettyCashPage />} />
+            <Route path="/finance/petty-cash" element={<PettyCashMainPage />} />
             <Route path="/finance/ledger-dashboard" element={<LedgerDashboardPage />} />
             
             {/* Engineering */}

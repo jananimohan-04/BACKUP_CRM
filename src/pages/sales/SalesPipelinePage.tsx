@@ -1,3 +1,4 @@
+import { MemberSelect, useMemberNames } from '@/components/MemberSelect';
 import { useState, useEffect, useMemo, useRef, useLayoutEffect, Fragment } from 'react';
 import { supabase } from '@/lib/supabase';
 import { refreshSavedProducts } from '@/lib/savedProducts';
@@ -4437,6 +4438,10 @@ export function SalesPipelinePage() {
 
     setSavingInward(true);
     try {
+      const groupTotals = new Map<any, number>();
+      for (const { g, it } of flatItems) {
+        groupTotals.set(g, (groupTotals.get(g) || 0) + inwardLineTotal(Number(it.quantity) || 0, Number(it.price) || 0, Number(it.discount) || 0, Number(it.gst) || 0));
+      }
       const rows = [];
       for (const { g, it } of flatItems) {
         const inwardId = crypto.randomUUID();
@@ -4461,6 +4466,10 @@ export function SalesPipelinePage() {
           // Petty cash (any category): a member paid out of pocket, so the company owes it back (settled at month end).
           petty_cash: !!g.pettyCash,
           paid_by: g.pettyCash ? String(g.paidBy || '').trim() : null,
+          // How much the member actually paid: split across the group's lines by their share of the total.
+          petty_amount: g.pettyCash && String(g.pettyAmount ?? '').trim() !== ''
+            ? Math.round((Number(g.pettyAmount) || 0) * (groupTotals.get(g) ? total / (groupTotals.get(g) as number) : 1) * 100) / 100
+            : null,
         });
       }
       let payload: any[] = rows;
@@ -4492,7 +4501,7 @@ export function SalesPipelinePage() {
       } catch (woErr) {
         console.error('Draft work order auto-create failed:', woErr);
       }
-      if (dropped.includes('petty_cash') || dropped.includes('paid_by')) {
+      if (dropped.includes('petty_cash') || dropped.includes('paid_by') || dropped.includes('petty_amount')) {
         if (rows.some((r: any) => r.petty_cash)) alert('Saved, but your database has no petty cash columns yet, so the petty cash / paid-by detail was not stored. Run the 20261019000000_expense_accounting.sql migration, then enter it again.');
       }
       if (dropped.includes('product_name')) {
@@ -4914,17 +4923,8 @@ export function SalesPipelinePage() {
   // Products already received on earlier inwards (their stored product name already carries the sale date/time),
   // offered next to the sales-order products so the same product can be inwarded again.
   const [inwardProdOptions, setInwardProdOptions] = useState<any[]>([]);
-  // Company members, offered as "Paid by" on a petty cash expense (any name can still be typed).
-  const [memberNames, setMemberNames] = useState<string[]>([]);
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const r = await supabase.from('company_users').select('full_name,email');
-      if (cancelled || r.error) return;
-      setMemberNames([...new Set((r.data ?? []).map((u: any) => String(u.full_name || u.email || '').trim()).filter(Boolean))].sort());
-    })();
-    return () => { cancelled = true; };
-  }, [company?.id]);
+  // Company members, offered as "Paid by" on a petty cash expense (a new name can be added from the list).
+  const memberNames = useMemberNames(company?.id);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -5728,7 +5728,6 @@ export function SalesPipelinePage() {
     <section className={`rounded-xl border shadow-sm ${tint('Inward').panel}`} data-testid="inward-entry-form">
       <div className="space-y-2.5 p-3">
         <div className="flex flex-col gap-4">
-          <datalist id="inward-members">{memberNames.map((n: string) => <option key={n} value={n} />)}</datalist>
           <datalist id="inward-customer-list">
             {(allKnownCompanies || []).map((c: any) => <option key={c.company} value={c.company} />)}
           </datalist>
@@ -5833,7 +5832,10 @@ export function SalesPipelinePage() {
                         Petty cash
                       </label>
                       {group.pettyCash && (
-                        <input className={`${compactInput} w-[11rem]`} list="inward-members" placeholder="Paid by (member) *" value={group.paidBy || ''} onChange={e => setGroup({ paidBy: e.target.value })} />
+                        <>
+                          <MemberSelect className={`${compactInput} w-[11rem]`} placeholder="Paid by (member) *" options={memberNames} value={group.paidBy || ''} onChange={v => setGroup({ paidBy: v })} />
+                          <input type="number" min={0} className={`${compactInput} w-[8rem]`} placeholder="Amount paid" title="How much the member paid (leave empty for the full amount)" value={group.pettyAmount ?? ''} onChange={e => setGroup({ pettyAmount: e.target.value })} />
+                        </>
                       )}
                     </div>
                   )}

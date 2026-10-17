@@ -209,6 +209,21 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
 
   // Selectable rows: SALE ORDER products lead (order qty shown, inward qty
   // matched underneath); without SO items, the inward lines lead instead.
+  // Warehouses for the finished goods: each product shows the default one, and can be changed.
+  const [whs, setWhs] = useState<{ id: string; name: string; isDefault: boolean }[]>([]);
+  const [whSel, setWhSel] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let off = false;
+    (async () => {
+      const r = await supabase.from('cnc_warehouses').select('*').order('created_at', { ascending: true });
+      if (off || r.error) return;
+      setWhs(((r.data ?? []) as any[]).filter((w) => String(w.status ?? 'Active') !== 'Inactive')
+        .map((w) => ({ id: String(w.id), name: String(w.name ?? w.code ?? ''), isDefault: w.is_default === true })));
+    })();
+    return () => { off = true; };
+  }, []);
+  const defaultWhId = (whs.find((w) => w.isDefault) ?? whs[0])?.id ?? '';
+
   const prodRows = useMemo(() => {
     const norm = (s: any) => String(s ?? '').trim().toLowerCase();
     const inRows = (inwardLines ?? []).map((x: any) => ({
@@ -798,7 +813,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
       if (!batchKeyRef.current) batchKeyRef.current = uid();
       await healWorkOrderPartNos(inward.sales_order_ref || '');
       const insertWO = async (parts: {
-        id: string; woNo: string; name: string; partNo: string; good: number; rej: number;
+        id: string; woNo: string; name: string; partNo: string; good: number; rej: number; warehouseId?: string;
       }) => {
         const pno = String(parts.partNo || code || parts.name || '').trim();
         await ensurePart(pno, parts.name);
@@ -810,7 +825,12 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
           priority: 'Normal', drawing_revision: '0', description: '',
           created_at: fgDate + 'T00:00:00Z',
         };
-        const woErr = await supabase.from('cnc_work_orders').insert([base]);
+        if (parts.warehouseId) base.warehouse_id = parts.warehouseId;
+        let woErr = await supabase.from('cnc_work_orders').insert([base]);
+        if (woErr.error && /warehouse_id/.test(String(woErr.error.message || ''))) {
+          delete base.warehouse_id; // database predates the warehouse column: the stock still moves
+          woErr = await supabase.from('cnc_work_orders').insert([base]);
+        }
         if (woErr.error) {
           const m = /Could not find the '([A-Za-z0-9_]+)' column/.exec(String(woErr.error.message || ''));
           if (m && (m[1] === 'rejected')) {
@@ -834,7 +854,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
         const prRej = pi === 0 ? rejNum : 0;
         const woNo = `WO-2026-${Math.floor(1000 + Math.random() * 9000)}`;
         const woId = crypto.randomUUID();
-        await insertWO({ id: woId, woNo, name: pr.name, partNo: pr.partNumber, good: fq, rej: prRej });
+        await insertWO({ id: woId, woNo, name: pr.name, partNo: pr.partNumber, good: fq, rej: prRej, warehouseId: whSel[pr.key] || defaultWhId });
         // 3) Batch traceability (best-effort until the batches migration lands).
         await recordProductionBatch({
           salesOrderId: so?.id != null ? String(so.id) : null,
@@ -1044,8 +1064,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
             )}
             {fgView && (
             <>
-            <div className={inline ? 'grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_11rem] gap-2 text-sm' : 'grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_11rem] gap-4 text-sm'}>
-              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Company</p><p className={inline ? 'font-semibold text-sm' : 'font-semibold'}>{card?.customer ?? '—'}</p></div>
+            <div className={inline ? 'grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_11rem] gap-2 text-sm' : 'grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_11rem] gap-4 text-sm'}>
               <div>
                 {prodRows.length === 0 ? (
                   <p className="text-xs text-slate-400 mt-1">Loading products…</p>
@@ -1072,7 +1091,18 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                             className="h-3.5 w-3.5 accent-orange-600"
                             aria-label={`Select ${r.name}`}
                           />
-                          <span className="min-w-0 flex-1 truncate font-semibold text-slate-800" title={r.name}>{r.name}</span>
+                          <span className="min-w-0 flex-1 truncate font-semibold text-slate-800" title={productWithCompany(r.name, card?.customer ?? '')}>{productWithCompany(r.name, card?.customer ?? '')}</span>
+                          {whs.length > 0 && (
+                            <select
+                              aria-label={`Warehouse for ${r.name}`} title="Warehouse (default shown; change if needed)"
+                              disabled={!checked || !fgEdit}
+                              value={whSel[r.key] ?? defaultWhId}
+                              onChange={(e) => setWhSel((prev) => ({ ...prev, [r.key]: e.target.value }))}
+                              className="h-6 w-24 shrink-0 rounded border border-slate-300 bg-white px-1 text-[10px] text-slate-700 disabled:bg-slate-100"
+                            >
+                              {whs.map((w) => <option key={w.id} value={w.id}>{w.name}{w.isDefault ? ' ★' : ''}</option>)}
+                            </select>
+                          )}
                           <span className="hidden sm:inline text-[10px] text-slate-400 whitespace-nowrap">
                             Ordered {r.qty} · Finished {doneSoFar}
                             {r.qty > 0 && <b className="text-amber-700"> · Remaining {rem}</b>}
