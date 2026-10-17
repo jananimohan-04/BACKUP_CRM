@@ -88,13 +88,9 @@ export function QuantityTrackingPage({ embedded = false }: { embedded?: boolean 
   const uniqueOf = (orderNo: string) =>
     orders.find((x) => String(x.order_no) === String(orderNo))?.lead_no || orderNo;
 
-  const [colFilters, setColFilters] = useState({ companyId: '', company: '', product: '' });
-  const hasColFilters = !!(colFilters.companyId || colFilters.company || colFilters.product);
+  const [colFilters, setColFilters] = useState({ company: '', product: '' });
+  const hasColFilters = !!(colFilters.company || colFilters.product);
 
-  const companyIdOpts = useMemo(
-    () => Array.from(new Set(rows.map((q) => uniqueOf(q.soNo)))).sort((a, b) => a.localeCompare(b)),
-    [rows, orders],
-  );
   const companyOpts = useMemo(
     () => Array.from(new Set(rows.map((q) => q.customer).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
     [rows],
@@ -112,7 +108,6 @@ export function QuantityTrackingPage({ embedded = false }: { embedded?: boolean 
       const hay = [q.soNo, q.customer, q.product].join(' ').toLowerCase();
       if (!hay.includes(s)) return false;
     }
-    if (colFilters.companyId && uniqueOf(q.soNo) !== colFilters.companyId) return false;
     if (colFilters.company && (q.customer || '') !== colFilters.company) return false;
     if (colFilters.product && (q.product || '') !== colFilters.product) return false;
     return true;
@@ -372,20 +367,6 @@ export function QuantityTrackingPage({ embedded = false }: { embedded?: boolean 
                   <tr className="text-left text-slate-500 uppercase text-[10px] border-b border-slate-200 bg-slate-50">
                     <th className="px-3 py-2">
                       <span className="flex items-center gap-1.5">
-                        <span>Company ID</span>
-                        <select
-                          value={colFilters.companyId}
-                          onChange={(e) => setColFilters((p) => ({ ...p, companyId: e.target.value }))}
-                          aria-label="Filter by Company ID"
-                          className="h-6 min-w-[72px] px-1 text-[11px] font-bold normal-case text-slate-700 rounded-md border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-brand-500/30 focus:border-brand-500"
-                        >
-                          <option value="">ALL</option>
-                          {companyIdOpts.map((v) => <option key={v} value={v}>{v}</option>)}
-                        </select>
-                      </span>
-                    </th>
-                    <th className="px-3 py-2">
-                      <span className="flex items-center gap-1.5">
                         <span>Company</span>
                         <select
                           value={colFilters.company}
@@ -422,7 +403,7 @@ export function QuantityTrackingPage({ embedded = false }: { embedded?: boolean 
                         {hasColFilters && (
                           <button
                             type="button"
-                            onClick={() => setColFilters({ companyId: '', company: '', product: '' })}
+                            onClick={() => setColFilters({ company: '', product: '' })}
                             className="text-[11px] font-bold normal-case text-brand-600 hover:text-brand-800 hover:underline"
                           >
                             Clear
@@ -433,11 +414,10 @@ export function QuantityTrackingPage({ embedded = false }: { embedded?: boolean 
                   </tr>
                 </thead>
                 <tbody>
-                  {loading && <tr><td colSpan={12} className="px-3 py-6 text-center text-slate-500"><PackageSearch className="inline mr-2" size={16} />Loading live quantities…</td></tr>}
-                  {!loading && filtered.length === 0 && <tr><td colSpan={12} className="px-3 py-6 text-center text-slate-500">No orders match the filters.</td></tr>}
+                  {loading && <tr><td colSpan={11} className="px-3 py-6 text-center text-slate-500"><PackageSearch className="inline mr-2" size={16} />Loading live quantities…</td></tr>}
+                  {!loading && filtered.length === 0 && <tr><td colSpan={11} className="px-3 py-6 text-center text-slate-500">No orders match the filters.</td></tr>}
                   {filtered.map((q) => (
                     <tr key={`${q.soId ?? ''}-${q.soNo}`} className="border-t border-slate-100 hover:bg-slate-50/60">
-                      <td className="px-3 py-2 font-mono font-semibold">{uniqueOf(q.soNo)}</td>
                       <td className="px-3 py-2">{q.customer || '—'}</td>
                       <td className="px-3 py-2">{q.product || '—'}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{fmt(q.ordered)}</td>
