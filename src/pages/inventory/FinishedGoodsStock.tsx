@@ -3,6 +3,7 @@ import { Star, Plus, AlertCircle, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { Modal } from '@/components/ui/Modal';
 import { finishedGoodsStock, type FgStockRow, type WoLike } from '@/lib/finishedGoodsStock';
+import { retailSyncApi } from '@/lib/retailSync';
 
 // Finished goods that production has completed and no delivery challan has taken out yet, with the warehouse
 // they sit in, plus the Warehouse Master (create warehouses, choose the default).
@@ -161,6 +162,23 @@ export function useFinishedGoods(refreshKey: number) {
     try {
       const u = await supabase.from('cnc_work_orders').update({ warehouse_id: warehouseId || null }).in('id', r.woIds);
       if (u.error) throw u.error;
+      const d = await retailSyncApi.resolveDesignation();
+      if (d) {
+        const isRetail = warehouseId === d.id;
+        const res = await retailSyncApi.syncItem({
+          id: r.key || r.product,
+          item_kind: 'FG',
+          code: r.product || (r as any).code || r.key,
+          name: r.product || (r as any).name || r.key,
+          category_name: 'Finished Goods',
+          unit: 'Nos',
+          stock: isRetail ? r.available : 0,
+          warehouse_id: warehouseId || (d ? d.id : null),
+          warehouse_name: isRetail ? d.warehouse_name : undefined,
+          status: isRetail ? 'Active' : 'Inactive',
+        }, isRetail);
+        if (!res.ok) setError(`Warehouse saved, but the Retail Store was not updated: ${res.error ?? 'sync failed'}.`);
+      }
       await load();
     } catch (e) { setError(missingColumn(e) ? 'Choosing a warehouse needs the latest database migration (20261007000000_fg_warehouse.sql). Run it in Supabase first.' : errText(e)); }
     finally { setBusyKey(''); }

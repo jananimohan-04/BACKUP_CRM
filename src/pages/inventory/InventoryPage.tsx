@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Upload, Download, ChevronDown, Plus, Box, Layers, AlertTriangle, XCircle, Package,
   Pencil, MoreVertical, Eye, History, SlidersHorizontal, ChevronLeft, ChevronRight, Building2, Loader2,
-  ExternalLink, FileSpreadsheet, AlertCircle, Info, ArrowLeftRight, Factory, Archive, Search,
+  ExternalLink, FileSpreadsheet, AlertCircle, Info, ArrowLeftRight, Factory, Archive, Search, Store,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
@@ -18,6 +18,8 @@ import {
 import { formatDate, formatINR, formatPercent, toPaise, todayISO } from '@/lib/format';
 import { exportCsv } from '@/lib/reportExport';
 import { useFinishedGoods, WarehouseMasterModal } from './FinishedGoodsStock';
+import { retailSyncApi } from '@/lib/retailSync';
+import { RetailSyncModal } from './RetailSyncModal';
 
 // ---------------------------------------------------------------------------------------
 // Inventory. Stock, rates, values and statuses all come from the database
@@ -128,6 +130,7 @@ export function InventoryPage() {
   const fg = useFinishedGoods(fgKey);
   const fgStockCount = fg.rows?.length ?? 0;
   const [txn, setTxn] = useState<RecentTransaction | null>(null);
+  const [retailSyncOpen, setRetailSyncOpen] = useState(false);
 
   // Extra dashboard data: per-item last movement, open work orders (WIP), live status.
   const [recentAll, setRecentAll] = useState<RecentTransaction[] | null>(null);
@@ -411,6 +414,11 @@ export function InventoryPage() {
         {canManage && (
           <button type="button" onClick={() => setMasterOpen(true)} className={topbarBtn}>
             <Building2 size={13} /> Warehouse Master
+          </button>
+        )}
+        {canManage && (
+          <button type="button" onClick={() => setRetailSyncOpen(true)} className={topbarBtn} title="Retail Store Real-time Sync & Integration">
+            <Store size={13} className="text-blue-600" /> Retail Store Sync
           </button>
         )}
         <div className="relative" data-floating-menu>
@@ -849,6 +857,16 @@ export function InventoryPage() {
       {importOpen && canManage && (
         <ImportModal onClose={() => setImportOpen(false)} onImported={refreshAll} />
       )}
+      {retailSyncOpen && canManage && (
+        <RetailSyncModal
+          open={retailSyncOpen}
+          onClose={() => setRetailSyncOpen(false)}
+          warehouses={filters?.warehouses ?? []}
+          allInventoryRows={items?.rows ?? []}
+          companyId={company?.id ?? 'C-ARGUS'}
+          onSyncCompleted={refreshAll}
+        />
+      )}
       {txn && (
         <TransactionModal txn={txn} onClose={() => setTxn(null)} onOpenSource={route => { setTxn(null); navigate(route); }} />
       )}
@@ -1009,6 +1027,7 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
   });
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(imageUrl);
+  const [removedImage, setRemovedImage] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1035,7 +1054,7 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
     setSaving(true);
     setError(null);
     try {
-      const image_url = file ? await uploadItemImage(companyId, file) : item?.image_url ?? null;
+      const image_url = file ? await uploadItemImage(companyId, file) : removedImage ? null : (item?.image_url ?? null);
       await inventoryApi.saveItem({
         id: item?.id ?? null,
         kind: item?.kind ?? null,
@@ -1053,6 +1072,34 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
         status: form.status,
         ...(isNew ? { opening_qty: form.opening_qty.trim() || '0', opening_date: form.opening_date } : {}),
       });
+
+      // Retail Store: send the item when it is (or just stopped being) in the Retail Store warehouse.
+      try {
+        const d = await retailSyncApi.resolveDesignation();
+        const isRetail = !!(d && form.warehouse_id && form.warehouse_id === d.id);
+        const wasRetail = !!(d && item?.warehouse_id && item.warehouse_id === d.id);
+        if (d && (isRetail || wasRetail)) {
+          const catObj = categories.find(c => c.id === form.category_id);
+          const stock = isNew ? Number(form.opening_qty || 0) : Number(item?.current_stock || 0);
+          const res = await retailSyncApi.syncItem({
+            id: item?.id ?? form.code.trim(),
+            code: form.code.trim() || item?.code || (item as any)?.part_number || (item as any)?.part_no || '',
+            name: form.name.trim() || item?.name || (item as any)?.part_name || '',
+            category_name: catObj?.name ?? 'General',
+            specification: form.specification.trim() || form.name.trim(),
+            unit: form.unit.trim() || 'Nos',
+            stock: isRetail ? stock : 0,
+            rate: Number(form.rate || 0),
+            warehouse_id: form.warehouse_id || (d ? d.id : null),
+            warehouse_name: isRetail ? (d ? d.warehouse_name : 'Retail Store Warehouse') : undefined,
+            status: isRetail && form.status === 'Active' ? 'Active' : 'Inactive',
+          }, isRetail, companyId);
+          if (!res.ok) alert(`Saved, but the Retail Store was not updated: ${res.error ?? 'sync failed'}. Retry it from Inventory > Retail Store Sync.`);
+        }
+      } catch (syncErr) {
+        console.warn('Retail store sync error:', syncErr);
+      }
+
       onSaved();
     } catch (e) {
       setError(errText(e));
@@ -1129,7 +1176,7 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
               {(file || preview) && (
                 <button
                   type="button"
-                  onClick={() => { setFile(null); setPreview(null); set('image_url', ''); }}
+                  onClick={() => { setFile(null); setPreview(null); setRemovedImage(true); }}
                   className="px-2 py-1 text-xs font-semibold text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded border border-rose-200 transition-colors shrink-0"
                 >
                   Remove
@@ -1324,6 +1371,32 @@ function AdjustStockModal({ row, onClose, onSaved }: { row: InventoryItemRow; on
     setError(null);
     try {
       await inventoryApi.adjustStock({ kind: row.kind, id: row.id, direction, qty: qty.trim(), reason: reason.trim(), reference: reference.trim(), date });
+
+      // Retail Store: an adjustment on an item in the Retail Store warehouse changes the stock it shows.
+      try {
+        const d = await retailSyncApi.resolveDesignation();
+        if (d && (!row.warehouse_id || row.warehouse_id === d.id)) {
+          // The adjustment is already posted, so this is the stock now in the Retail Store warehouse.
+          const retailStock = await retailSyncApi.warehouseStock(row.kind, row.id, d.id, row.warehouse_id);
+          const res = await retailSyncApi.syncItem({
+            id: row.id,
+            code: row.code || (row as any).part_number || (row as any).part_no || (row as any).item_code || '',
+            name: row.name || (row as any).part_name || '',
+            category_name: row.category_name || 'General',
+            specification: row.specification || row.name,
+            unit: row.unit || 'Nos',
+            stock: retailStock,
+            rate: Number(row.rate || 0),
+            warehouse_id: row.warehouse_id || d.id,
+            warehouse_name: d.warehouse_name,
+            status: row.item_status === 'Active' ? 'Active' : 'Inactive',
+          }, true);
+          if (!res.ok) alert(`Stock adjusted, but the Retail Store was not updated: ${res.error ?? 'sync failed'}.`);
+        }
+      } catch (syncErr) {
+        console.warn('Retail store sync warning on adjust:', syncErr);
+      }
+
       onSaved();
     } catch (e) {
       setError(errText(e));
@@ -1485,6 +1558,36 @@ function TransferModal({ onClose, onSaved }: { onClose: () => void; onSaved: () 
       } else {
         setDoneRef(res.reference_no);
       }
+
+      // Retail Store: moving an item into or out of the Retail Store warehouse.
+      try {
+        const d = await retailSyncApi.resolveDesignation();
+        if (d) {
+          const movedToRetail = toId === d.id;
+          const movedAwayFromRetail = fromId === d.id;
+          if (movedToRetail || movedAwayFromRetail) {
+            // The transfer is already posted: send what the Retail Store warehouse holds now (not just the quantity moved).
+            const retailStock = await retailSyncApi.warehouseStock(item.kind, item.id, d.id, item.warehouse_id);
+            const res = await retailSyncApi.syncItem({
+              id: item.id,
+              code: item.code || (item as any).part_number || (item as any).part_no || (item as any).item_code || '',
+              name: item.name || (item as any).part_name || '',
+              category_name: item.category_name || 'General',
+              specification: item.specification || item.name,
+              unit: item.unit || 'Nos',
+              stock: retailStock,
+              rate: Number(item.rate || 0),
+              warehouse_id: d.id,
+              warehouse_name: d.warehouse_name,
+              status: retailStock > 0 ? 'Active' : 'Inactive',
+            }, retailStock > 0);
+            if (!res.ok) alert(`Transfer saved, but the Retail Store was not updated: ${res.error ?? 'sync failed'}.`);
+          }
+        }
+      } catch (syncErr) {
+        console.warn('Retail store sync warning on transfer:', syncErr);
+      }
+
       onSaved();
     } catch (e) {
       setError(errText(e));

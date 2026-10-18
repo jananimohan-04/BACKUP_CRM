@@ -1,0 +1,36 @@
+[
+  {
+    "id": "log-1792342795840-cw22k",
+    "companyId": "C-ARGUS",
+    "item_kind": "PART",
+    "item_id": "",
+    "item_code": "ARG-DRILL-100",
+    "item_name": "Precision CNC Drill Bit 12mm",
+    "warehouse_id": "7bdd25cc-2b75-4471-81fc-dba641b3355b",
+    "warehouse_name": "Retail Store Warehouse",
+    "erp_stock": 40,
+    "retail_stock": 40,
+    "sync_status": "updated",
+    "last_sync_at": "2026-10-18T16:59:55.844Z",
+    "error_message": null,
+    "retry_count": 0,
+    "idempotency_key": "erp-sync-ARG-DRILL-100-1792342795058"
+  },
+  {
+    "id": "log-1792339189095-3gw6t",
+    "companyId": "C-ARGUS",
+    "item_kind": "PART",
+    "item_id": "test",
+    "item_code": "",
+    "item_name": "test",
+    "warehouse_id": "7bdd25cc-2b75-4471-81fc-dba641b3355b",
+    "warehouse_name": "Other Warehouse",
+    "erp_stock": 50,
+    "retail_stock": null,
+    "sync_status": "failed",
+    "last_sync_at": "2026-10-18T15:59:49.096Z",
+    "error_message": "Product SKU is required",
+    "retry_count": 1,
+    "idempotency_key": "erp-sync-test-1792339186508"
+  }
+]
