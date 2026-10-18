@@ -831,6 +831,7 @@ export function InventoryPage() {
           locationsFor={locationsFor}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); refreshAll(); }}
+          onAdjustStock={canManage ? (row) => setAdjusting(row) : undefined}
         />
       )}
       {viewing && (
@@ -993,7 +994,7 @@ function DetailGrid({ fields }: { fields: [string, ReactNode][] }) {
   );
 }
 
-function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId, imageUrl, locationsFor, onClose, onSaved }: {
+function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId, imageUrl, locationsFor, onClose, onSaved, onAdjustStock }: {
   item: InventoryItemRow | null;
   filters: InventoryFilters;
   categories: InventoryFilters['categories'];
@@ -1003,6 +1004,7 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
   locationsFor: (warehouseId: string) => InventoryFilters['locations'];
   onClose: () => void;
   onSaved: () => void;
+  onAdjustStock?: (row: InventoryItemRow) => void;
 }) {
   const isNew = !item;
   // An existing item keeps its master table: purchased ↔ manufactured categories only.
@@ -1144,7 +1146,11 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
         <FormField label="Warehouse">
           <select className={inputClass} value={form.warehouse_id} onChange={e => {
             const wid = e.target.value;
-            setForm(f => ({ ...f, warehouse_id: wid, location_id: locationsFor(wid).some(l => l.id === f.location_id) ? f.location_id : '' }));
+            const locs = locationsFor(wid);
+            const autoLoc = locs.some(l => l.id === form.location_id)
+              ? form.location_id
+              : (locs.length > 0 ? locs[0].id : '');
+            setForm(f => ({ ...f, warehouse_id: wid, location_id: autoLoc }));
           }}>
             <option value="">— Any —</option>
             {filters.warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
@@ -1191,10 +1197,21 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
             <FormField label="Opening Date"><input type="date" className={inputClass} value={form.opening_date} onChange={e => set('opening_date', e.target.value)} /></FormField>
           </>
         ) : (
-          <div className="sm:col-span-2 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Current Stock</p>
-            <p className="text-lg font-bold text-slate-900">{formatQty(item!.current_stock)} {item!.unit ?? ''}</p>
-            <p className="text-xs text-slate-500 mt-0.5">Stock changes only through transactions or Adjust Stock.</p>
+          <div className="sm:col-span-2 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Current Stock (Available)</p>
+              <p className="text-lg font-bold text-slate-900">{formatQty(item!.current_stock)} {item!.unit ?? ''}</p>
+              <p className="text-xs text-slate-500 mt-0.5">Stock is managed via inventory movements or Stock Adjustment.</p>
+            </div>
+            {onAdjustStock && (
+              <button
+                type="button"
+                onClick={() => { onClose(); onAdjustStock(item!); }}
+                className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition inline-flex items-center gap-1.5 shrink-0"
+              >
+                <SlidersHorizontal size={14} /> Adjust / Add Stock
+              </button>
+            )}
           </div>
         )}
       </div>
