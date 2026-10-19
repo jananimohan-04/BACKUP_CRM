@@ -8,12 +8,14 @@ import {
   HelpCircle,
   Building2,
   CalendarDays,
+  PanelsTopLeft,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { useDateRange } from '@/contexts/DateRangeContext';
 import { displayDay } from '@/lib/globalDate';
 import { GlobalDateFilterPopup } from './GlobalDateFilter';
+import { MenuPositionSelector } from './MenuPositionSelector';
 
 const ROLE_LABELS: Record<string, string> = {
   SUPER_ADMIN: 'Super Admin',
@@ -26,14 +28,18 @@ export function Topbar({
   onNavigate,
   onLogout,
   onMenuClick,
+  hideMobileMenu,
 }: {
   currentPage: string;
   onNavigate: (page: string) => void;
   onLogout: () => void;
   onMenuClick?: () => void;
+  /** Hide the hamburger — used when the top/bottom menu position owns mobile navigation. */
+  hideMobileMenu?: boolean;
 }) {
   const [showProfile, setShowProfile] = useState(false);
   const [showDateFilter, setShowDateFilter] = useState(false);
+  const [showMenuPosition, setShowMenuPosition] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
   const dateFilterRef = useRef<HTMLDivElement>(null);
   const { profile, company, companies, isSuperAdmin, setActiveCompany } = useAuth();
@@ -69,10 +75,12 @@ export function Topbar({
 
   return (
     <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-lg border-b border-slate-200 shadow-sm min-h-[50px] h-[50px] flex items-center px-2 sm:px-3 md:px-4 gap-2 sm:gap-3">
-      {/* Mobile Menu Toggle */}
-      <div className="flex items-center lg:hidden">
-        <Menu size={18} className="text-slate-400 flex-shrink-0 cursor-pointer hover:text-slate-600 transition-colors" onClick={onMenuClick} />
-      </div>
+      {/* Mobile Menu Toggle (side positions; top/bottom positions own their mobile menu) */}
+      {!hideMobileMenu && (
+        <div className="flex items-center lg:hidden">
+          <Menu size={18} className="text-slate-400 flex-shrink-0 cursor-pointer hover:text-slate-600 transition-colors" onClick={onMenuClick} />
+        </div>
+      )}
 
       {/* Opt-in page title — same line as date/profile (page hides its own header) */}
       {header && (
@@ -223,6 +231,7 @@ export function Topbar({
             </div>
             <div className="p-2">
               <button onClick={() => { setShowProfile(false); onNavigate('/admin/settings'); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-left cursor-pointer"><Settings size={15} className="text-slate-400" /> Settings</button>
+              <button onClick={() => { setShowProfile(false); setShowDateFilter(false); setShowMenuPosition(true); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-left cursor-pointer"><PanelsTopLeft size={15} className="text-slate-400" /> Menu Position</button>
               <button onClick={() => { setShowProfile(false); onNavigate('/help'); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-left cursor-pointer"><HelpCircle size={15} className="text-slate-400" /> Help & Support</button>
               <div className="my-1 border-t border-slate-100" />
               <button onClick={() => { setShowProfile(false); onLogout(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors text-left cursor-pointer"><LogOut size={15} className="text-red-400" /> Sign Out</button>
@@ -236,6 +245,7 @@ export function Topbar({
         )}
         </div>
       </div>
+      {showMenuPosition && <MenuPositionSelector onClose={() => setShowMenuPosition(false)} />}
     </header>
   );
 }

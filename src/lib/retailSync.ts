@@ -185,7 +185,7 @@ export const retailSyncApi = {
       return {
         ok: false,
         connection: 'disconnected',
-        storeUrl: 'http://localhost:4000',
+        storeUrl: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_RETAIL_STORE_URL) || (import.meta.env?.PROD ? 'https://retail.arguscnc.com' : 'http://localhost:4000'),
         store: null,
         metrics: null,
         syncSummary: { synced: 0, pending: 0, failed: 0, updated: 0, removed: 0, total: 0 },

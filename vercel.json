@@ -1,5 +1,7 @@
 {
   "rewrites": [
+    { "source": "/api/retail-sync/(.*)", "destination": "/api/retail-sync" },
+    { "source": "/api/retail-sync", "destination": "/api/retail-sync" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

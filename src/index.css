@@ -227,3 +227,38 @@ body { font-size: 15px; }
 .doc-compact [class*='mt-6'], .doc-compact [class*='mt-5'], .doc-compact [class*='mt-4'] { margin-top: 0.4rem !important; }
 .doc-compact td, .doc-compact th { padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
 .doc-compact h2, .doc-compact h3, .doc-compact h4 { margin-bottom: 0.25rem !important; }
+
+/* ── Menu Position transitions ──────────────────────────────────────────────
+   Subtle slide-in when the main menu docks to a new edge (Left / Right /
+   Top / Bottom). Short and small so switching positions feels instant. */
+@keyframes nav-in-left {
+  from { opacity: 0.55; transform: translateX(-28px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes nav-in-right {
+  from { opacity: 0.55; transform: translateX(28px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes nav-in-top {
+  from { opacity: 0.55; transform: translateY(-24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes nav-in-bottom {
+  from { opacity: 0.55; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-nav-in-left { animation: nav-in-left 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-nav-in-right { animation: nav-in-right 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-nav-in-top { animation: nav-in-top 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-nav-in-bottom { animation: nav-in-bottom 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* Respect the reduced-motion accessibility preference: keep every interaction,
+   drop the movement (the iOS safe-area padding stays). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

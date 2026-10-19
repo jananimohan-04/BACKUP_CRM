@@ -11,6 +11,9 @@ import { SavedProductsDatalist } from './lib/savedProducts';
 import { Time24Normalizer } from './components/Time24Normalizer';
 import { Sidebar } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
+import { TopNav } from './components/layout/TopNav';
+import { BottomNav } from './components/layout/BottomNav';
+import { NavPositionProvider, useNavPosition } from './contexts/NavPositionContext';
 import { HeaderKpiProvider } from './contexts/HeaderKpiContext';
 import { Dashboard } from './pages/Dashboard';
 
@@ -118,6 +121,8 @@ function MainLayout() {
   const location = useLocation();
   const mainRef = useRef<HTMLElement>(null);
   useStickyTableHeads(mainRef, location.pathname);
+  // User-chosen menu position (Left / Right / Top / Bottom) — persisted per user.
+  const { position } = useNavPosition();
 
   // Remove leading slash for matching with Lovable's navigation config
   const currentPage = location.pathname.substring(1) || 'sales/pipeline';
@@ -140,20 +145,33 @@ function MainLayout() {
   return (
     <HeaderKpiProvider>
     <div className="flex h-screen overflow-hidden bg-slate-50">
-      <Sidebar 
-        collapsed={sidebarCollapsed} 
-        onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
-        currentPage={currentPage}
-        onNavigate={handleNavigate}
-        mobileOpen={mobileMenuOpen}
-        onCloseMobile={() => setMobileMenuOpen(false)}
-      />
+      {/* Left menu position: the classic sidebar (default). */}
+      {position === 'left' && (
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+          currentPage={currentPage}
+          onNavigate={handleNavigate}
+          mobileOpen={mobileMenuOpen}
+          onCloseMobile={() => setMobileMenuOpen(false)}
+          side="left"
+        />
+      )}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Top menu position: logo + category bar above the page header. */}
+        {position === 'top' && (
+          <TopNav
+            currentPage={currentPage}
+            onNavigate={handleNavigate}
+            onMenuClick={() => setMobileMenuOpen(true)}
+          />
+        )}
         <Topbar 
           currentPage={currentPage}
           onNavigate={handleNavigate}
           onLogout={handleLogout}
           onMenuClick={() => setMobileMenuOpen(true)}
+          hideMobileMenu={position === 'top' || position === 'bottom'}
         />
         {/* Keyed by company so every page refetches when the Super Admin switches company */}
         <main ref={mainRef} key={company?.id ?? 'all-companies'} className="flex-1 overflow-y-auto scrollbar-dark transition-[background] duration-500" style={{ background: getPageTheme(location.pathname).gradient }}>
@@ -276,7 +294,35 @@ function MainLayout() {
           </Routes>
           </RequireModule>
         </main>
+        {/* Bottom menu position: compact bar docked to the bottom edge (reserves its own space). */}
+        {position === 'bottom' && (
+          <BottomNav currentPage={currentPage} onNavigate={handleNavigate} />
+        )}
       </div>
+      {/* Right menu position: the same sidebar docked to the right edge. */}
+      {position === 'right' && (
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+          currentPage={currentPage}
+          onNavigate={handleNavigate}
+          mobileOpen={mobileMenuOpen}
+          onCloseMobile={() => setMobileMenuOpen(false)}
+          side="right"
+        />
+      )}
+      {/* Top/bottom positions: mobile navigation is a slide-in drawer of the same sidebar. */}
+      {(position === 'top' || position === 'bottom') && (
+        <Sidebar
+          mobileOnly
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+          currentPage={currentPage}
+          onNavigate={handleNavigate}
+          mobileOpen={mobileMenuOpen}
+          onCloseMobile={() => setMobileMenuOpen(false)}
+        />
+      )}
       <AdminAssistant />
       <VoiceControl />
       <SavedProductsDatalist />
@@ -304,7 +350,9 @@ function ErpGate() {
 function ErpApp() {
   return (
     <AuthProvider>
-      <ErpGate />
+      <NavPositionProvider>
+        <ErpGate />
+      </NavPositionProvider>
     </AuthProvider>
   );
 }

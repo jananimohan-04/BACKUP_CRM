@@ -36,7 +36,7 @@ function saveLogs() {
 //   SUPABASE_SERVICE_ROLE_KEY + ERP_COMPANY_ID   only for the retail store's order webhook (/order-deduct):
 //                                                the ERP company (uuid) whose stock a retail order reduces
 const env = (...names) => { for (const n of names) if (process.env[n]) return process.env[n]; return ''; };
-const RETAIL_STORE_API_BASE_URL = env('RETAIL_STORE_API_BASE_URL') || 'http://localhost:4000';
+const RETAIL_STORE_API_BASE_URL = env('RETAIL_STORE_API_BASE_URL') || (process.env.NODE_ENV === 'production' ? 'https://retail.arguscnc.com' : 'http://localhost:4000');
 const RETAIL_STORE_API_KEY = env('RETAIL_STORE_API_KEY', 'ERP_INTEGRATION_KEY');
 const RETAIL_COMPANY_ID = env('RETAIL_COMPANY_ID') || 'C-ARGUS';
 const SUPABASE_URL = env('VITE_SUPABASE_URL', 'SUPABASE_URL');

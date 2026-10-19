@@ -201,10 +201,15 @@ export function RetailSyncModal({
       subtitle="Server-to-server product catalog synchronization and stock consistency"
       footer={
         <div className="flex items-center justify-between w-full">
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
-            <span>Store Base: <code className="font-mono">{syncState?.storeUrl || 'http://localhost:4000'}</code></span>
-          </div>
+          {(() => {
+            const defStore = (typeof import.meta !== 'undefined' && (import.meta.env as any)?.VITE_RETAIL_STORE_URL) || ((import.meta.env as any)?.PROD ? 'https://retail.arguscnc.com' : 'http://localhost:4000');
+            return (
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                <span>Store Base: <code className="font-mono">{syncState?.storeUrl || defStore}</code></span>
+              </div>
+            );
+          })()}
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
@@ -432,7 +437,7 @@ export function RetailSyncModal({
                           Sync
                         </button>
                         <a
-                          href={`${syncState?.storeUrl || 'http://localhost:4000'}/#/admin/products`}
+                          href={`${syncState?.storeUrl || ((typeof import.meta !== 'undefined' && (import.meta.env as any)?.VITE_RETAIL_STORE_URL) || ((import.meta.env as any)?.PROD ? 'https://retail.arguscnc.com' : 'http://localhost:4000'))}/#/admin/products`}
                           target="_blank"
                           rel="noreferrer"
                           className="px-2 py-1 text-[11px] font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded inline-flex items-center gap-0.5"
