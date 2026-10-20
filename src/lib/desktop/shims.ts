@@ -30,12 +30,19 @@ import { desktopToast } from './toast';
 
 let installed = false;
 
+/** Set once the desktop shims are live; the smoke test waits on this marker so it
+ * never asserts against a half-booted cold Vite dev load. */
+declare global {
+  interface Window { __CNCFORGE_DESKTOP_SHELL__?: boolean }
+}
+
 export function installDesktopShims(): void {
   if (installed) return;
   installed = true;
   shimWindowOpen();
   installAnchorDownloadInterceptor();
   void listenNativeDownloads();
+  window.__CNCFORGE_DESKTOP_SHELL__ = true;
 }
 
 // ---------------------------------------------------------------------------

@@ -39,11 +39,11 @@ async function waitForWindow(browser, timeoutMs = 60000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const pages = await browser.pages();
-    const page = pages.find((p) => p.url().startsWith('http://localhost:5173'));
+    const page = pages.find((p) => /^http:\/\/localhost:51\d\d/.test(p.url()));
     if (page) return page;
     await new Promise((r) => setTimeout(r, 1000));
   }
-  throw new Error('desktop window on localhost:5173 did not appear');
+  throw new Error('desktop window on a localhost:51xx dev URL did not appear');
 }
 
 async function main() {
@@ -58,6 +58,12 @@ async function main() {
 
   const page = await waitForWindow(browser);
   await page.waitForFunction(() => !!document.querySelector('#root'), { timeout: 30000 });
+  // A cold Vite dev load can take a while: never assert against a half-booted
+  // page — wait for React to mount and the desktop bootstrap (title + shims).
+  const shellReady = () =>
+    window.__CNCFORGE_DESKTOP_SHELL__ === true &&
+    (document.querySelector('#root')?.childElementCount ?? 0) > 0;
+  await page.waitForFunction(shellReady, { timeout: 120000 });
 
   // --- environment -------------------------------------------------------
   const env = await page.evaluate(() => ({
@@ -143,7 +149,8 @@ async function main() {
   record('blob <a download> saved to Downloads', downloadOk && size > 0, `${probe} (${size} B)`);
 
   // --- SPA deep-link reload ---------------------------------------------
-  await page.goto('http://localhost:5173/inventory/stock', { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.goto('http://localhost:5176/inventory/stock', { waitUntil: 'domcontentloaded', timeout: 120000 });
+  await page.waitForFunction(shellReady, { timeout: 120000 });
   await new Promise((r) => setTimeout(r, 2500));
   const deep = await page.evaluate(() => ({
     path: window.location.pathname,

@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "identifier": "com.cncforge.erp",
   "build": {
-    "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev -- --port 5176 --strictPort",
+    "devUrl": "http://localhost:5176",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },

@@ -92,5 +92,5 @@ presence) — the web build executes none of it.
 
 * Google login setup: `AUTH_SETUP.md`
 * Releasing / update channel: `RELEASING.md`
-* Local dev: `npm run tauri:dev` (Vite on :5173 + debug shell); production
+* Local dev: `npm run tauri:dev` (Vite on :5176 + debug shell); production
   build: `npm run tauri:build` → `src-tauri/target/release/bundle/nsis/`
