@@ -2,7 +2,7 @@
 const http = require('http');
 const { handleRetailSyncRequest } = require('./retailSyncHandler.cjs');
 
-const PORT = process.env.SYNC_PORT || 5174;
+const PORT = process.env.SYNC_PORT || 5175;
 
 const server = http.createServer((req, res) => {
   // CORS headers for internal API calls
