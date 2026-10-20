@@ -1,0 +1,84 @@
+# CNCFORGE ERP — Windows desktop release pipeline.
+#
+# Trigger: push a version tag (v*). The job builds the exact same web bundle the
+# Vercel deployment uses, gates on it succeeding, gates on the Rust shell
+# compiling, then produces the signed NSIS installer + updater artifacts
+# (latest.json + .sig) through tauri-action and uploads them to a draft GitHub
+# Release.
+#
+# Secrets (repository Settings → Secrets and variables → Actions):
+#   TAURI_SIGNING_PRIVATE_KEY          — full contents of the minisign private key
+#                                        (generated with `npx tauri signer generate`
+#                                        OUTSIDE the repo; never commit it)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — key password (empty string if none)
+#
+# Release gating note: `npm run lint` (≈1960 errors) and `npm run typecheck`
+# (109 errors) have large pre-existing baselines in this codebase — they are not
+# usable as pass/fail gates yet. The gates below are the checks that actually
+# pass today: the production web build and `cargo check` of the desktop shell.
+
+name: Desktop Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & sign Windows installer
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Gate 1: the production web bundle must build (same code the desktop app ships).
+      - name: Build web bundle
+        run: npm run build
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Gate 2: the Tauri shell must compile (includes capability/ACL validation).
+      - name: Check desktop shell
+        working-directory: src-tauri
+        run: cargo check
+
+      # Build the NSIS installer, sign the updater artifact with the private key,
+      # generate latest.json, and upload everything to a draft release for the tag.
+      - name: Tauri build & publish draft release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: CNCFORGE ERP ${{ github.ref_name }}
+          releaseBody: |
+            Windows desktop release of CNCFORGE ERP.
+
+            **Install:** run the NSIS installer (`CNCFORGE ERP_x.y.z_x64-setup.exe`).
+            **Updates:** installed copies check this release automatically; the
+            update package is signature-verified before installation.
+
+            See docs/desktop/RELEASING.md for verification steps.
+          releaseDraft: true
+          prerelease: false

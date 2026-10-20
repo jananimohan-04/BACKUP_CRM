@@ -1,0 +1,13 @@
+# Cargo build output
+/target
+Cargo.lock.orig
+
+# Generated Tauri schemas (regenerated on every build)
+/gen/schemas
+
+# NEVER commit signing material. The updater private key lives outside the repo
+# (see docs/desktop/RELEASING.md). The *.pub public key is safe to commit
+# and is embedded in tauri.conf.json instead.
+*.key
+*.pem
+!icons/**

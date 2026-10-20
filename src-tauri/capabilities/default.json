@@ -1,0 +1,20 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capabilities for the CNCFORGE ERP main window and its native popups.",
+  "windows": ["main", "popup-*"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "updater:default",
+    "process:default",
+    {
+      "identifier": "http:default",
+      "description": "Retail Sync talks to the deployed Vercel API (same code path as the web app); Supabase is the database/auth endpoint.",
+      "allow": [
+        { "url": "https://with-cnc.vercel.app/*" },
+        { "url": "https://*.supabase.co/*" }
+      ]
+    }
+  ]
+}

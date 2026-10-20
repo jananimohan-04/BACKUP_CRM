@@ -10,6 +10,8 @@ import { exportCsv } from '@/lib/reportExport';
 import { todayISO } from '@/lib/format';
 import { useAuth, type ErpRole } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
+import { isTauri } from '@/lib/desktop/isTauri';
+import { UpdatesSettingsPage } from '@/components/desktop/UpdatesSettingsPage';
 import {
   ADMIN_RESERVED_MODULES, MODULE_CATALOG, PERM_CATEGORIES,
   emptyMatrix, fullMatrix, matrixToPayload, rowsToMatrix,
@@ -649,7 +651,12 @@ function AdminStub({ title, description, icon: Icon }: { title: string, descript
 
 export function RolesPage() { return <AdminStub title="Roles" description="Define user roles and group policies" icon={ShieldCheck} />; }
 export function PermissionsPage() { return <AdminStub title="Permissions" description="Granular access control matrix" icon={ShieldCheck} />; }
-export function SettingsPage() { return <AdminStub title="Company Settings" description="Global ERP configuration and preferences" icon={SettingsIcon} />; }
+// Web: keeps the original placeholder. Desktop: real About + Updates settings
+// (version, startup/periodic check toggles, manual check) — no other settings moved.
+export function SettingsPage() {
+  if (isTauri()) return <UpdatesSettingsPage />;
+  return <AdminStub title="Company Settings" description="Global ERP configuration and preferences" icon={SettingsIcon} />;
+}
 export function AuditLogsPage() { return <AdminStub title="Audit Logs" description="System-wide activity monitoring" icon={FileText} />; }
 
 // ======================================================================================

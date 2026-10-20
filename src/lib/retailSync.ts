@@ -4,6 +4,23 @@
 // ============================================================================
 
 import { supabase } from '@/lib/supabase';
+import { isTauri } from '@/lib/desktop/isTauri';
+
+// The deployed Vercel API that serves /api/retail-sync/*. On the web these are
+// same-origin relative requests; in the desktop shell the WebView2 origin is
+// tauri://localhost (or the dev server), so desktop requests are routed to the
+// same production API through tauri-plugin-http — which is scope-restricted to
+// this exact origin in src-tauri/capabilities/default.json. Identical request
+// bodies, headers and response handling on both platforms; no backend change.
+const RETAIL_API_ORIGIN = 'https://with-cnc.vercel.app';
+
+async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  if (isTauri()) {
+    const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
+    return tauriFetch(RETAIL_API_ORIGIN + path, init);
+  }
+  return fetch(path, init);
+}
 
 export type SyncStatus = 'synced' | 'pending' | 'failed' | 'updated' | 'removed';
 
@@ -128,7 +145,7 @@ export const retailSyncApi = {
 
     // 2. Fetch designated warehouse from server status
     try {
-      const res = await fetch('/api/retail-sync/status', {
+      const res = await apiFetch('/api/retail-sync/status', {
         headers: await authHeaders({ 'x-company-id': 'C-ARGUS' })
       });
       if (res.ok) {
@@ -173,7 +190,7 @@ export const retailSyncApi = {
    */
   getStatus: async (companyId: string = 'C-ARGUS'): Promise<RetailSyncState> => {
     try {
-      const res = await fetch('/api/retail-sync/status', {
+      const res = await apiFetch('/api/retail-sync/status', {
         headers: await authHeaders({ 'x-company-id': companyId })
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -237,7 +254,7 @@ export const retailSyncApi = {
         idempotency_key: `erp-sync-${item.id || sku}-${Date.now()}`
       };
 
-      const res = await fetch('/api/retail-sync/sync-item', {
+      const res = await apiFetch('/api/retail-sync/sync-item', {
         method: 'POST',
         headers: await authHeaders({
           'Content-Type': 'application/json',
@@ -291,7 +308,7 @@ export const retailSyncApi = {
         };
       });
 
-      const res = await fetch('/api/retail-sync/sync-all', {
+      const res = await apiFetch('/api/retail-sync/sync-all', {
         method: 'POST',
         headers: await authHeaders({
           'Content-Type': 'application/json',
@@ -336,7 +353,7 @@ export const retailSyncApi = {
       if (status && status !== 'all') params.set('status', status);
       if (q) params.set('q', q);
 
-      const res = await fetch(`/api/retail-sync/logs?${params.toString()}`, {
+      const res = await apiFetch(`/api/retail-sync/logs?${params.toString()}`, {
         headers: { 'x-company-id': companyId }
       });
       if (!res.ok) return [];
@@ -359,7 +376,7 @@ export const retailSyncApi = {
       // The database is where the choice must live (the server's file is lost on a redeploy).
       const rpc = await supabase.rpc('erp_designate_retail_warehouse', { p_warehouse_id: warehouseId });
       if (rpc.error) console.warn('Retail warehouse not saved in the database (run migration 20261020000000_retail_store_sync.sql):', rpc.error.message);
-      const res = await fetch('/api/retail-sync/designate-warehouse', {
+      const res = await apiFetch('/api/retail-sync/designate-warehouse', {
         method: 'POST',
         headers: await authHeaders({
           'Content-Type': 'application/json',

@@ -94,6 +94,9 @@ import {
 import { SupportCenterPage } from './pages/support/SupportCenterPage';
 import { RequireModule, moduleForPage } from '@/components/auth/RequireModule';
 import { getPageTheme } from './lib/pageThemes';
+import { isTauri } from './lib/desktop/isTauri';
+import { UpdateCenter } from './components/desktop/UpdateCenter';
+import { DesktopToasts } from './lib/desktop/toast';
 
 // Placeholder Component for unbuilt pages
 function PlaceholderPage({ title }: { title: string }) {
@@ -358,8 +361,14 @@ function ErpApp() {
 }
 
 function App() {
+  // Desktop-only overlays (update card + shell toasts). Rendered as null in the
+  // web build path at runtime — isTauri() is false in a browser — so the deployed
+  // web app keeps rendering exactly what it rendered before.
+  const desktop = isTauri();
   return (
     <BrowserRouter>
+      {desktop && <UpdateCenter />}
+      {desktop && <DesktopToasts />}
       <Routes>
         <Route path="/portal/*" element={<PortalApp />} />
         <Route path="/*" element={<ErpApp />} />

@@ -1,6 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { effectiveMatrix, type PermAction, type PermMatrix } from '@/config/permissions';
+import { isTauri } from '@/lib/desktop/isTauri';
+import { desktopGoogleSignIn } from '@/lib/desktop/auth';
 
 export type ErpRole = 'SUPER_ADMIN' | 'COMPANY_ADMIN' | 'USER';
 
@@ -160,6 +162,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [clear, loadErpSession]);
 
   const signInWithGoogle = useCallback(async () => {
+    if (isTauri()) {
+      // Desktop shell: system browser + loopback redirect (Tauri blocks
+      // top-level navigation of the main webview). The session is handed back
+      // to supabase-js here; everything downstream (profile, permissions, RLS)
+      // is identical to the web flow.
+      try {
+        await desktopGoogleSignIn();
+      } catch (err) {
+        setErrorMessage(err instanceof Error ? err.message : String(err));
+        setStatus('error');
+      }
+      return;
+    }
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
