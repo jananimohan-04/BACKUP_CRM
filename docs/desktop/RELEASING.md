@@ -61,6 +61,40 @@ already compiled in, and cannot be disabled at runtime.
 
 ---
 
+## Web "Download Desktop App" button
+
+The deployed web app serves a copy of the installer so visitors can install the
+desktop app themselves:
+
+* **Config (single source of truth):** `src/lib/desktopDownload.ts` — the URL,
+  the suggested filename, and `DESKTOP_APP_VERSION` shown in the tooltip.
+* **File:** `public/downloads/cncforge-erp-setup.exe` (byte-identical copy of
+  `src-tauri/target/release/bundle/nsis/CNCFORGE ERP_<version>_x64-setup.exe`).
+* **Public URL:** `https://with-cnc.vercel.app/downloads/cncforge-erp-setup.exe`
+  (locally: `http://localhost:5176/downloads/cncforge-erp-setup.exe`).
+
+**When releasing a new desktop version, update the button too** (the button
+does NOT read GitHub Releases automatically — it will keep serving 1.0.0 until
+you replace the file):
+
+1. Copy the new NSIS installer over the old file, keeping the stable name:
+   ```powershell
+   Copy-Item "src-tauri\target\release\bundle\nsis\CNCFORGE ERP_<new>_x64-setup.exe" `
+             "public\downloads\cncforge-erp-setup.exe" -Force
+   ```
+2. Bump `DESKTOP_APP_VERSION` in `src/lib/desktopDownload.ts` to `<new>`.
+3. `npm run build`, then confirm `dist\downloads\cncforge-erp-setup.exe` has
+   the new size (proves it ships in the deployment).
+4. Commit both files together with the release commit — Vercel deploys `public/`
+   verbatim, so the URL serves the new installer as soon as the deploy lands.
+
+The `.sig` and `latest.json` for the in-app auto-updater come from GitHub
+Releases and are unaffected by this file; conversely this file is only for
+first-time manual installs and is never read by the updater. The private
+signing key is never part of the web bundle.
+
+---
+
 ## What the updater does (and does not do)
 
 * Checks: startup (after ~8 s), every 4 hours, and manual — both automatic

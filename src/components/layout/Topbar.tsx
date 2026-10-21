@@ -16,6 +16,7 @@ import { useDateRange } from '@/contexts/DateRangeContext';
 import { displayDay } from '@/lib/globalDate';
 import { GlobalDateFilterPopup } from './GlobalDateFilter';
 import { MenuPositionSelector } from './MenuPositionSelector';
+import { DesktopDownloadButton, DesktopDownloadMenuItem } from './DesktopDownload';
 
 const ROLE_LABELS: Record<string, string> = {
   SUPER_ADMIN: 'Super Admin',
@@ -166,6 +167,9 @@ export function Topbar({
           </div>
         )}
 
+        {/* Windows desktop installer download (web build only) */}
+        <DesktopDownloadButton />
+
         {/* Date + profile box */}
         <div className="relative shrink-0" ref={profileRef}>
         <button
@@ -233,6 +237,7 @@ export function Topbar({
               <button onClick={() => { setShowProfile(false); onNavigate('/admin/settings'); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-left cursor-pointer"><Settings size={15} className="text-slate-400" /> Settings</button>
               <button onClick={() => { setShowProfile(false); setShowDateFilter(false); setShowMenuPosition(true); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-left cursor-pointer"><PanelsTopLeft size={15} className="text-slate-400" /> Menu Position</button>
               <button onClick={() => { setShowProfile(false); onNavigate('/help'); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-left cursor-pointer"><HelpCircle size={15} className="text-slate-400" /> Help & Support</button>
+              <DesktopDownloadMenuItem onDone={() => setShowProfile(false)} />
               <div className="my-1 border-t border-slate-100" />
               <button onClick={() => { setShowProfile(false); onLogout(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors text-left cursor-pointer"><LogOut size={15} className="text-red-400" /> Sign Out</button>
             </div>
