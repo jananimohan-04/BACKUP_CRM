@@ -39,11 +39,12 @@ async function waitForWindow(browser, timeoutMs = 60000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const pages = await browser.pages();
-    const page = pages.find((p) => /^http:\/\/localhost:51\d\d/.test(p.url()));
+    // Dev: http://localhost:5176 (Vite). Production: http://tauri.localhost.
+    const page = pages.find((p) => /^http:\/\/(localhost|tauri\.localhost)/.test(p.url()));
     if (page) return page;
     await new Promise((r) => setTimeout(r, 1000));
   }
-  throw new Error('desktop window on a localhost:51xx dev URL did not appear');
+  throw new Error('desktop window (localhost or tauri.localhost) did not appear');
 }
 
 async function main() {
@@ -149,7 +150,8 @@ async function main() {
   record('blob <a download> saved to Downloads', downloadOk && size > 0, `${probe} (${size} B)`);
 
   // --- SPA deep-link reload ---------------------------------------------
-  await page.goto('http://localhost:5176/inventory/stock', { waitUntil: 'domcontentloaded', timeout: 120000 });
+  const origin = new URL(page.url()).origin;
+  await page.goto(`${origin}/inventory/stock`, { waitUntil: 'domcontentloaded', timeout: 120000 });
   await page.waitForFunction(shellReady, { timeout: 120000 });
   await new Promise((r) => setTimeout(r, 2500));
   const deep = await page.evaluate(() => ({
