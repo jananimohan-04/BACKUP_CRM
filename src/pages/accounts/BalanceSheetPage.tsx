@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   FileText, ClipboardList, BarChart3, PieChart, ChevronRight, ChevronDown, CalendarDays, Info,
-  Download, Printer, FileDown, AlertTriangle, CheckCircle2, Loader2, Building2, Play,
+  Download, Upload, Printer, FileDown, AlertTriangle, CheckCircle2, Loader2, Building2, Play,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
@@ -383,7 +383,7 @@ export function BalanceSheetPage() {
         <Button
           variant="secondary"
           size="sm"
-          icon={<Download size={14} />}
+          icon={<Upload size={14} />}
           onClick={() => csvRef.current()}
           disabled={!hasReport}
           className="h-7 py-1 text-xs px-2.5 shadow-sm"
@@ -571,7 +571,7 @@ export function BalanceSheetPage() {
           <div className="relative">
             <button onClick={() => setExportOpen(o => !o)} disabled={!report}
               className="h-9 px-4 flex items-center gap-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50">
-              <Download size={15} /> Export <ChevronDown size={14} />
+              <Upload size={15} /> Export <ChevronDown size={14} />
             </button>
             {exportOpen && report && (
               <div className="absolute right-0 bottom-full mb-1 w-52 bg-white border border-slate-200 rounded-lg shadow-xl z-20 overflow-hidden">

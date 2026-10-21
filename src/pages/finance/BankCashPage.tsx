@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeftRight, CheckCircle2, ChevronLeft, ChevronRight, Download, Plus, RefreshCw, Search, X } from 'lucide-react';
+import { ArrowLeftRight, CheckCircle2, ChevronLeft, ChevronRight, Upload, Plus, RefreshCw, Search, X } from 'lucide-react';
 import { Badge, Button, Card, statusToVariant } from '@/components/ui/Card';
 import { FormField, inputClass, Modal } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -110,7 +110,7 @@ export function BankCashPage(){
       <Button size="sm" icon={<Plus size={14}/>} disabled={!options?.can_manage} onClick={()=>setEntryOpen(true)}>Add Entry</Button>
       <Button variant="secondary" size="sm" icon={<ArrowLeftRight size={14}/>} disabled={!options?.can_manage} onClick={()=>setTransferOpen(true)}>Bank Transfer</Button>
       <Button variant="secondary" size="sm" icon={<RefreshCw size={14}/>} disabled={!options?.can_manage||busy} onClick={()=>void showReconcile()}>Reconcile</Button>
-      <Button variant="secondary" size="sm" icon={<Download size={14}/>} onClick={()=>void exportData()} disabled={busy}>Export</Button>
+      <Button variant="secondary" size="sm" icon={<Upload size={14}/>} onClick={()=>void exportData()} disabled={busy}>Export</Button>
     </>}/>
     {error&&<div className="border border-rose-200 bg-rose-50 text-rose-700 rounded p-2 text-sm">{error}</div>}
     <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">

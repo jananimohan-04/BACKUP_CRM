@@ -28,7 +28,7 @@ import {
   isSelectableOp, recordJobResult, remainingOf, transitionJob, updateJobTolerant,
 } from '@/lib/jobCards';
 import {
-  Plus, Eye, Pencil, Play, Pause, CheckCheck, Ban, Printer, Download, ClipboardList,
+  Plus, Eye, Pencil, Play, Pause, CheckCheck, Ban, Printer, Download, Upload, ClipboardList,
 } from 'lucide-react';
 
 const fmt = (n: number) => Number(n || 0).toLocaleString('en-IN');
@@ -542,7 +542,7 @@ export function JobCardsTab({ workOrders }: { workOrders: any[] }) {
         description="Release and manage production operations for shop-floor execution."
         actions={
           <>
-            <Button variant="secondary" size="sm" onClick={exportRows}>Export CSV</Button>
+            <Button variant="secondary" size="sm" icon={<Upload size={14} />} onClick={exportRows}>Export CSV</Button>
             <Button icon={<Plus size={14} />} onClick={openCreate}>Create Job Card</Button>
           </>
         }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Eye, Edit, Trash2, Users as UsersIcon, Building2, ShieldCheck, Settings as SettingsIcon, FileText, ChevronDown, ChevronRight, Search, Lock, KeyRound, Plus, Download } from 'lucide-react';
+import { Eye, Edit, Trash2, Users as UsersIcon, Building2, ShieldCheck, Settings as SettingsIcon, FileText, ChevronDown, ChevronRight, Search, Lock, KeyRound, Plus, Download, Upload } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, Button, StatCard } from '@/components/ui/Card';
@@ -276,7 +276,7 @@ export function UsersPage() {
         <Button
           variant="secondary"
           size="sm"
-          icon={<Download size={13} />}
+          icon={<Upload size={13} />}
           onClick={() => handleExportRef.current()}
           className="h-7 py-1 text-xs px-2.5 shadow-sm font-semibold"
         >
@@ -528,7 +528,7 @@ export function CompaniesPage() {
         <Button
           variant="secondary"
           size="sm"
-          icon={<Download size={13} />}
+          icon={<Upload size={13} />}
           onClick={() => handleExportRef.current()}
           className="h-7 py-1 text-xs px-2.5 shadow-sm font-semibold"
         >

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Building2, Calculator, Plus, UserCheck, Trash2, Package, Palette, MessageCircle, Mail, FileDown, FileSpreadsheet, Bookmark, BookmarkPlus, Download, Library, Search, X } from 'lucide-react';
+import { Building2, Calculator, Plus, UserCheck, Trash2, Package, Palette, MessageCircle, Mail, FileDown, FileSpreadsheet, Bookmark, BookmarkPlus, Download, Upload, Library, Search, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { formatINR, todayISO } from '@/lib/format';
@@ -336,7 +336,7 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
             onClick={() => run('Opened your mail app', () => { const d = buildDoc(); window.location.href = `mailto:${clients.map(c => c.email).filter(Boolean).join(',')}?subject=${encodeURIComponent(`Quotation ${d.quoteNo} from ${sellerName}`)}&body=${encodeURIComponent(quoteSummaryText(d))}`; })}>Send to Client</ActionBtn>
           <ActionBtn cls="bg-orange-500 hover:bg-orange-600 text-white" icon={<FileDown size={15} />} disabled={busy} onClick={() => run('PDF downloaded', () => downloadQuotePdf(buildDoc(), false, theme, seller))}>PDF without Workings</ActionBtn>
           <ActionBtn cls="bg-slate-700 hover:bg-slate-800 text-white" icon={<FileDown size={15} />} disabled={busy} onClick={() => run('PDF with workings downloaded', () => downloadQuotePdf(buildDoc(), true, theme, seller))}>PDF with Workings</ActionBtn>
-          <ActionBtn cls="bg-emerald-600 hover:bg-emerald-700 text-white" icon={<FileSpreadsheet size={15} />} disabled={busy} onClick={() => run('CSV exported', () => exportQuoteCsv(buildDoc()))}>Export CSV</ActionBtn>
+          <ActionBtn cls="bg-emerald-600 hover:bg-emerald-700 text-white" icon={<Upload size={15} />} disabled={busy} onClick={() => run('CSV exported', () => exportQuoteCsv(buildDoc()))}>Export CSV</ActionBtn>
           <ActionBtn cls="border border-slate-200 text-slate-700 hover:bg-slate-50" icon={<Bookmark size={15} />} disabled={busy}
             onClick={() => run('Quotation saved', () => undefined)}>Save Quote</ActionBtn>
         </div>

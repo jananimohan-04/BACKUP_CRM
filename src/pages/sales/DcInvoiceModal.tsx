@@ -290,7 +290,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
   const setLine = (key: string, patch: Partial<InvLine>) =>
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
-  const approve = async () => {
+  const approve = async (printAfter: boolean | unknown = false) => {
     if (!canApprove || saving) return;
     setSaving(true);
     try {
@@ -322,6 +322,15 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
         const ids = Array.from(new Set(lines.map((l) => l.dcId).filter(Boolean))) as string[];
         const { error: dcErr } = await supabase.from('cnc_deliveries').update({ status: 'Billed' }).in('id', ids.length ? ids : [dcId]);
         if (dcErr) throw dcErr;
+      }
+      if (printAfter === true) {
+        try {
+          const pdfInput = await buildInvoicePdfInput();
+          if (res?.invoice_no) pdfInput.docNo = res.invoice_no;
+          await viewSalesInvoice(pdfInput);
+        } catch (printErr) {
+          console.error('Invoice print preview error:', printErr);
+        }
       }
       onMoved();
       onClose();
@@ -405,12 +414,13 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
           <Button variant="secondary" icon={<X size={14} />} onClick={onClose}>Cancel</Button>
           {canSeeInvoices && (
           <>
+          <Button variant="secondary" icon={<Printer size={14} />} disabled={!canApprove || saving} title={!canApprove ? 'Resolve the blocker below first' : 'Create the invoice, print it and move the card'} onClick={() => void approve(true)}>Save & Print</Button>
           <Button variant="secondary" icon={<Pencil size={14} />} onClick={() => setEditing((v) => !v)}>
             {editing ? 'Done Editing' : 'Edit'}
           </Button>
           <Button icon={<CheckCheck size={14} />} disabled={!canApprove || saving}
             title={!canApprove ? 'Resolve the blocker below first' : 'Create the invoice and move the card'}
-            onClick={approve}>
+            onClick={() => void approve(false)}>
             {saving ? 'Creating...' : docType === 'Sales Invoice' ? 'Approve & Create Invoice' : `Approve & Create ${docType}`}
           </Button>
           </>

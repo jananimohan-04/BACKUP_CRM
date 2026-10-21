@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Download, FileText, Printer, Search, TrendingUp, Package, GripVertical } from 'lucide-react';
+import { Download, Upload, FileText, Printer, Search, TrendingUp, Package, GripVertical } from 'lucide-react';
 import { Badge, Button, Card, statusToVariant } from '@/components/ui/Card';
 import { inputClass } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -694,7 +694,7 @@ export function ProjectCostingPage() {
         <Button
           variant="secondary"
           size="sm"
-          icon={<Download size={14} />}
+          icon={<Upload size={14} />}
           onClick={() => exportRef.current()}
           disabled={!hasReport}
           className="h-7 py-1 text-xs px-2.5 shadow-sm"
@@ -767,7 +767,7 @@ export function ProjectCostingPage() {
           description="Cost analysis from existing project costs, production records, inventory movements, goods purchase inwards (material) and service purchase inwards (machine & labour)."
           actions={
             <>
-              <Button variant="secondary" size="sm" icon={<Download size={14} />} onClick={exportReport} disabled={!report}>
+              <Button variant="secondary" size="sm" icon={<Upload size={14} />} onClick={exportReport} disabled={!report}>
                 Export
               </Button>
               <Button variant="secondary" size="sm" icon={<Printer size={14} />} onClick={printReport}>

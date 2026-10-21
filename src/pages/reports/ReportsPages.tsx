@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BarChart3, Download, Factory, Boxes, Gauge, TrendingUp, Play } from 'lucide-react';
+import { BarChart3, Upload, Factory, Boxes, Gauge, TrendingUp, Play } from 'lucide-react';
 import { Badge, Button, Card } from '@/components/ui/Card';
 import { FormField, inputClass } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -165,7 +165,7 @@ function ReportsPage({ initialSection = 'Overview' as Section }) {
         <Button
           variant="secondary"
           size="sm"
-          icon={<Download size={14} />}
+          icon={<Upload size={14} />}
           onClick={() => exportReportRef.current()}
           disabled={loading}
           className="h-7 py-1 text-xs px-2.5 shadow-sm"
@@ -183,7 +183,7 @@ function ReportsPage({ initialSection = 'Overview' as Section }) {
 
   return <div className="px-4 lg:px-6 pt-2 pb-4 lg:pb-6 bg-grid min-h-full space-y-2">
     <div className="lg:hidden">
-      <PageHeader title="Reports" description="Real-time insights from sales, production, inventory and accounting records." actions={<Button variant="secondary" size="sm" icon={<Download size={14}/>} onClick={exportReport} disabled={loading}><span>Export Report</span></Button>} />
+      <PageHeader title="Reports" description="Real-time insights from sales, production, inventory and accounting records." actions={<Button variant="secondary" size="sm" icon={<Upload size={14}/>} onClick={exportReport} disabled={loading}><span>Export Report</span></Button>} />
     </div>
     {error && <div className="rounded border border-rose-200 bg-rose-50 p-2 text-sm text-rose-700">Unable to generate report. Please try again. <span className="text-xs">{error}</span></div>}
     <div className="lg:hidden">

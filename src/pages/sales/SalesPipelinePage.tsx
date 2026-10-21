@@ -1,14 +1,14 @@
 import { MemberSelect, useMemberNames } from '@/components/MemberSelect';
-import { useState, useEffect, useMemo, useRef, useLayoutEffect, Fragment } from 'react';
+import { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback, Fragment } from 'react';
 import { supabase } from '@/lib/supabase';
 import { refreshSavedProducts } from '@/lib/savedProducts';
-import { productWithCompany } from '@/lib/productLabel';
+import { productWithCompany, splitProductAndRef, combineProductAndRef, registerKnownCompanies, formatFullReference } from '@/lib/productLabel';
 import { financeApi } from '@/lib/finance';
 import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
-import { Plus, Trash2, Eye, UploadCloud, Edit2, Download, FileText, RefreshCcw, Copy, Calculator, Users as UsersIcon, Package as PackageIcon, ScrollText, FolderOpen, Building2, ArrowLeft, ChevronDown } from 'lucide-react';
+import { Plus, Trash2, Eye, UploadCloud, Edit2, Download, FileText, RefreshCcw, Copy, Calculator, Users as UsersIcon, Package as PackageIcon, ScrollText, FolderOpen, Building2, ArrowLeft, ChevronDown, Printer } from 'lucide-react';
 import { uploadOrderFile } from '@/lib/orderFiles';
 import { MetalCalculatorPage, ClientLibraryPage, ProductLibraryPage, TermsLibraryPage, QuotationLibraryPage, CompanyProfilePage } from '../quotation/QuotationToolPages';
 import { setMockImage, getMockImage } from '@/lib/mockStorage';
@@ -69,10 +69,10 @@ const makeDcBlankForm = () => ({
   partyAddress: '', partyGstin: '', partyCode: '',
   ewayBill: '', poNumber: '', salesOrderNo: '', placeOfSupply: '', packaging: '',
   enquiryNo: '', vehicleNo: '', phone: '',
-  category: '', process: '',
+  category: '', notes: '', process: '',
   receiverName: '', senderName: '', custSignature: null, authSignature: null,
 });
-const makeDcBlankItems = () => [{ name: '', avail: null, qty: '', selected: true, hsn: '', unit: 'Nos', price: '' }];
+const makeDcBlankItems = () => [{ name: '', originalName: '', reference: '', avail: null, qty: '', selected: true, hsn: '', unit: 'Nos', price: '' }];
 
 // The inline DC form always has an "entry session" (a source card, or none for a blank
 // manual entry) - this is what used to be created when the popup was opened. It drives
@@ -104,6 +104,18 @@ async function uploadInwardAttachment(companyId: string, inwardId: string, file:
 // so stamped and plain numbers match. Idempotent.
 export const baseUniqueNo = (s: any): string =>
   String(s || '').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, '');
+
+// Only Inward records belonging to customer dc, new project / new part, and no dc are shown on the Kanban board.
+// Other categories (e.g. GOODS PURCHASE, SERVICE PURCHASE, EXPENSES) remain fully functional in the backend
+// and continue to be listed on the Inward Page.
+const KANBAN_INWARD_CATEGORIES = ['CUSTOMER DC', 'DC', 'NO DC', 'NODC', 'NEW PART', 'NEW PROJECT', 'NEWPART', 'NEWPROJECT'];
+const isKanbanInwardCategory = (cat: any): boolean => {
+  const raw = String(cat || '').trim().toUpperCase();
+  if (!raw) return false;
+  if (KANBAN_INWARD_CATEGORIES.includes(raw)) return true;
+  const compact = raw.replace(/[\s_-]+/g, '');
+  return KANBAN_INWARD_CATEGORIES.some(k => k.replace(/[\s_-]+/g, '') === compact);
+};
 
 /**
  * Formats a Date object or order timestamp into railway time: "DD-MM-YYYY HH:mm"
@@ -1240,12 +1252,15 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
 
   const onSelectParty = (c: any) => {
     const nm = String(c.company || c.name || '');
-    const m: any = (customers || []).find((x: any) => String(x.name || '').trim().toLowerCase() === nm.trim().toLowerCase()) || {};
+    const norm = nm.trim().toLowerCase();
+    const m: any = (customers || []).find((x: any) => String(x.name || '').trim().toLowerCase() === norm) || {};
+    const addr = c.address || m.address || m.billing_address || m.city || c.city || '';
+    const gstVal = c.gst || c.gstin || m.gst || m.gstin || m.gst_number || (c as any).gst || '';
     setPartyName(nm);
-    setPartyCode(m.id || '');
-    setPartyAddress(m.city || c.city || '');
-    setPartyGstin(m.gst || m.gstin || c.gst || '');
-    setPhone(m.phone || c.phone || '');
+    setPartyCode(m.id || c.id || '');
+    if (addr) setPartyAddress(addr);
+    if (gstVal) setPartyGstin(gstVal);
+    if (m.phone || c.phone) setPhone(m.phone || c.phone);
   };
 
   const textCell = (label: string, v: any) => (
@@ -1278,7 +1293,21 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
               label="Company Name"
               required
               value={partyName}
-              onChange={(val) => setPartyName(val)}
+              onChange={(val) => {
+                setPartyName(val);
+                const norm = val.trim().toLowerCase();
+                if (!norm) return;
+                const matched = (companies || []).find((c: any) => String(c.company || '').trim().toLowerCase() === norm)
+                  || (customers || []).find((c: any) => String(c.name || '').trim().toLowerCase() === norm);
+                if (matched) {
+                  const addr = matched.address || matched.billing_address || matched.city || '';
+                  const gstVal = matched.gst || matched.gstin || matched.gst_number || '';
+                  if (addr) setPartyAddress(addr);
+                  if (gstVal) setPartyGstin(gstVal);
+                  if (matched.phone) setPhone(matched.phone);
+                  if (matched.id) setPartyCode(matched.id);
+                }
+              }}
               onSelectCustomer={onSelectParty}
               companies={companies}
               inputClass={inputClass}
@@ -1319,21 +1348,19 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
           </>
         )}
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
         {editMode ? (
           <>
-            <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Enquiry No</span><input className={inputCls} value={enquiryNo} onChange={(e) => setEnquiryNo(e.target.value)} /></div>
             <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Vehicle No</span><input className={inputCls} value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} /></div>
             <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Phone No</span><input className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} /></div>
-            <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Category</span><input className={inputCls} value={category} onChange={(e) => setCategory(e.target.value)} /></div>
+            <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Notes</span><input className={inputCls} value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Notes..." /></div>
             <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Process</span><input className={inputCls} value={process} onChange={(e) => setProcess(e.target.value)} /></div>
           </>
         ) : (
           <>
-            {textCell('Enquiry No', enquiryNo)}
             {textCell('Vehicle No', vehicleNo)}
             {textCell('Phone No', phone)}
-            {textCell('Category', category)}
+            {textCell('Notes', category)}
             {textCell('Process', process)}
           </>
         )}
@@ -1432,6 +1459,637 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
         <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{error}</p>
       )}
     </fieldset>
+  );
+}
+
+function InwardGroupSection({
+  group: g,
+  groupIndex: gi,
+  viewEditMode,
+  allKnownCompanies,
+  partsCatalogue,
+  inwardEditProductOptions,
+  memberNames,
+  company,
+  updateInwardGroup,
+  handleAddInwardPart,
+  handleDeleteInwardPart,
+  deleteInwardRows,
+  handleInlineEdit,
+  openProductFile,
+  uploadInwardAttachment,
+  inwardLineTotal,
+}: {
+  group: any[];
+  groupIndex: number;
+  viewEditMode: boolean;
+  allKnownCompanies: any[];
+  partsCatalogue: any[];
+  inwardEditProductOptions: any[];
+  memberNames: string[];
+  company: any;
+  updateInwardGroup: (groupRows: any[], patch: Record<string, any> | ((row: any, index: number) => Record<string, any>)) => Promise<void>;
+  handleAddInwardPart: (groupRows: any[]) => Promise<void>;
+  handleDeleteInwardPart: (rowId: string, partDescription: string, groupRows: any[]) => Promise<void>;
+  deleteInwardRows: (ids: string[], what: string) => Promise<void>;
+  handleInlineEdit: (title: string, id: string, field: string | Record<string, any>, value?: string) => Promise<void>;
+  openProductFile: (path: string) => Promise<void>;
+  uploadInwardAttachment: (companyId: string, inwardId: string, file: File) => Promise<any>;
+  inwardLineTotal: (q: any, p: any, d: any, g: any) => number;
+}) {
+  const isPettyCash = g.some((r: any) => !!r.petty_cash);
+  const paidBy = g.find((r: any) => r.paid_by)?.paid_by || '';
+  const hasPettyAmount = g.some((r: any) => r.petty_amount !== null && r.petty_amount !== undefined && r.petty_amount !== '');
+  const totalPettyAmount = hasPettyAmount ? Math.round(g.reduce((s: number, r: any) => s + (Number(r.petty_amount) || 0), 0) * 100) / 100 : '';
+  const pettyDate = g.find((r: any) => r.petty_date)?.petty_date || g[0]?.inward_date || '';
+
+  const lineTotals = g.map(r => inwardLineTotal(r.quantity, r.price, r.discount_percent, r.gst_percent));
+  const groupTotal = lineTotals.reduce((a, b) => a + b, 0);
+
+  // Collect distinct attachments for this group
+  const groupFiles: { name: string; path: string }[] = [];
+  g.forEach((r: any) => {
+    (Array.isArray(r.attachments) ? r.attachments : []).forEach((att: any, ai: number) => {
+      const p = typeof att === 'string' ? att : (att.path || att.url || '');
+      const n = typeof att === 'string' ? p.split('/').pop() : (att.name || p.split('/').pop() || `File ${ai + 1}`);
+      if (p && !groupFiles.some(x => x.path === p)) {
+        groupFiles.push({ name: n, path: p });
+      }
+    });
+  });
+
+  return (
+    <div key={g[0]?.id || gi} className="mb-6">
+      <h4 className="font-bold text-sm text-brand-800 border-b border-brand-100 pb-2 mb-3 uppercase flex justify-between items-center flex-wrap gap-2">
+        <span>Inward Details #{gi + 1} {g[0]?.inward_no ? `(${g[0].inward_no})` : ''}</span>
+        {viewEditMode && (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleAddInwardPart(g)}
+              className="inline-flex items-center gap-1 rounded-md border border-brand-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-brand-700 hover:bg-brand-50 shadow-xs cursor-pointer"
+            >
+              <Plus size={13} /> Add part
+            </button>
+            <button
+              type="button"
+              data-testid="delete-inward"
+              onClick={() => void deleteInwardRows(g.map((r: any) => String(r.id)), `inward #${gi + 1}`)}
+              className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2.5 py-1 text-[11px] font-semibold normal-case text-red-600 hover:bg-red-50 cursor-pointer"
+            >
+              <Trash2 size={12} /> Delete inward
+            </button>
+          </div>
+        )}
+      </h4>
+
+      <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
+        {/* Inward Group Header Fields */}
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))] gap-4 mb-4 items-end">
+          {/* Category */}
+          {viewEditMode ? (
+            <div>
+              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Category</span>
+              <select
+                className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:border-brand-500 cursor-pointer"
+                value={g[0]?.category || 'GOODS PURCHASE'}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val !== String(g[0]?.category || '')) {
+                    void updateInwardGroup(g, { category: val });
+                  }
+                }}
+              >
+                <option>EXPENSES</option>
+                <option>CUSTOMER DC</option>
+                <option>NEW PART</option>
+                <option>NO DC</option>
+                <option>GOODS PURCHASE</option>
+                <option>SERVICE PURCHASE</option>
+                {g[0]?.category && !['EXPENSES', 'CUSTOMER DC', 'NEW PART', 'NO DC', 'GOODS PURCHASE', 'SERVICE PURCHASE'].includes(String(g[0].category)) && (
+                  <option value={g[0].category}>{g[0].category}</option>
+                )}
+              </select>
+            </div>
+          ) : (
+            <div>
+              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Category</span>
+              <div className="text-sm font-semibold text-slate-800">{g[0]?.category || 'GOODS PURCHASE'}</div>
+            </div>
+          )}
+
+          {/* Company */}
+          {viewEditMode ? (
+            <div>
+              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Company</span>
+              <select
+                className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:border-brand-500 cursor-pointer"
+                value={g[0]?.party_name || ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === '__custom__') {
+                    const custom = window.prompt('Enter company name:', String(g[0]?.party_name || ''));
+                    if (custom && custom.trim() && custom.trim() !== String(g[0]?.party_name || '')) {
+                      void updateInwardGroup(g, { party_name: custom.trim() });
+                    }
+                    return;
+                  }
+                  if (val !== String(g[0]?.party_name || '')) {
+                    void updateInwardGroup(g, { party_name: val });
+                  }
+                }}
+              >
+                <option value="">Select company…</option>
+                <option value="__custom__">+ Enter custom company…</option>
+                {g[0]?.party_name && !allKnownCompanies.some((c: any) => String(c.company).toLowerCase() === String(g[0].party_name).toLowerCase()) && (
+                  <option value={g[0].party_name}>{g[0].party_name}</option>
+                )}
+                {(allKnownCompanies || []).map((c: any) => (
+                  <option key={c.company} value={c.company}>{c.company}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div>
+              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Company</span>
+              <div className="text-sm font-semibold text-brand-700">{g[0]?.party_name || '—'}</div>
+            </div>
+          )}
+
+          {/* Inward Date */}
+          {viewEditMode ? (
+            <div>
+              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Inward Date</span>
+              <input
+                type="date"
+                className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:border-brand-500 cursor-pointer"
+                defaultValue={g[0]?.inward_date || ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val && val !== String(g[0]?.inward_date || '')) {
+                    void updateInwardGroup(g, { inward_date: val });
+                  }
+                }}
+              />
+            </div>
+          ) : (
+            <div>
+              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Inward Date</span>
+              <div className="text-sm font-medium text-slate-800">{g[0]?.inward_date || '—'}</div>
+            </div>
+          )}
+
+          {/* Reference No. */}
+          {viewEditMode ? (
+            <div>
+              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Reference No.</span>
+              <input
+                type="text"
+                className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:border-brand-500"
+                placeholder="e.g. DC/Invoice No"
+                defaultValue={g[0]?.reference_no || ''}
+                onBlur={(e) => {
+                  const val = e.target.value;
+                  if (val !== String(g[0]?.reference_no || '')) {
+                    void updateInwardGroup(g, { reference_no: val });
+                  }
+                }}
+              />
+            </div>
+          ) : (
+            <div>
+              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Reference No.</span>
+              <div className="text-sm font-medium text-slate-800">{g[0]?.reference_no || '—'}</div>
+            </div>
+          )}
+
+          {/* Petty Cash */}
+          {viewEditMode ? (
+            <div className="col-span-full xl:col-span-auto">
+              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Reimbursement (Petty Cash)</span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded px-2.5 py-1.5 hover:border-brand-400 select-none shadow-xs" title="A member paid this from their own pocket; it is reimbursed at month end">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 rounded text-brand-600 focus:ring-brand-500 cursor-pointer"
+                    checked={isPettyCash}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      if (!checked) {
+                        void updateInwardGroup(g, { petty_cash: false, paid_by: null, petty_amount: null, petty_date: null });
+                      } else {
+                        const defaultPaidBy = paidBy || (memberNames[0] || '');
+                        const defaultPettyDate = pettyDate || g[0]?.inward_date || todayISO();
+                        void updateInwardGroup(g, { petty_cash: true, paid_by: defaultPaidBy, petty_date: defaultPettyDate });
+                      }
+                    }}
+                  />
+                  <span>Petty cash</span>
+                </label>
+                {isPettyCash && (
+                  <>
+                    <div className="w-[11rem]">
+                      <MemberSelect
+                        className="w-full text-xs font-medium text-slate-800 border border-slate-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:border-brand-500"
+                        placeholder="Paid by (member) *"
+                        options={memberNames}
+                        value={paidBy}
+                        onChange={(v) => {
+                          void updateInwardGroup(g, { paid_by: v });
+                        }}
+                      />
+                    </div>
+                    <input
+                      type="number"
+                      min={0}
+                      className="w-[8.5rem] text-xs font-medium text-slate-800 border border-slate-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:border-brand-500"
+                      placeholder="Amount paid"
+                      title="How much the member paid (leave empty for the full amount)"
+                      defaultValue={totalPettyAmount}
+                      key={`${g[0]?.id}-${totalPettyAmount}`}
+                      onBlur={(e) => {
+                        const val = e.target.value.trim();
+                        if (val === String(totalPettyAmount)) return;
+                        void updateInwardGroup(g, (r, i) => {
+                          const splitAmount = val !== ''
+                            ? Math.round((Number(val) || 0) * (groupTotal ? lineTotals[i] / groupTotal : 1 / g.length) * 100) / 100
+                            : null;
+                          return { petty_amount: splitAmount };
+                        });
+                      }}
+                    />
+                    <input
+                      type="date"
+                      className="w-[8.5rem] text-xs font-medium text-slate-800 border border-slate-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:border-brand-500 cursor-pointer"
+                      title="Petty cash date"
+                      defaultValue={pettyDate}
+                      key={`${g[0]?.id}-${pettyDate}`}
+                      onChange={(e) => {
+                        const nextDate = e.target.value;
+                        void updateInwardGroup(g, { petty_date: nextDate || null });
+                      }}
+                    />
+                  </>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Petty Cash</span>
+              {isPettyCash ? (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                    Paid by {paidBy || 'Member'}
+                  </span>
+                  <span className="text-xs text-slate-600 font-medium">
+                    {hasPettyAmount ? `₹${Number(totalPettyAmount).toLocaleString('en-IN')}` : 'Full Amount'}
+                  </span>
+                  {pettyDate && (
+                    <span className="text-xs text-slate-500 font-medium">
+                      · Date: {pettyDate}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <span className="text-sm text-slate-400">No</span>
+              )}
+            </div>
+          )}
+
+          {/* Files */}
+          <div className="col-span-full">
+            <div className="flex items-center justify-between mb-1">
+              <span className="block text-[10px] font-bold text-slate-500 uppercase">Attached Files / Documents</span>
+              {viewEditMode && (
+                <label className="inline-flex h-7 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-dashed border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700 shadow-xs" title="Attach bills, DCs or any file (all formats)">
+                  <UploadCloud size={13} /> {groupFiles.length ? `${groupFiles.length} file${groupFiles.length === 1 ? '' : 's'}` : 'Choose Files'}
+                  <input
+                    type="file"
+                    multiple
+                    accept="*/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const picked = Array.from(e.target.files || []);
+                      e.currentTarget.value = '';
+                      if (picked.length && company?.id) {
+                        void (async () => {
+                          try {
+                            const uploaded = await Promise.all(picked.map(f => uploadInwardAttachment(company.id!, g[0]?.id, f)));
+                            const existing = Array.isArray(g[0]?.attachments) ? g[0].attachments : [];
+                            await updateInwardGroup(g, { attachments: [...existing, ...uploaded] });
+                          } catch (err: any) {
+                            alert(err?.message || 'File upload failed.');
+                          }
+                        })();
+                      }
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {groupFiles.map((f, fi) => (
+                <span key={`inw-gf-${f.path}-${fi}`} className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 shadow-xs">
+                  <button type="button" className="max-w-[150px] truncate font-medium text-blue-700 hover:underline inline-flex items-center gap-1" onClick={() => void openProductFile(f.path)} title={f.name}>
+                    <FileText size={12} />
+                    {f.name}
+                  </button>
+                  {viewEditMode && (
+                    <button
+                      type="button"
+                      className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 hover:bg-rose-100 hover:text-rose-600 transition-colors cursor-pointer text-xs font-bold leading-none"
+                      title={`Remove ${f.name}`}
+                      aria-label={`Remove ${f.name}`}
+                      onClick={() => {
+                        if (!window.confirm(`Remove ${f.name}?`)) return;
+                        void updateInwardGroup(g, (r) => ({
+                          attachments: (Array.isArray(r.attachments) ? r.attachments : []).filter((att: any) => {
+                            const p = typeof att === 'string' ? att : (att.path || att.url || '');
+                            return p !== f.path;
+                          })
+                        }));
+                      }}
+                    >
+                      ×
+                    </button>
+                  )}
+                </span>
+              ))}
+              {!groupFiles.length && <span className="text-xs text-slate-400 italic">No files attached</span>}
+            </div>
+          </div>
+        </div>
+
+        {/* Part Items Table */}
+        <div className="overflow-x-auto">
+          <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1.1fr)_minmax(0,1fr)_4.25rem_5.5rem_4rem_4rem_5.5rem_minmax(0,0.9fr)_1.75rem] gap-2 items-center mb-1.5 px-1 min-w-[840px]">
+            <span className="text-[10px] font-bold text-slate-500 uppercase">Product</span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">Part Name</span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">Remarks</span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">Qty</span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">Price</span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">Disc %</span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">GST %</span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">Total</span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">Drawing / Files</span>
+            <span />
+          </div>
+
+          {g.map((row: any, ri: number) => {
+            const rowAmt = inwardLineTotal(row.quantity, row.price, row.discount_percent, row.gst_percent);
+            return (
+              <div key={row.id || ri} className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1.1fr)_minmax(0,1fr)_4.25rem_5.5rem_4rem_4rem_5.5rem_minmax(0,0.9fr)_1.75rem] gap-2 items-center min-w-[840px] bg-white rounded-lg border border-slate-200 p-2 mb-2 shadow-2xs">
+                {/* Product Dropdown */}
+                <div>
+                  <select
+                    disabled={!viewEditMode}
+                    className="w-full text-xs font-medium text-slate-800 border border-slate-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:border-brand-500 disabled:bg-slate-50 disabled:text-slate-700 cursor-pointer"
+                    value={row.product_name || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '__custom__') {
+                        const custom = window.prompt('Enter product name:');
+                        if (custom && custom.trim() && custom.trim() !== (row.product_name || '')) {
+                          void handleInlineEdit('Inward', row.id, { product_name: custom.trim() });
+                        }
+                        return;
+                      }
+                      if (val !== (row.product_name || '')) {
+                        const masterHit = (partsCatalogue || []).find((m: any) => normStr(m.name) === normStr(val) || (m.code && normStr(m.code) === normStr(val)));
+                        const patch: Record<string, any> = { product_name: val };
+                        if (masterHit) {
+                          if (!String(row.part_name || '').trim() || String(row.part_name).trim() === String(row.product_name || '').trim()) {
+                            patch.part_name = masterHit.name;
+                          }
+                        }
+                        void handleInlineEdit('Inward', row.id, patch);
+                      }
+                    }}
+                  >
+                    <option value="">Select product…</option>
+                    {viewEditMode && <option value="__custom__">+ Enter custom product name…</option>}
+                    {row.product_name && !inwardEditProductOptions.some(o => o.name.toLowerCase() === String(row.product_name).toLowerCase()) && (
+                      <option value={row.product_name}>{row.product_name}</option>
+                    )}
+                    {inwardEditProductOptions.filter(o => o.group === 'catalogue').length > 0 && (
+                      <optgroup label="Components & Raw Materials (Catalogue)">
+                        {inwardEditProductOptions.filter(o => o.group === 'catalogue').map(o => (
+                          <option key={`cat-${o.name}`} value={o.name}>
+                            {o.name}{o.detail ? ` (${o.detail})` : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {inwardEditProductOptions.filter(o => o.group === 'pipeline').length > 0 && (
+                      <optgroup label="Pipeline Products (Enquiry / Sales Order)">
+                        {inwardEditProductOptions.filter(o => o.group === 'pipeline').map(o => (
+                          <option key={`pipe-${o.name}`} value={o.name}>
+                            {o.name}{o.detail ? ` (${o.detail})` : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                </div>
+
+                {/* Part Name */}
+                <div>
+                  <input
+                    disabled={!viewEditMode}
+                    className="w-full text-xs font-medium text-slate-800 border border-slate-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:border-brand-500 disabled:bg-slate-50 disabled:text-slate-700"
+                    placeholder="Part Name *"
+                    defaultValue={row.part_name || ''}
+                    onBlur={(e) => {
+                      if (e.target.value !== String(row.part_name || '')) {
+                        void handleInlineEdit('Inward', row.id, { part_name: e.target.value });
+                      }
+                    }}
+                  />
+                </div>
+
+                {/* Remarks */}
+                <div>
+                  <input
+                    disabled={!viewEditMode}
+                    className="w-full text-xs font-medium text-slate-800 border border-slate-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:border-brand-500 disabled:bg-slate-50 disabled:text-slate-700"
+                    placeholder="Remarks..."
+                    defaultValue={row.remarks || ''}
+                    onBlur={(e) => {
+                      if (e.target.value !== String(row.remarks || '')) {
+                        void handleInlineEdit('Inward', row.id, { remarks: e.target.value });
+                      }
+                    }}
+                  />
+                </div>
+
+                {/* Qty */}
+                <div>
+                  <input
+                    type="number"
+                    min="0"
+                    disabled={!viewEditMode}
+                    className="w-full text-xs font-medium text-slate-800 border border-slate-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:border-brand-500 disabled:bg-slate-50 disabled:text-slate-700 tabular-nums"
+                    placeholder="Qty"
+                    defaultValue={row.quantity ?? ''}
+                    onBlur={(e) => {
+                      const q = Number(e.target.value) || 0;
+                      if (q !== (Number(row.quantity) || 0)) {
+                        const newTotal = inwardLineTotal(q, row.price, row.discount_percent, row.gst_percent);
+                        void handleInlineEdit('Inward', row.id, { quantity: q, total_amount: newTotal });
+                      }
+                    }}
+                  />
+                </div>
+
+                {/* Price */}
+                <div>
+                  <input
+                    type="number"
+                    min="0"
+                    disabled={!viewEditMode}
+                    className="w-full text-xs font-medium text-slate-800 border border-slate-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:border-brand-500 disabled:bg-slate-50 disabled:text-slate-700 tabular-nums"
+                    placeholder="Price"
+                    defaultValue={row.price ?? ''}
+                    onBlur={(e) => {
+                      const p = Number(e.target.value) || 0;
+                      if (p !== (Number(row.price) || 0)) {
+                        const newTotal = inwardLineTotal(row.quantity, p, row.discount_percent, row.gst_percent);
+                        void handleInlineEdit('Inward', row.id, { price: p, total_amount: newTotal });
+                      }
+                    }}
+                  />
+                </div>
+
+                {/* Disc % */}
+                <div>
+                  <input
+                    type="number"
+                    min="0"
+                    disabled={!viewEditMode}
+                    className="w-full text-xs font-medium text-slate-800 border border-slate-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:border-brand-500 disabled:bg-slate-50 disabled:text-slate-700 tabular-nums"
+                    placeholder="Disc %"
+                    defaultValue={row.discount_percent ?? ''}
+                    onBlur={(e) => {
+                      const d = Number(e.target.value) || 0;
+                      if (d !== (Number(row.discount_percent) || 0)) {
+                        const newTotal = inwardLineTotal(row.quantity, row.price, d, row.gst_percent);
+                        void handleInlineEdit('Inward', row.id, { discount_percent: d, total_amount: newTotal });
+                      }
+                    }}
+                  />
+                </div>
+
+                {/* GST % */}
+                <div>
+                  <input
+                    type="number"
+                    min="0"
+                    disabled={!viewEditMode}
+                    className="w-full text-xs font-medium text-slate-800 border border-slate-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:border-brand-500 disabled:bg-slate-50 disabled:text-slate-700 tabular-nums"
+                    placeholder="GST %"
+                    defaultValue={row.gst_percent ?? ''}
+                    onBlur={(e) => {
+                      const gg = Number(e.target.value) || 0;
+                      if (gg !== (Number(row.gst_percent) || 0)) {
+                        const newTotal = inwardLineTotal(row.quantity, row.price, row.discount_percent, gg);
+                        void handleInlineEdit('Inward', row.id, { gst_percent: gg, total_amount: newTotal });
+                      }
+                    }}
+                  />
+                </div>
+
+                {/* Total */}
+                <div className="w-full text-xs font-bold text-brand-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 truncate tabular-nums">
+                  ₹{rowAmt.toFixed(2)}
+                </div>
+
+                {/* Drawing / Spec Files */}
+                <div className="flex items-center gap-1 flex-wrap">
+                  {(Array.isArray(row.attachments) ? row.attachments : []).map((att: any, ai: number) => {
+                    const p = typeof att === 'string' ? att : (att.path || att.url || '');
+                    const n = typeof att === 'string' ? p.split('/').pop() : (att.name || p.split('/').pop() || `File ${ai + 1}`);
+                    if (!p) return null;
+                    return (
+                      <span key={`row-f-${ai}`} className="inline-flex items-center gap-0.5 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-blue-700 shadow-2xs">
+                        <button type="button" className="max-w-[70px] truncate font-medium hover:underline" onClick={() => void openProductFile(p)} title={n}>
+                          {n}
+                        </button>
+                        {viewEditMode && (
+                          <button
+                            type="button"
+                            className="text-slate-400 hover:text-rose-600 text-xs font-bold leading-none ml-0.5"
+                            onClick={() => {
+                              const nextAtt = (row.attachments || []).filter((_: any, j: number) => j !== ai);
+                              void handleInlineEdit('Inward', row.id, { attachments: nextAtt });
+                            }}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </span>
+                    );
+                  })}
+                  {viewEditMode && (
+                    <label className="inline-flex h-6 cursor-pointer items-center gap-1 rounded border border-dashed border-slate-300 bg-white px-1.5 text-[10px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700 shadow-2xs" title="Attach file to this line">
+                      <UploadCloud size={11} /> File
+                      <input
+                        type="file"
+                        multiple
+                        accept="*/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const picked = Array.from(e.target.files || []);
+                          e.currentTarget.value = '';
+                          if (picked.length && company?.id) {
+                            void (async () => {
+                              try {
+                                const uploaded = await Promise.all(picked.map(f => uploadInwardAttachment(company.id!, row.id, f)));
+                                const existing = Array.isArray(row.attachments) ? row.attachments : [];
+                                await handleInlineEdit('Inward', row.id, { attachments: [...existing, ...uploaded] });
+                              } catch (err: any) {
+                                alert(err?.message || 'File upload failed.');
+                              }
+                            })();
+                          }
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+
+                {/* Delete Line Button */}
+                {viewEditMode && g.length > 1 ? (
+                  <button
+                    type="button"
+                    data-testid="delete-inward-line"
+                    title="Delete this part line"
+                    onClick={() => void handleDeleteInwardPart(String(row.id), row.part_name || row.product_name || `Line #${ri + 1}`, g)}
+                    className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                ) : <span />}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Group Footer Summary */}
+        <div className="flex flex-wrap items-center justify-between border-t border-slate-200 pt-2.5 mt-2 px-1 text-xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-slate-600">{g.length} Part{g.length === 1 ? '' : 's'}</span>
+            {isPettyCash && (
+              <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 text-amber-800 border border-amber-200 font-medium text-[11px]">
+                Petty Cash Paid by <strong>{paidBy || 'Member'}</strong>: {hasPettyAmount ? `₹${Number(totalPettyAmount).toLocaleString('en-IN')}` : `Full (₹${groupTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`}{pettyDate ? ` · ${pettyDate}` : ''}
+              </span>
+            )}
+          </div>
+          <div className="font-bold text-slate-800 text-sm">
+            Total: <span className="text-brand-700">₹{groupTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1758,7 +2416,7 @@ export function SalesPipelinePage() {
   // Multi-product DC lines (drag path): one selectable row per order product
   // with its own dispatch qty; saved as one delivery row each under the same
   // DC number (which the invoice flow already reads as a multi-item challan).
-  const [dcItems, setDcItems] = useState<{ name: string; avail: number | null; qty: string; selected: boolean; hsn: string; unit: string; price: string }[]>(() => makeDcBlankItems());
+  const [dcItems, setDcItems] = useState<{ name: string; originalName?: string; reference?: string; avail: number | null; qty: string; selected: boolean; hsn: string; unit: string; price: string }[]>(() => makeDcBlankItems());
   const dcItemNames = (dcItems || []).map((i: any) => i.name).join('|');
   // Approved-price display for the DC form (same source as the DC→Invoice
   // gate: latest Approved costing sheet for the quotation). The DC line can
@@ -1777,10 +2435,10 @@ export function SalesPipelinePage() {
     let cancelled = false;
     (async () => {
       try {
-        const pm = await supabase.from('cnc_parts').select('part_name,part_no,unit,category,hsn');
+        const pm = await supabase.from('cnc_parts').select('part_name,part_no,unit,category,hsn,unit_price');
         let rows: any[] = (!pm.error && pm.data) ? pm.data : [];
         if (pm.error) {
-          const fb = await supabase.from('cnc_parts').select('part_name,part_no,unit,category');
+          const fb = await supabase.from('cnc_parts').select('part_name,part_no,unit,category,hsn');
           rows = (!fb.error && fb.data) ? fb.data : [];
         }
         if (!cancelled) setPartsMaster(rows);
@@ -1985,10 +2643,11 @@ export function SalesPipelinePage() {
         const lines: { name: string; unit: number; sheetRef: string }[] = [];
         for (const nm of candidates) {
           const key = lc(nm);
+          const baseKey = lc(getProductBaseName(nm));
           if (!nm || seen.has(key)) continue;
           seen.add(key);
-          const pick = sheets.find((s: any) => String(s.product_code ?? '').trim() !== '' && (lc(s.product_code) === key || (soRow?.part_no && lc(s.product_code) === lc(soRow.part_no))))
-            ?? sheets.find((s: any) => lc(s.product_name) === key);
+          const pick = sheets.find((s: any) => String(s.product_code ?? '').trim() !== '' && (lc(s.product_code) === key || lc(s.product_code) === baseKey || (soRow?.part_no && lc(s.product_code) === lc(soRow.part_no))))
+            ?? sheets.find((s: any) => lc(s.product_name) === key || lc(s.product_name) === baseKey);
           if (pick && Number(pick.quantity) > 0 && pick.approved_price != null) {
             lines.push({ name: nm, unit: Math.round((Number(pick.approved_price) / Number(pick.quantity)) * 100) / 100, sheetRef: `${qRow.quote_no} V${pick.version}` });
           }
@@ -2009,12 +2668,20 @@ export function SalesPipelinePage() {
       const next = prev.map((it) => {
         if (!it.name) return it;
         const key = String(it.name).trim().toLowerCase();
-        const m = partsMaster.find((p: any) => String(p.part_name || '').trim().toLowerCase() === key);
-        const l = dcPricing.lines.find((x) => x.name.trim().toLowerCase() === key);
+        const baseKey = getProductBaseName(it.name).trim().toLowerCase();
+        const m = partsMaster.find((p: any) => {
+          const pn = String(p.part_name || '').trim().toLowerCase();
+          const pc = String(p.part_code || p.part_no || '').trim().toLowerCase();
+          return pn === key || (baseKey && pn === baseKey) || pc === key || (baseKey && pc === baseKey);
+        });
+        const l = dcPricing.lines.find((x) => {
+          const xn = x.name.trim().toLowerCase();
+          return xn === key || (baseKey && (xn === baseKey || getProductBaseName(xn).toLowerCase() === baseKey));
+        });
         const patch: any = {};
         if (!it.hsn && (m as any)?.hsn) patch.hsn = (m as any).hsn;
         if (!it.unit && m?.unit) patch.unit = m.unit;
-        if (!it.price && l) patch.price = String(l.unit);
+        if ((!it.price || it.price === '0' || it.price === '0.00') && l) patch.price = String(l.unit);
         if (Object.keys(patch).length) { changed = true; return { ...it, ...patch }; }
         return it;
       });
@@ -2077,12 +2744,172 @@ export function SalesPipelinePage() {
           if (newPrev[stateKey]) {
              newPrev[stateKey] = { ...newPrev[stateKey], ...patch };
           }
-          if (title === 'Inward' && Array.isArray(newPrev.inwards)) {
-             newPrev.inwards = newPrev.inwards.map((r: any) => String(r.id) === String(id) ? { ...r, ...patch } : r);
+          if (title === 'Inward') {
+             if (newPrev.inward && String(newPrev.inward.id) === String(id)) {
+                newPrev.inward = { ...newPrev.inward, ...patch };
+             }
+             if (Array.isArray(newPrev.inwards)) {
+                newPrev.inwards = newPrev.inwards.map((r: any) => String(r.id) === String(id) ? { ...r, ...patch } : r);
+             }
           }
           return newPrev;
        });
        fetchPipeline();
+  };
+
+  const updateInwardGroup = async (groupRows: any[], patch: Record<string, any> | ((row: any, index: number) => Record<string, any>)) => {
+    const ids = groupRows.map(r => r.id).filter(Boolean);
+    if (!ids.length) return;
+    setLoading(true);
+    try {
+      if (typeof patch === 'function') {
+        await Promise.all(groupRows.map(async (r, i) => {
+          const p = patch(r, i);
+          const { error } = await supabase.from('cnc_inwards').update(p).eq('id', r.id);
+          if (error && /petty_date/.test(error.message)) {
+            const { petty_date, ...rest } = p;
+            await supabase.from('cnc_inwards').update(rest).eq('id', r.id);
+          }
+        }));
+        setViewModalData((prev: any) => {
+          if (!prev) return prev;
+          const nextInwards = (prev.inwards || (prev.inward ? [prev.inward] : [])).map((r: any) => {
+            const idx = groupRows.findIndex(x => String(x.id) === String(r.id));
+            return idx !== -1 ? { ...r, ...patch(r, idx) } : r;
+          });
+          const firstPatch = patch(groupRows[0], 0);
+          return {
+            ...prev,
+            inwards: nextInwards,
+            inward: prev.inward && ids.includes(prev.inward.id) ? { ...prev.inward, ...firstPatch } : prev.inward,
+          };
+        });
+      } else {
+        const { error } = await supabase.from('cnc_inwards').update(patch).in('id', ids);
+        if (error) {
+          if (/petty_date/.test(error.message)) {
+            const { petty_date, ...rest } = patch;
+            const { error: retryErr } = await supabase.from('cnc_inwards').update(rest).in('id', ids);
+            if (retryErr) throw retryErr;
+          } else {
+            throw error;
+          }
+        }
+        setViewModalData((prev: any) => {
+          if (!prev) return prev;
+          const nextInwards = (prev.inwards || (prev.inward ? [prev.inward] : [])).map((r: any) => ids.includes(r.id) ? { ...r, ...patch } : r);
+          return {
+            ...prev,
+            inwards: nextInwards,
+            inward: prev.inward && ids.includes(prev.inward.id) ? { ...prev.inward, ...patch } : prev.inward,
+          };
+        });
+      }
+      fetchPipeline();
+    } catch (err: any) {
+      console.error('Failed to update inward group:', err);
+      alert('Failed to update: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddInwardPart = async (groupRows: any[]) => {
+    const first = groupRows[0];
+    if (!first) return;
+    const newId = crypto.randomUUID();
+
+    // Generate unique inward_no so it never violates the cnc_inwards_inward_no_key constraint
+    let newInwardNo = `INW-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const candidate = `INW-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const { data } = await supabase.from('cnc_inwards').select('id').eq('inward_no', candidate).maybeSingle();
+      if (!data) { newInwardNo = candidate; break; }
+    }
+
+    const newRow: any = {
+      id: newId,
+      inward_no: newInwardNo,
+      category: first.category || 'GOODS PURCHASE',
+      party_name: first.party_name || '',
+      inward_date: first.inward_date || new Date().toISOString().split('T')[0],
+      reference_no: first.reference_no || '',
+      product_name: first.product_name || '',
+      project_name: first.project_name || '',
+      sales_order_ref: first.sales_order_ref || '',
+      contact_person: first.contact_person || '',
+      phone: first.phone || '',
+      email: first.email || '',
+      part_name: '',
+      part_number: '',
+      quantity: 1,
+      price: 0,
+      discount_percent: 0,
+      gst_percent: 0,
+      total_amount: 0,
+      remarks: '',
+      status: first.status || 'Pending',
+      attachments: Array.isArray(first.attachments) ? first.attachments : [],
+      petty_cash: !!first.petty_cash,
+      paid_by: first.paid_by || null,
+      petty_amount: null,
+      petty_date: first.petty_date || null,
+    };
+
+    setLoading(true);
+    try {
+      let insErr = (await supabase.from('cnc_inwards').insert([newRow])).error;
+      if (insErr && /petty_date/.test(insErr.message)) {
+        const { petty_date, ...rest } = newRow;
+        insErr = (await supabase.from('cnc_inwards').insert([rest])).error;
+      }
+      if (insErr) throw insErr;
+      setViewModalData((prev: any) => {
+        if (!prev) return prev;
+        const currentList = Array.isArray(prev.inwards) && prev.inwards.length
+          ? prev.inwards
+          : (prev.inward ? [prev.inward] : []);
+        return {
+          ...prev,
+          inwards: [...currentList, newRow],
+        };
+      });
+      fetchPipeline();
+    } catch (err: any) {
+      alert('Failed to add part: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteInwardPart = async (rowId: string, partDescription: string, groupRows: any[]) => {
+    if (groupRows.length <= 1) {
+      await deleteInwardRows([rowId], `this inward (${partDescription})`);
+      return;
+    }
+    if (!window.confirm(`Delete part line "${partDescription}"?`)) return;
+    setLoading(true);
+    try {
+      const { error } = await supabase.from('cnc_inwards').delete().eq('id', rowId);
+      if (error) throw error;
+      setViewModalData((prev: any) => {
+        if (!prev) return prev;
+        const currentList = Array.isArray(prev.inwards) && prev.inwards.length
+          ? prev.inwards
+          : (prev.inward ? [prev.inward] : []);
+        const nextList = currentList.filter((r: any) => String(r.id) !== String(rowId));
+        return {
+          ...prev,
+          inwards: nextList,
+          inward: prev.inward && String(prev.inward.id) === String(rowId) ? (nextList[0] || null) : prev.inward,
+        };
+      });
+      fetchPipeline();
+    } catch (err: any) {
+      alert('Failed to delete part line: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleItemAction = async (order: any, itemIndex: number, action: 'inward' | 'unavailable') => {
@@ -2878,6 +3705,8 @@ export function SalesPipelinePage() {
 
   const [knownCompanies, setKnownCompanies] = useState<any[]>([]);
   const [customerList, setCustomerList] = useState<any[]>([]);
+  const [deliveriesList, setDeliveriesList] = useState<any[]>([]);
+  const [invoicesList, setInvoicesList] = useState<any[]>([]);
 
   useEffect(() => {
     async function fetchCustomers() {
@@ -2888,62 +3717,207 @@ export function SalesPipelinePage() {
   }, []);
 
   const allKnownCompanies = useMemo(() => {
-    const map = new Map<string, { company: string; contact_person?: string; phone?: string; email?: string; city?: string; gst?: string }>();
+    const map = new Map<string, { company: string; contact_person?: string; phone?: string; email?: string; city?: string; address?: string; gst?: string; gstin?: string; id?: string }>();
+
+    const updateMap = (key: string, name: string, data: { contact_person?: string; phone?: string; email?: string; city?: string; address?: string; gst?: string; id?: string }) => {
+      const existing = map.get(key);
+      const addrCandidates = [data.address, data.city, existing?.address, existing?.city].filter(Boolean).map((s: any) => String(s).trim());
+      const bestAddr = addrCandidates.sort((a, b) => b.length - a.length)[0] || '';
+      const bestCity = data.city || existing?.city || '';
+      const bestGst = data.gst || existing?.gst || existing?.gstin || '';
+      const bestPhone = data.phone || existing?.phone || '';
+      const bestContact = data.contact_person || existing?.contact_person || '';
+      const bestEmail = data.email || existing?.email || '';
+      const bestId = data.id || existing?.id || '';
+
+      map.set(key, {
+        company: existing?.company || name,
+        contact_person: bestContact,
+        phone: bestPhone,
+        email: bestEmail,
+        city: bestCity,
+        address: bestAddr,
+        gst: bestGst,
+        gstin: bestGst,
+        id: bestId,
+      });
+    };
+
     (knownCompanies || []).forEach((c: any) => {
       const name = c.company?.trim();
       if (!name) return;
-      const key = name.toLowerCase();
-      const existing = map.get(key);
-      map.set(key, {
-        company: name,
-        contact_person: c.contact_person || existing?.contact_person || '',
-        phone: c.phone || existing?.phone || '',
-        email: c.email || existing?.email || '',
-        city: c.city || existing?.city || '',
-        gst: c.gst || existing?.gst || ''
+      updateMap(name.toLowerCase(), name, {
+        contact_person: c.contact_person,
+        phone: c.phone,
+        email: c.email,
+        city: c.city,
+        address: c.address || c.city,
+        gst: c.gst,
+        id: c.id,
       });
     });
+
     (customerList || []).forEach((c: any) => {
       const name = c.name?.trim();
       if (!name) return;
-      const key = name.toLowerCase();
-      const existing = map.get(key);
-      map.set(key, {
-        company: name,
-        contact_person: existing?.contact_person || c.contact || '',
-        phone: existing?.phone || c.phone || '',
-        email: existing?.email || c.email || '',
-        city: existing?.city || c.city || '',
-        gst: existing?.gst || c.gst || c.gstin || c.gst_number || ''
+      const addr = c.address || c.billing_address || c.city || '';
+      const gstVal = c.gst || c.gstin || c.gst_number || (c as any).gst_no || '';
+      updateMap(name.toLowerCase(), name, {
+        contact_person: c.contact,
+        phone: c.phone,
+        email: c.email,
+        city: c.city,
+        address: addr,
+        gst: gstVal,
+        id: c.id,
       });
     });
-    // Active suppliers are valid inward companies too (purchase source). They
-    // merge here so every company/supplier picker in the pipeline offers them.
+
     (supplierDirectory || []).forEach((s: any) => {
       const name = String(s.name || '').trim();
-      if (!name || map.has(name.toLowerCase())) return;
-      map.set(name.toLowerCase(), { company: name, contact_person: '', phone: '', email: '', city: '', gst: '' });
+      if (!name) return;
+      const addr = s.address || s.city || '';
+      const gstVal = s.gst_number || s.gst || '';
+      updateMap(name.toLowerCase(), name, {
+        contact_person: s.contact_person,
+        phone: s.phone,
+        email: s.email,
+        city: s.city,
+        address: addr,
+        gst: gstVal,
+        id: s.code || s.id,
+      });
     });
-    // Fallback: customers already visible on this user's own board cards, so the
-    // company pickers keep working when the master tables are permission-gated
-    // (customers need All Companies view, suppliers need Suppliers view).
-    // Only stages the user may see contribute names — nothing leaks across.
+
+    (deliveriesList || []).forEach((d: any) => {
+      const name = String(d.party_name || d.customer_name || '').trim();
+      if (!name) return;
+      const addr = d.party_address || d.billing_address || '';
+      const gstVal = d.party_gstin || d.customer_gstin || '';
+      updateMap(name.toLowerCase(), name, {
+        phone: d.phone,
+        address: addr,
+        gst: gstVal,
+        id: d.customer_code,
+      });
+    });
+
+    (invoicesList || []).forEach((inv: any) => {
+      const name = String(inv.customer_name || '').trim();
+      if (!name) return;
+      const addr = inv.customer_address || inv.billing_address || '';
+      const gstVal = inv.customer_gstin || inv.gst || '';
+      updateMap(name.toLowerCase(), name, {
+        address: addr,
+        gst: gstVal,
+      });
+    });
+
     (cards || []).forEach((c: any) => {
       if (!canView(STAGE_MODULE[c.stage] ?? 'sales-pipeline')) return;
       const name = String(c.customer || '').trim();
-      if (!name || map.has(name.toLowerCase())) return;
+      if (!name) return;
       const r = c.raw ?? {};
-      map.set(name.toLowerCase(), {
-        company: name,
+      const addr = r.billing_address || r.party_address || r.address || r.city || '';
+      const gstVal = r.customer_gstin || r.party_gstin || r.gst || r.gstin || '';
+      updateMap(name.toLowerCase(), name, {
         contact_person: String(r.contact_person || ''),
         phone: String(r.phone || ''),
         email: String(r.email || ''),
         city: String(r.city || ''),
-        gst: String(r.gst || r.gstin || '')
+        address: addr,
+        gst: gstVal,
+        id: String(r.customer_code || r.party_code || ''),
       });
     });
+
     return Array.from(map.values()).sort((a, b) => a.company.localeCompare(b.company));
-  }, [customerList, knownCompanies, supplierDirectory, cards, canView]);
+  }, [customerList, knownCompanies, supplierDirectory, deliveriesList, invoicesList, cards, canView]);
+
+  const lookupCompanyDetails = useCallback((name: string) => {
+    const rawName = String(name || '').trim();
+    if (!rawName) return null;
+    const norm = rawName.toLowerCase();
+
+    const kMatch = (allKnownCompanies || []).find((c: any) =>
+      String(c.company || '').trim().toLowerCase() === norm
+    );
+    const cMatch = (customerList || []).find((c: any) =>
+      String(c.name || '').trim().toLowerCase() === norm
+    );
+    const lMatch = (rawLeadsList || []).find((l: any) =>
+      String(l.customer || '').trim().toLowerCase() === norm && (l.city || l.address || l.gst)
+    );
+    const dMatch = (deliveriesList || []).find((d: any) =>
+      (String(d.party_name || d.customer_name || '').trim().toLowerCase() === norm) &&
+      (d.party_address || d.billing_address || d.party_gstin || d.customer_gstin)
+    );
+    const iMatch = (invoicesList || []).find((inv: any) =>
+      (String(inv.customer_name || '').trim().toLowerCase() === norm) &&
+      (inv.customer_address || inv.billing_address || inv.customer_gstin || inv.gst)
+    );
+    const sMatch = (supplierDirectory || []).find((s: any) =>
+      String(s.name || '').trim().toLowerCase() === norm
+    );
+    const cardMatch = (cards || []).find((cd: any) => {
+      if (String(cd.customer || '').trim().toLowerCase() !== norm) return false;
+      const r = cd.raw || {};
+      return Boolean(r.billing_address || r.party_address || r.address || r.city || r.customer_gstin || r.party_gstin || r.gst);
+    });
+    const cardRaw = cardMatch?.raw || {};
+
+    const addressCandidates = [
+      cMatch?.address, cMatch?.billing_address, cMatch?.city,
+      kMatch?.address, kMatch?.city,
+      dMatch?.party_address, dMatch?.billing_address,
+      iMatch?.customer_address, iMatch?.billing_address,
+      cardRaw?.billing_address, cardRaw?.party_address, cardRaw?.address, cardRaw?.city,
+      lMatch?.address, lMatch?.city,
+      sMatch?.address, sMatch?.city
+    ].filter(Boolean).map(s => String(s).trim()).filter(Boolean);
+
+    const address = addressCandidates.sort((a, b) => b.length - a.length)[0] || '';
+
+    const gstin = String(
+      cMatch?.gst || cMatch?.gstin || cMatch?.gst_number || (cMatch as any)?.gst_no ||
+      kMatch?.gst || (kMatch as any)?.gstin ||
+      dMatch?.party_gstin || dMatch?.customer_gstin ||
+      iMatch?.customer_gstin || iMatch?.gst ||
+      cardRaw?.party_gstin || cardRaw?.customer_gstin || cardRaw?.gst || cardRaw?.gstin ||
+      lMatch?.gst ||
+      sMatch?.gst_number || sMatch?.gst || ''
+    ).trim();
+
+    const phone = String(
+      cMatch?.phone ||
+      kMatch?.phone ||
+      cardRaw?.phone ||
+      dMatch?.phone ||
+      lMatch?.phone ||
+      sMatch?.phone || ''
+    ).trim();
+
+    const partyCode = String(
+      cMatch?.id ||
+      (kMatch as any)?.id ||
+      dMatch?.customer_code ||
+      cardRaw?.customer_code || cardRaw?.party_code ||
+      sMatch?.code || sMatch?.id || ''
+    ).trim();
+
+    const cityCandidates = [
+      cMatch?.city,
+      kMatch?.city,
+      cardRaw?.city,
+      lMatch?.city,
+      sMatch?.city,
+      (dMatch as any)?.place_of_supply,
+      (iMatch as any)?.place_of_supply,
+    ].filter(Boolean).map(s => String(s).trim()).filter(Boolean);
+    const city = cityCandidates[0] || '';
+
+    return { address, gstin, phone, partyCode, city };
+  }, [allKnownCompanies, customerList, rawLeadsList, deliveriesList, invoicesList, supplierDirectory, cards]);
 
   useEffect(() => {
     const fromCards = cards.map(c => c.customer);
@@ -3024,6 +3998,11 @@ export function SalesPipelinePage() {
   const fetchPipeline = async () => {
     setLoading(true);
     try {
+    // Fetch all customers for comprehensive company lookup
+    const { data: custData, error: custErr } = await supabase.from('cnc_customers').select('*');
+    if (custErr) console.warn("Error fetching customers in fetchPipeline:", custErr);
+    if (custData && custData.length > 0) setCustomerList(custData);
+
     // Fetch all leads to build a lookup map for Unique Numbers
     const { data: allLeads, error: leadsErr } = await supabase.from('cnc_enquiries').select('id, lead_no, enquiry_no, status, pipeline_stage, customer, part_name, quantity, estimated_value, expected_date, received_date, created_at, contact_person, phone, email, enquiring_for, gst, city');
     if (leadsErr) console.error("Error fetching leads:", leadsErr);
@@ -3109,7 +4088,7 @@ export function SalesPipelinePage() {
       // Strip the order-time stamp suffix (e.g. 1010-28Sep26-0994PM -> 1010) so
       // repeat inwards for the same company + unique number land on one card.
       const groups = new Map<string, any[]>();
-      inwards.filter(i => !String(i.category || '').trim().toUpperCase().startsWith('EXPENSE')).forEach(i => {
+      inwards.filter(i => isKanbanInwardCategory(i.category)).forEach(i => {
         const key = baseUniqueNo(orderMap.get(i.sales_order_ref) || i.project_name || i.inward_no || i.id);
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key)!.push(i);
@@ -3143,11 +4122,15 @@ export function SalesPipelinePage() {
     const { data: dcs, error: dcErr } = await supabase.from('cnc_deliveries').select('*');
     if (dcErr) console.warn("Error fetching deliveries:", dcErr);
     let effectiveDcs: any[] = dcs && dcs.length > 0 ? dcs : [];
+    if (effectiveDcs) setDeliveriesList(effectiveDcs);
 
     let invoicesData: any[] = [];
     const { data: invs, error: invErr } = await supabase.from('cnc_invoices').select('*');
     if (invErr) console.error("Error fetching invoices:", invErr);
-    else if (invs && invs.length > 0) invoicesData = invs;
+    else if (invs && invs.length > 0) {
+      invoicesData = invs;
+      setInvoicesList(invs);
+    }
     if (fgs) {
       // Same sales order = one card (like inward): group sibling FG rows so a
       // multi-product approval shows once with a per-product breakdown.
@@ -3350,7 +4333,7 @@ export function SalesPipelinePage() {
     // it is listed under the company's History instead.
     // One card per order: once every product of a sales order has been inwarded, its Sales Order card
     // leaves the board (the Inward card carries it on). If the inward is deleted it comes back.
-    const liveInwards = (inwards || []).filter((i: any) => !String(i.category || '').trim().toUpperCase().startsWith('EXPENSE'));
+    const liveInwards = (inwards || []).filter((i: any) => isKanbanInwardCategory(i.category));
     const inwardSoRefs = new Set(liveInwards.map((i: any) => String(i.sales_order_ref || '').trim().toLowerCase()).filter(Boolean));
     const inwardBases = new Set(liveInwards.map((i: any) => baseUniqueNo(i.project_name || '')).filter(Boolean));
     const inwardNames = new Set(liveInwards.flatMap((i: any) => [i.product_name, i.part_name]).map((n: any) => getProductBaseName(String(n || '')).toLowerCase()).filter(Boolean));
@@ -4098,14 +5081,15 @@ export function SalesPipelinePage() {
       const soRefNo = card.raw.sales_order || card.raw.wo_no || '';
       const linkedSo: any = (salesOrdersList || []).find((o: any) => String(o.order_no || '') !== '' && String(o.order_no) === String(soRefNo || '')) || {};
       const customerPo = String((card.raw as any)?.customer_po_no || linkedSo.customer_po_no || '').trim();
+      const cardDetails = lookupCompanyDetails(cardCust);
       const dcInitForm = {
         dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
         date: new Date().toISOString().split('T')[0], partyName: cardCust,
-        partyAddress: cmatch.city || kcmatch.city || '',
-        partyGstin: cmatch.gst || cmatch.gstin || kcmatch.gst || '',
-        partyCode: cmatch.id || '',
+        partyAddress: cardDetails?.address || cmatch.address || cmatch.billing_address || cmatch.city || kcmatch.address || kcmatch.city || '',
+        partyGstin: cardDetails?.gstin || cmatch.gst || cmatch.gstin || kcmatch.gst || '',
+        partyCode: cardDetails?.partyCode || cmatch.id || '',
         ewayBill: '', poNumber: customerPo, salesOrderNo: soRefNo, placeOfSupply: '', packaging: '',
-        enquiryNo: baseUniqueNo(card.refNo || ''), vehicleNo: '', phone: cmatch.phone || kcmatch.phone || '',
+        enquiryNo: baseUniqueNo(card.refNo || ''), vehicleNo: '', phone: cardDetails?.phone || cmatch.phone || kcmatch.phone || '',
         category: '', process: '',
         receiverName: '', senderName: '', custSignature: null, authSignature: null,
       };
@@ -4323,8 +5307,7 @@ export function SalesPipelinePage() {
 
   // Inwards of these categories flow to Production as Draft work orders
   // (released manually there). 'NEW PROJECT' is the legacy label of NEW PART.
-  const PRODUCTION_CATEGORIES = ['CUSTOMER DC', 'DC', 'NO DC', 'NEW PART', 'NEW PROJECT'];
-  const isProductionCategory = (c: any) => PRODUCTION_CATEGORIES.includes(String(c || '').trim().toUpperCase());
+  const isProductionCategory = (c: any) => isKanbanInwardCategory(c);
 
   const createDraftWorkOrdersForInwards = async (entries: { inward: any; qty: number; customer: string }[]) => {
     const eligible = entries.filter(e => isProductionCategory(e.inward.category) && (Number(e.qty) || 0) > 0);
@@ -4470,6 +5453,7 @@ export function SalesPipelinePage() {
           petty_amount: g.pettyCash && String(g.pettyAmount ?? '').trim() !== ''
             ? Math.round((Number(g.pettyAmount) || 0) * (groupTotals.get(g) ? total / (groupTotals.get(g) as number) : 1) * 100) / 100
             : null,
+          petty_date: g.pettyCash ? (g.pettyDate || g.inwardDate || inwardForm.inwardDate || todayISO()) : null,
         });
       }
       let payload: any[] = rows;
@@ -4582,7 +5566,7 @@ export function SalesPipelinePage() {
     } else { alert("Error: " + error.message); }
   };
 
-  const saveDeliveryChallan = async () => {
+  const saveDeliveryChallan = async (printAfter: boolean | unknown = false) => {
     if (!dcModalTarget || dcSaving) return;
     const f = dcForm;
     if (!String(f.dcNo || '').trim()) { alert('Enter the DC number.'); return; }
@@ -4676,14 +5660,29 @@ export function SalesPipelinePage() {
       const match = (customerList || []).find((c: any) => String(c.name || '').trim().toLowerCase() === partyName.toLowerCase());
       if (match) {
         customerId = match.id;
+        if ((!match.city && f.partyAddress) || (!match.gst && f.partyGstin) || (!match.phone && f.phone)) {
+          const updates: any = {};
+          if (!match.city && f.partyAddress) updates.city = f.partyAddress;
+          if (!match.gst && f.partyGstin) updates.gst = f.partyGstin;
+          if (!match.phone && f.phone) updates.phone = f.phone;
+          void supabase.from('cnc_customers').update(updates).eq('id', match.id);
+          setCustomerList((prev: any[]) => prev.map((c: any) => c.id === match.id ? { ...c, ...updates } : c));
+        }
       } else {
         const newId = `CUST-${Math.floor(1000 + Math.random() * 9000)}`;
-        const custPayload: any = { id: newId, name: partyName, status: 'Active' };
+        const custPayload: any = {
+          id: newId,
+          name: partyName,
+          status: 'Active',
+          city: f.partyAddress || null,
+          gst: f.partyGstin || null,
+          phone: f.phone || null,
+        };
         if (company?.id) custPayload.company_id = company.id;
         const { error: cErr } = await supabase.from('cnc_customers').insert([custPayload]);
         if (!cErr) {
           customerId = newId;
-          try { setCustomerList((prev: any[]) => [...(prev || []), { id: newId, name: partyName }]); } catch {}
+          try { setCustomerList((prev: any[]) => [...(prev || []), custPayload]); } catch {}
         }
       }
     }
@@ -4702,7 +5701,7 @@ export function SalesPipelinePage() {
       billing_address: f.partyAddress || '', customer_gstin: f.partyGstin || '',
       customer_code: f.partyCode || '', eway_bill: f.ewayBill || '', po_no: f.poNumber || '',
       place_of_supply: f.placeOfSupply || '', packaging_details: f.packaging || '',
-      enquiry_no: f.enquiryNo || '', phone: f.phone || '', category: f.category || '', process: f.process || '',
+      enquiry_no: f.enquiryNo || '', phone: f.phone || '', category: f.notes || f.category || '', remarks: f.notes || f.category || '', process: f.process || '',
       hsn: l.hsn, unit: l.unit, unit_price: l.price, total_amount: l.qty * l.price,
       receiver_name: f.receiverName || '', sender_name: f.senderName || '',
       customer_signature: f.custSignature || null, authorized_signature: f.authSignature || null,
@@ -4746,6 +5745,46 @@ export function SalesPipelinePage() {
       const { error: soUpdErr } = await supabase.from('cnc_sales_orders').update({ delivered, status }).eq('id', so.id);
       if (soUpdErr) console.error("Failed to update sales order delivery:", soUpdErr);
     }
+      // If printAfter was requested, build the DC document input and open print preview
+      if (printAfter === true) {
+        try {
+          const formatPrice = (n: number) => (n ? `Rs. ${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '');
+          const docInput = {
+            companyName: company?.company_name || 'ARGUS TECHNOLOGIES',
+            dcNo: f.dcNo,
+            dcDate: f.date,
+            ewayBill: String(f.ewayBill || ''),
+            poNumber: String(f.poNumber || ''),
+            placeOfSupply: String(f.placeOfSupply || ''),
+            customerName: f.partyName,
+            customerAddress: String(f.partyAddress || ''),
+            customerGstin: String(f.partyGstin || ''),
+            customerCode: String(f.partyCode || ''),
+            category: String(f.notes || f.category || ''),
+            packaging: String(f.packaging || ''),
+            enquiryNo: String(f.enquiryNo || ''),
+            process: String(f.process || ''),
+            transportNo: String(f.vehicleNo || ''),
+            phoneNo: String(f.phone || ''),
+            receiverName: String(f.receiverName || ''),
+            senderName: String(f.senderName || ''),
+            items: lines.map((l) => ({
+              partName: l.name,
+              hsn: l.hsn,
+              qty: l.qty ? String(l.qty) : '',
+              unit: l.unit,
+              price: formatPrice(l.price),
+              amount: formatPrice(l.qty * l.price),
+            })),
+            customerSignature: f.custSignature || null,
+            authorizedSignature: f.authSignature || null,
+          };
+          await viewDeliveryChallan(docInput as any);
+        } catch (printErr: any) {
+          console.error('Error opening DC print preview:', printErr);
+          alert(printErr?.message || 'Unable to open DC preview.');
+        }
+      }
       // The challan is saved: reset the inline form for the next one, confirm, refresh.
       const nextForm = makeDcBlankForm();
       const nextItems = makeDcBlankItems();
@@ -5082,22 +6121,39 @@ export function SalesPipelinePage() {
       if (dupe) { alert(`"${masterHit.name}" is already on line ${dupe.jj + 1}. Change the quantity there instead of adding it twice.`); return; }
       const supplier = group.partyName ?? inwardForm.partyName ?? '';
       const r = resolvePurchasePrice(masterHit, supplier);
-      items[ii] = { ...prev, productDisplay: '', productKey: masterHit.key, productName: masterHit.name, partId: masterHit.id, partCode: masterHit.code, partName: String(prev.partName || '').trim() ? prev.partName : masterHit.name, enquiryId: '', projectName: '', price: r.price, _resolvedPrice: r.price, gst: prev.gst ?? '18', discount: prev.discount ?? '0' };
+      const s = splitProductAndRef(masterHit.name);
+      items[ii] = { ...prev, originalProduct: s.original, productRef: s.reference, productDisplay: '', productKey: masterHit.key, productName: masterHit.name, partId: masterHit.id, partCode: masterHit.code, partName: String(prev.partName || '').trim() ? prev.partName : s.original, enquiryId: '', projectName: '', price: r.price, _resolvedPrice: r.price, gst: prev.gst ?? '18', discount: prev.discount ?? '0' };
     } else {
-      const leg = inwardLegacyOptions(group).find((o: any) => normStr(o.display) === normStr(v) || normStr(o.name) === normStr(v));
+      const split = splitProductAndRef(v);
+      const rawProduct = split.original || v;
+      const leg = inwardLegacyOptions(group).find((o: any) =>
+        normStr(o.display) === normStr(v) ||
+        normStr(o.name) === normStr(v) ||
+        normStr(o.name) === normStr(rawProduct) ||
+        getProductBaseName(o.name).toLowerCase() === getProductBaseName(rawProduct).toLowerCase()
+      );
       if (leg) {
         // Expense entries (free-text lines) may repeat an item; only catalogue purchases stay single-line.
         const dupe = opts?.allowFreeText ? undefined : dupeOf(`nm:${normStr(leg.name)}`);
         if (dupe) { alert(`"${leg.name}" is already on line ${dupe.jj + 1}. Change the quantity there instead of adding it twice.`); return; }
-        const patch: any = { productName: leg.name, productDisplay: leg.display || '', partName: String(prev.partName || '').trim() ? prev.partName : getProductBaseName(leg.name), quantity: String(prev.quantity || '').trim() ? prev.quantity : (Number(leg.quantity) > 0 ? String(leg.quantity) : ''), productKey: leg.key, partId: '', partCode: '', enquiryId: leg.enquiryId || '', projectName: leg.leadNo || '' };
+        const s = splitProductAndRef(leg.name);
+        const ref = split.reference || s.reference;
+        const orig = split.original || s.original;
+        const comb = combineProductAndRef(orig, ref);
+        const patch: any = { originalProduct: orig, productRef: ref, productName: comb, productDisplay: leg.display || '', partName: String(prev.partName || '').trim() ? prev.partName : orig, quantity: String(prev.quantity || '').trim() ? prev.quantity : (Number(leg.quantity) > 0 ? String(leg.quantity) : ''), productKey: leg.key, partId: '', partCode: '', enquiryId: leg.enquiryId || '', projectName: leg.leadNo || '' };
         items[ii] = { ...prev, ...patch };
+        if ((split.company || leg.customer) && !group.partyName) {
+          group.partyName = split.company || leg.customer;
+        }
       } else if (opts?.allowFreeText) {
         // Expense items are bought repeatedly (e.g. a battery on several days), so the same name may be entered again.
-        items[ii] = { ...prev, productDisplay: '', productName: v, productKey: v.trim() ? 'expense' : '', partId: '', partCode: '', enquiryId: '', projectName: v };
+        const s = splitProductAndRef(v);
+        items[ii] = { ...prev, originalProduct: s.original, productRef: s.reference, productDisplay: '', productName: v, productKey: v.trim() ? 'expense' : '', partId: '', partCode: '', enquiryId: '', projectName: v };
       } else {
         // Catalogue purchase: typed text that matches nothing stays visible so
         // the user can keep typing, but it carries no product link.
-        items[ii] = { ...prev, productDisplay: '', productName: v, productKey: '', partId: '', partCode: '', enquiryId: '', projectName: '' };
+        const s = splitProductAndRef(v);
+        items[ii] = { ...prev, originalProduct: s.original, productRef: s.reference, productDisplay: '', productName: v, productKey: '', partId: '', partCode: '', enquiryId: '', projectName: '' };
       }
     }
     group.items = items; parts[index] = group;
@@ -5530,192 +6586,430 @@ export function SalesPipelinePage() {
     }
     setDcSaveNotice(null);
   };
-  const renderDeliveryChallanEntryForm = (opts?: { onBack?: () => void; searchSlot?: ReactNode; popup?: boolean }) => (
-    <section className={`rounded-xl border shadow-sm ${tint('DC').panel}`} data-testid="dc-entry-form">
-      <div className="space-y-2.5 p-3">
-        {dcSaveNotice && (
-          <div role="status" data-testid="dc-saved-note" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
-            <span>&#10003; Delivery Challan {dcSaveNotice} saved. The list below has been refreshed.</span>
-            <button type="button" onClick={() => setDcSaveNotice(null)} className="font-bold underline hover:text-emerald-900">Dismiss</button>
-          </div>
-        )}
-        <div className="flex flex-col gap-2">
-          {/* Row 1 - party identity. Inline labels + one shared centre line, so the whole
-              block reads as a toolbar instead of five stacked label/control pairs. */}
-          <div className="flex flex-wrap items-center gap-2">
+  const renderDeliveryChallanEntryForm = (opts?: { onBack?: () => void; searchSlot?: ReactNode; popup?: boolean }) => {
+    const dcInput = 'h-6 px-1.5 py-0 text-[11px] font-medium rounded border border-[color:var(--entry-border)] bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-brand-500 shadow-none';
+    const dcLbl = 'whitespace-nowrap text-[9px] font-bold text-slate-600 uppercase tracking-tight';
+
+    const handleDcPartChange = (nm: string, idx: number) => {
+      const split = splitProductAndRef(nm);
+      const rawNm = split.original || String(nm || '');
+      const key = rawNm.trim().toLowerCase();
+      const baseNm = getProductBaseName(rawNm).trim();
+      const baseKey = baseNm.toLowerCase();
+      const targetCompany = split.company || '';
+
+      // 1. Look up in enquiryProductOptions (pipeline products from enquiries & sales orders)
+      const soOptions = enquiryProductOptions(rawLeadsList, undefined, salesOrdersList);
+      const soHit = soOptions.find((o: any) => {
+        const oName = String(o.name || '').trim().toLowerCase();
+        const oBase = getProductBaseName(o.name || '').trim().toLowerCase();
+        return (key && oName === key) || (baseKey && (oName === baseKey || oBase === baseKey));
+      });
+
+      // 2. Look up in salesOrdersList
+      const matchedOrder = (salesOrdersList || []).find((o: any) => {
+        if (soHit?.saleOrderRef && String(o.order_no || '').trim().toLowerCase() === String(soHit.saleOrderRef).trim().toLowerCase()) return true;
+        if (soHit?.saleStamp && String(o.lead_no || '').trim().toLowerCase() === String(soHit.saleStamp).trim().toLowerCase()) return true;
+        try {
+          const raw = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
+          if (Array.isArray(raw)) {
+            return raw.some((it: any) => {
+              const p = String(it.partName || it.productName || it.part_name || '').trim().toLowerCase();
+              const pBase = getProductBaseName(p).toLowerCase();
+              const stamped = attachDateTimeToProduct(p, o).toLowerCase();
+              return (key && (p === key || stamped === key)) || (baseKey && (p === baseKey || pBase === baseKey));
+            });
+          }
+        } catch {}
+        const op = String(o.part_name || o.product_name || '').trim().toLowerCase();
+        const opBase = getProductBaseName(op).toLowerCase();
+        const stamped = attachDateTimeToProduct(op, o).toLowerCase();
+        return (key && (op === key || stamped === key)) || (baseKey && (op === baseKey || opBase === baseKey));
+      });
+
+      // 3. Find order item within matchedOrder
+      let orderItem: any = null;
+      if (matchedOrder) {
+        try {
+          const raw = typeof matchedOrder.items === 'string' ? JSON.parse(matchedOrder.items) : (matchedOrder.items || []);
+          if (Array.isArray(raw)) {
+            orderItem = raw.find((it: any) => {
+              const p = String(it.partName || it.productName || it.part_name || '').trim().toLowerCase();
+              const pBase = getProductBaseName(p).toLowerCase();
+              const stamped = attachDateTimeToProduct(p, matchedOrder).toLowerCase();
+              return (key && (p === key || stamped === key)) || (baseKey && (p === baseKey || pBase === baseKey));
+            }) || (raw.length === 1 ? raw[0] : null);
+          }
+        } catch {}
+      }
+
+      // 4. Look up in rawLeadsList (enquiries)
+      const matchedLead = (rawLeadsList || []).find((l: any) => {
+        if (soHit?.enquiryId && String(l.id || '') === String(soHit.enquiryId)) return true;
+        if (soHit?.leadNo && (String(l.lead_no || '').trim().toLowerCase() === String(soHit.leadNo).trim().toLowerCase() || String(l.enquiry_no || '').trim().toLowerCase() === String(soHit.leadNo).trim().toLowerCase())) return true;
+        if (matchedOrder?.lead_no && (String(l.lead_no || '').trim().toLowerCase() === String(matchedOrder.lead_no).trim().toLowerCase() || String(l.enquiry_no || '').trim().toLowerCase() === String(matchedOrder.lead_no).trim().toLowerCase())) return true;
+        try {
+          const raw = typeof l.enquiring_for === 'string' ? JSON.parse(l.enquiring_for) : (l.enquiring_for || []);
+          if (Array.isArray(raw)) {
+            return raw.some((it: any) => {
+              const p = String(it.productName || it.product_name || it.partName || it.part_name || '').trim().toLowerCase();
+              return (key && p === key) || (baseKey && (p === baseKey || getProductBaseName(p).toLowerCase() === baseKey));
+            });
+          }
+        } catch {}
+        const lp = String(l.part_name || '').trim().toLowerCase();
+        return (key && lp === key) || (baseKey && (lp === baseKey || getProductBaseName(lp).toLowerCase() === baseKey));
+      });
+
+      // 5. Look up in partsMaster
+      const m = partsMaster.find((p: any) => {
+        const pn = String(p.part_name || '').trim().toLowerCase();
+        const pc = String(p.part_code || p.part_no || '').trim().toLowerCase();
+        return (key && (pn === key || pc === key)) || (baseKey && (pn === baseKey || pc === baseKey));
+      });
+
+      // 6. Look up in cards (Kanban / Qty tracking)
+      const matchedCard = (cards || []).find((c: any) => {
+        const cp = String(c.part || (c.raw as any)?.part_name || (c.raw as any)?.product_name || '').trim().toLowerCase();
+        const cpBase = getProductBaseName(cp).toLowerCase();
+        return (key && cp === key) || (baseKey && (cp === baseKey || cpBase === baseKey));
+      });
+
+      // 7. Look up in dcPricing
+      const l = dcPricing.lines.find((x) => {
+        const xn = x.name.trim().toLowerCase();
+        return (key && xn === key) || (baseKey && (xn === baseKey || getProductBaseName(xn).toLowerCase() === baseKey));
+      });
+
+      // 8. Resolve Line Item fields
+      const avail = matchedCard?.qtyTrack ? Math.max(0, matchedCard.qtyTrack.fgAvailable) : null;
+      const rawQty = (avail != null && avail > 0)
+        ? avail
+        : (orderItem?.quantity ?? orderItem?.qty ?? soHit?.quantity ?? matchedOrder?.quantity ?? (matchedCard ? Number(matchedCard.qty) : null));
+      const resolvedQty = rawQty != null && Number(rawQty) > 0 ? String(rawQty) : '';
+      const resolvedHsn = String(orderItem?.hsn || orderItem?.hsn_code || (m as any)?.hsn || (m as any)?.hsn_code || (matchedCard?.raw as any)?.hsn || '').trim();
+      const resolvedUnit = String(orderItem?.unit || m?.unit || (matchedCard?.raw as any)?.unit || 'Nos').trim();
+      const pCandidate = (l ? String(l.unit) : '') ||
+        (orderItem?.unitPrice ?? orderItem?.unit_price ?? orderItem?.rate ?? orderItem?.price) ||
+        (matchedOrder?.value && matchedOrder?.quantity && Number(matchedOrder.quantity) > 0 ? (Number(matchedOrder.value) / Number(matchedOrder.quantity)).toFixed(2) : '') ||
+        (m as any)?.unit_price || (m as any)?.price || (m as any)?.selling_price ||
+        (matchedCard?.value && matchedCard?.qty && Number(matchedCard.qty) > 0 ? (Number(matchedCard.value) / Number(matchedCard.qty)).toFixed(2) : '');
+      const resolvedPrice = pCandidate ? String(pCandidate) : '';
+
+      // 9. Resolve Company and Header Information
+      const targetCust = String(
+        targetCompany ||
+        soHit?.customer ||
+        matchedOrder?.customer ||
+        matchedOrder?.customer_name ||
+        matchedLead?.customer ||
+        matchedCard?.customer ||
+        ''
+      ).trim();
+
+      const details = targetCust ? lookupCompanyDetails(targetCust) : null;
+      const matchedCustObj = targetCust ? (customerList || []).find((c: any) => String(c.name || '').trim().toLowerCase() === targetCust.toLowerCase()) || {} : {};
+      const matchedKnownComp = targetCust ? (allKnownCompanies || []).find((c: any) => String(c.company || '').trim().toLowerCase() === targetCust.toLowerCase()) || {} : {};
+
+      const bestAddress = details?.address || matchedOrder?.customer_address || matchedOrder?.billing_address || matchedLead?.address || matchedCustObj.address || matchedCustObj.billing_address || matchedKnownComp.address || '';
+      const bestGstin = details?.gstin || matchedOrder?.customer_gstin || matchedOrder?.gst || matchedLead?.gst || matchedCustObj.gst || matchedCustObj.gstin || matchedKnownComp.gst || '';
+      const bestCode = details?.partyCode || matchedOrder?.customer_code || matchedCustObj.id || (matchedKnownComp as any)?.id || '';
+      const bestPhone = details?.phone || matchedOrder?.phone || matchedLead?.phone || matchedCustObj.phone || matchedKnownComp.phone || '';
+      const bestPo = String(matchedOrder?.customer_po_no || matchedOrder?.po_no || (matchedCard?.raw as any)?.customer_po_no || (matchedCard?.raw as any)?.po_no || matchedLead?.po_no || '').trim();
+      const bestSoNo = String(matchedOrder?.order_no || soHit?.saleOrderRef || (matchedCard?.raw as any)?.sales_order || '').trim();
+      const bestEnquiryNo = String(soHit?.leadNo || matchedLead?.lead_no || matchedLead?.enquiry_no || (matchedCard ? baseUniqueNo(matchedCard.refNo || '') : '') || '').trim();
+      const bestSupplyPlace = String(matchedOrder?.place_of_supply || details?.city || matchedLead?.city || matchedCustObj.city || matchedKnownComp.city || '').trim();
+      const bestProcess = String(matchedOrder?.process || (m as any)?.process || (matchedCard?.raw as any)?.process || '').trim();
+      const bestCategory = String(matchedOrder?.category || (m as any)?.category || (matchedCard?.raw as any)?.category || '').trim();
+
+      // Update line item
+      const fullDcRef = split.reference || formatFullReference(split.original || rawNm, targetCust, split.dateTime);
+      setDcItems((prev) => prev.map((x, i) => (i === idx ? {
+        ...x,
+        name: combineProductAndRef(split.original || rawNm, fullDcRef),
+        originalName: split.original || rawNm,
+        reference: fullDcRef,
+        hsn: resolvedHsn || x.hsn || '',
+        qty: (resolvedQty && (!x.qty || x.qty === '0')) ? resolvedQty : (x.qty || resolvedQty || ''),
+        avail: avail != null ? avail : x.avail,
+        unit: resolvedUnit || x.unit || 'Nos',
+        price: (resolvedPrice && (!x.price || x.price === '0' || x.price === '0.00')) ? resolvedPrice : (x.price || resolvedPrice || ''),
+      } : x)));
+
+      // Update dcForm header if we have company/order information
+      if (targetCust || bestAddress || bestGstin || bestPo || bestSoNo) {
+        setDcForm((prev: any) => ({
+          ...prev,
+          partyName: targetCust || prev.partyName || '',
+          partyAddress: bestAddress || prev.partyAddress || '',
+          partyGstin: bestGstin || prev.partyGstin || '',
+          partyCode: bestCode || prev.partyCode || '',
+          phone: bestPhone || prev.phone || '',
+          poNumber: bestPo || prev.poNumber || '',
+          salesOrderNo: bestSoNo || prev.salesOrderNo || '',
+          enquiryNo: bestEnquiryNo || prev.enquiryNo || '',
+          placeOfSupply: bestSupplyPlace || prev.placeOfSupply || '',
+          process: bestProcess || prev.process || '',
+          notes: prev.notes || bestCategory || '',
+          category: prev.category || bestCategory || '',
+        }));
+      }
+    };
+
+    const renderDcField = (label: string, children: ReactNode, required?: boolean) => (
+      <div className="inline-flex items-center gap-1 shrink-0">
+        <span className={dcLbl}>
+          {label}{required && <span className="text-red-500 ml-0.5">*</span>}
+        </span>
+        {children}
+      </div>
+    );
+
+    return (
+      <section className={`rounded-lg border shadow-sm ${tint('DC').panel} p-2 text-xs`} data-testid="dc-entry-form">
+        <div className="space-y-1.5">
+          {dcSaveNotice && (
+            <div role="status" data-testid="dc-saved-note" className="flex items-center justify-between gap-2 rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+              <span>&#10003; Delivery Challan {dcSaveNotice} saved. The list below has been refreshed.</span>
+              <button type="button" onClick={() => setDcSaveNotice(null)} className="font-bold underline hover:text-emerald-900">Dismiss</button>
+            </div>
+          )}
+
+          {/* Row 1 - identity & party */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             {opts?.onBack && (
-              <div className="flex items-center gap-1.5 shrink-0 mr-1">
+              <div className="flex items-center gap-1 shrink-0 mr-1">
                 <button 
                   type="button" 
                   onClick={opts.onBack} 
                   title="Back to Pipeline"
-                  className="p-1 hover:bg-slate-200/80 rounded-md transition-colors text-slate-600 shrink-0 cursor-pointer"
+                  className="p-0.5 hover:bg-slate-200/80 rounded transition-colors text-slate-600 shrink-0 cursor-pointer"
                 >
-                  <ArrowLeft className="w-4 h-4" />
+                  <ArrowLeft className="w-3.5 h-3.5" />
                 </button>
-                <h2 className="text-sm font-bold text-slate-800 shrink-0">Delivery Challans</h2>
-                <span className="h-5 w-px shrink-0 bg-slate-300 ml-1" aria-hidden="true" />
+                <h2 className="text-xs font-bold text-slate-800 shrink-0 whitespace-nowrap">Delivery Challans</h2>
+                <span className="h-4 w-px shrink-0 bg-slate-300 ml-0.5" aria-hidden="true" />
               </div>
             )}
-            <FormField label="DC No" required inline><input className={`${compactInput} w-[9rem]`} value={dcForm.dcNo || ''} onChange={e=>setDcForm({...dcForm, dcNo: e.target.value})} /></FormField>
-            <FormField label="Date" required inline><input type="date" className={`${compactInput} w-[10.5rem]`} value={dcForm.date || ''} onChange={e=>setDcForm({...dcForm, date: e.target.value})} /></FormField>
+            {renderDcField("DC No", <input className={`${dcInput} w-[5.75rem]`} value={dcForm.dcNo || ''} onChange={e=>setDcForm({...dcForm, dcNo: e.target.value})} />, true)}
+            {renderDcField("Date", <input type="date" className={`${dcInput} w-[6.75rem]`} value={dcForm.date || ''} onChange={e=>setDcForm({...dcForm, date: e.target.value})} />, true)}
             <CustomerAutocomplete
-              label="Company Name"
+              label="Company"
               required
               inlineLabel
               value={dcForm.partyName || ''}
-              onChange={val => setDcForm((prev: any) => ({ ...prev, partyName: val }))}
-              onSelectCustomer={(c: any) => {
-                const nm = String(c.company || '');
-                const m: any = (customerList || []).find((x: any) => String(x.name || '').trim().toLowerCase() === nm.trim().toLowerCase()) || {};
+              onChange={val => {
+                const details = lookupCompanyDetails(val);
+                const matchingOrder = (salesOrdersList || []).find((o: any) =>
+                  String(o.customer || o.customer_name || '').trim().toLowerCase() === val.trim().toLowerCase()
+                );
                 setDcForm((prev: any) => ({
-                  ...prev, partyName: nm,
-                  partyCode: m.id || '',
-                  partyAddress: m.city || c.city || '',
-                  partyGstin: m.gst || m.gstin || (c as any).gst || '',
-                  phone: m.phone || c.phone || '',
+                  ...prev,
+                  partyName: val,
+                  ...(details?.address ? { partyAddress: details.address } : {}),
+                  ...(details?.gstin ? { partyGstin: details.gstin } : {}),
+                  ...(details?.phone ? { phone: details.phone } : {}),
+                  ...(details?.partyCode ? { partyCode: details.partyCode } : {}),
+                  ...(details?.city && !prev.placeOfSupply ? { placeOfSupply: details.city } : {}),
+                  ...(matchingOrder?.customer_po_no && !prev.poNumber ? { poNumber: matchingOrder.customer_po_no } : {}),
+                  ...(matchingOrder?.order_no && !prev.salesOrderNo ? { salesOrderNo: matchingOrder.order_no } : {}),
+                  ...(matchingOrder?.process && !prev.process ? { process: matchingOrder.process } : {}),
+                }));
+              }}
+              onSelectCustomer={(c: any) => {
+                const nm = String(c.company || c.name || '');
+                const details = lookupCompanyDetails(nm);
+                const matchingOrder = (salesOrdersList || []).find((o: any) =>
+                  String(o.customer || o.customer_name || '').trim().toLowerCase() === nm.toLowerCase()
+                );
+                const bestAddress = details?.address || c.address || c.city || '';
+                const bestGstin = details?.gstin || c.gst || c.gstin || '';
+                const bestPhone = details?.phone || c.phone || '';
+                const bestCode = details?.partyCode || c.id || '';
+                const bestCity = details?.city || c.city || '';
+                setDcForm((prev: any) => ({
+                  ...prev,
+                  partyName: nm,
+                  partyCode: bestCode || prev.partyCode || '',
+                  partyAddress: bestAddress || prev.partyAddress || '',
+                  partyGstin: bestGstin || prev.partyGstin || '',
+                  phone: bestPhone || prev.phone || '',
+                  placeOfSupply: prev.placeOfSupply || bestCity || matchingOrder?.place_of_supply || '',
+                  poNumber: prev.poNumber || matchingOrder?.customer_po_no || matchingOrder?.po_no || '',
+                  salesOrderNo: prev.salesOrderNo || matchingOrder?.order_no || '',
+                  process: prev.process || matchingOrder?.process || '',
                 }));
               }}
               companies={allKnownCompanies}
-              inputClass={`${compactInput} w-[14rem]`}
-              placeholder="Type or select company..."
+              inputClass={`${dcInput} w-[9.5rem]`}
+              placeholder="Select company..."
             />
-            <FormField label="Company Address" inline><input className={`${compactInput} w-[14rem]`} value={dcForm.partyAddress || ''} onChange={e=>setDcForm({...dcForm, partyAddress: e.target.value})} /></FormField>
-            <FormField label="Company GSTIN" inline><input className={`${compactInput} w-[11rem]`} value={dcForm.partyGstin || ''} onChange={e=>setDcForm({...dcForm, partyGstin: e.target.value})} /></FormField>
+            {renderDcField("Address", <input className={`${dcInput} w-[8.5rem]`} placeholder="Company Address" value={dcForm.partyAddress || ''} onChange={e=>setDcForm({...dcForm, partyAddress: e.target.value})} />)}
+            {renderDcField("GSTIN", <input className={`${dcInput} w-[7.5rem]`} placeholder="GSTIN" value={dcForm.partyGstin || ''} onChange={e=>setDcForm({...dcForm, partyGstin: e.target.value})} />)}
+            {renderDcField("Code", <input className={`${dcInput} w-[4.5rem]`} placeholder="Code" value={dcForm.partyCode || ''} onChange={e=>setDcForm({...dcForm, partyCode: e.target.value})} />)}
+            {renderDcField("Phone", <input className={`${dcInput} w-[6rem]`} placeholder="Phone" value={dcForm.phone || ''} onChange={e=>setDcForm({...dcForm, phone: e.target.value})} />)}
           </div>
-          {/* Row 2 - dispatch references. */}
-          <div className="flex flex-wrap items-center gap-2">
-            <FormField label="Company Code" inline><input className={`${compactInput} w-[8rem]`} value={dcForm.partyCode || ''} onChange={e=>setDcForm({...dcForm, partyCode: e.target.value})} /></FormField>
-            <FormField label="E-Way Bill No" inline><input className={`${compactInput} w-[10rem]`} value={dcForm.ewayBill || ''} onChange={e=>setDcForm({...dcForm, ewayBill: e.target.value})} /></FormField>
-            <FormField label="PO Number" inline><input className={`${compactInput} w-[10rem]`} value={dcForm.poNumber || ''} onChange={e=>setDcForm({...dcForm, poNumber: e.target.value})} /></FormField>
-            <FormField label="Place of Supply" inline><input className={`${compactInput} w-[11rem]`} value={dcForm.placeOfSupply || ''} onChange={e=>setDcForm({...dcForm, placeOfSupply: e.target.value})} /></FormField>
-            <FormField label="Packaging Details" inline><input className={`${compactInput} w-[12rem]`} value={dcForm.packaging || ''} onChange={e=>setDcForm({...dcForm, packaging: e.target.value})} /></FormField>
+
+          {/* Row 2 - dispatch references & logistics */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            {renderDcField("E-Way Bill", <input className={`${dcInput} w-[7rem]`} placeholder="E-way bill" value={dcForm.ewayBill || ''} onChange={e=>setDcForm({...dcForm, ewayBill: e.target.value})} />)}
+            {renderDcField("PO No", <input className={`${dcInput} w-[6.5rem]`} placeholder="PO number" value={dcForm.poNumber || ''} onChange={e=>setDcForm({...dcForm, poNumber: e.target.value})} />)}
+            {renderDcField("Supply Place", <input className={`${dcInput} w-[7.5rem]`} placeholder="Place of supply" value={dcForm.placeOfSupply || ''} onChange={e=>setDcForm({...dcForm, placeOfSupply: e.target.value})} />)}
+            {renderDcField("Packaging", <input className={`${dcInput} w-[7.5rem]`} placeholder="Packaging details" value={dcForm.packaging || ''} onChange={e=>setDcForm({...dcForm, packaging: e.target.value})} />)}
+            {renderDcField("Vehicle No", <input className={`${dcInput} w-[6.5rem]`} placeholder="Vehicle No" value={dcForm.vehicleNo || ''} onChange={e=>setDcForm({...dcForm, vehicleNo: e.target.value})} />)}
+            {renderDcField("Notes", <input className={`${dcInput} w-[9.5rem]`} placeholder="Notes..." value={dcForm.notes ?? dcForm.category ?? ''} onChange={e=>setDcForm({...dcForm, notes: e.target.value, category: e.target.value})} />)}
+            {renderDcField("Process", <input className={`${dcInput} w-[9rem]`} list="dc-process-list" placeholder="Select process" value={dcForm.process || ''} onChange={e=>setDcForm({...dcForm, process: e.target.value})} />)}
           </div>
-          {/* Row 3 - logistics. */}
-          <div className="flex flex-wrap items-center gap-2">
-            <FormField label="Enquiry No" inline><input className={`${compactInput} w-[10rem]`} value={dcForm.enquiryNo || ''} onChange={e=>setDcForm({...dcForm, enquiryNo: e.target.value})} /></FormField>
-            <FormField label="Vehicle No" inline><input className={`${compactInput} w-[9rem]`} value={dcForm.vehicleNo || ''} onChange={e=>setDcForm({...dcForm, vehicleNo: e.target.value})} /></FormField>
-            <FormField label="Phone No" inline><input className={`${compactInput} w-[9rem]`} value={dcForm.phone || ''} onChange={e=>setDcForm({...dcForm, phone: e.target.value})} /></FormField>
-            <FormField label="Category" inline><input className={`${compactInput} w-[13rem]`} list="dc-category-list" value={dcForm.category || ''} onChange={e=>setDcForm({...dcForm, category: e.target.value})} placeholder="Select or type category" /></FormField>
-            <FormField label="Process" inline><input className={`${compactInput} w-[13rem]`} list="dc-process-list" value={dcForm.process || ''} onChange={e=>setDcForm({...dcForm, process: e.target.value})} placeholder="Select or type process" /></FormField>
-          </div>
+
           <datalist id="dc-category-list">
             {(partsMaster.some((p: any) => p.category) ? Array.from(new Set(partsMaster.map((p: any) => p.category).filter(Boolean))) : ['GOODS PURCHASE', 'SERVICE PURCHASE', 'CUSTOMER DC', 'NEW PART', 'NO DC', 'EXPENSES']).map((c: string) => <option key={c} value={c} />)}
           </datalist>
           <datalist id="dc-process-list">
             {processList.map((p: any) => <option key={p.id || p.process_code} value={`${p.process_code} — ${p.process_name}`} />)}
           </datalist>
-          <div>
-            <div className="grid grid-cols-[auto_minmax(0,1.5fr)_5rem_4.5rem_4rem_5.5rem_6rem] gap-2 items-center mb-1 px-1">
-              <span></span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Part Name</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">HSN</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Qty</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Unit</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Price</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Amount</span>
-            </div>
+
+          {/* Row 3 - parts list */}
+          <div className="space-y-1">
             {dcItems.map((it, idx) => {
               const amt = (Number(it.qty) || 0) * (Number(it.price) || 0);
               return (
-                <div key={idx} className={`grid grid-cols-[auto_minmax(0,1.5fr)_5rem_4.5rem_4rem_5.5rem_6rem] gap-2 items-center rounded-lg border px-2 py-1.5 mb-1.5 ${it.selected ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200'}`}>
+                <div key={idx} className="flex flex-wrap items-center gap-1.5 bg-white/70 rounded border border-slate-200/90 px-1.5 py-0.5">
                   <input
                     type="checkbox"
                     checked={it.selected}
                     onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, selected: e.target.checked } : x)))}
-                    className="h-4 w-4 accent-orange-600"
+                    className="h-3.5 w-3.5 accent-brand-600 rounded"
                     aria-label={`Select ${it.name || 'product'}`}
                   />
-                  <div>
-                    <input
-                      className={compactCell} list="dc-product-list" placeholder="Part name" value={it.name || ''}
-                      onChange={(e) => {
-                        const nm = e.target.value;
-                        const key = nm.trim().toLowerCase();
-                        const m = partsMaster.find((p: any) => String(p.part_name || '').trim().toLowerCase() === key);
-                        const l = dcPricing.lines.find((x) => x.name.trim().toLowerCase() === key);
-                        setDcItems((prev) => prev.map((x, i) => (i === idx ? {
-                          ...x, name: nm,
-                          hsn: x.hsn || (m as any)?.hsn || '',
-                          unit: x.unit || m?.unit || 'Nos',
-                          price: x.price || (l ? String(l.unit) : x.price),
-                        } : x)));
-                      }}
-                    />
-                  </div>
-                  <input className={compactCell} placeholder="HSN" value={it.hsn || ''} onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, hsn: e.target.value } : x)))} />
-                  <div>
+                  <span className={dcLbl}>Original:</span>
+                  <input
+                    className={`${dcInput} w-[8.5rem] sm:w-[9.5rem]`}
+                    list="dc-product-list"
+                    placeholder="Product name"
+                    value={it.originalName ?? (splitProductAndRef(it.name || '', allKnownCompanies.map((c: any) => c.company || c.name), dcForm.customer).original || it.name || '')}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const split = splitProductAndRef(val, allKnownCompanies.map((c: any) => c.company || c.name), dcForm.customer);
+                      const orig = split.original;
+                      const ref = split.reference || formatFullReference(orig, dcForm.customer, split.dateTime);
+                      const combined = combineProductAndRef(orig, ref);
+                      setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, originalName: orig, reference: ref, name: combined } : x)));
+                      handleDcPartChange(val, idx);
+                    }}
+                  />
+                  <span className={dcLbl}>Reference:</span>
+                  <input
+                    className={`${dcInput} flex-1 min-w-[13rem] sm:min-w-[16rem]`}
+                    placeholder="Product - Company - Date/Time"
+                    title={it.reference || (splitProductAndRef(it.name || '', allKnownCompanies.map((c: any) => c.company || c.name), dcForm.customer).reference || '')}
+                    value={it.reference ?? (splitProductAndRef(it.name || '', allKnownCompanies.map((c: any) => c.company || c.name), dcForm.customer).reference || '')}
+                    onChange={(e) => {
+                      const ref = e.target.value;
+                      const orig = it.originalName ?? (splitProductAndRef(it.name || '').original || it.name || '');
+                      const combined = combineProductAndRef(orig, ref);
+                      setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, reference: ref, name: combined } : x)));
+                    }}
+                  />
+                  <span className={dcLbl}>HSN:</span>
+                  <input className={`${dcInput} w-[4.5rem]`} placeholder="HSN" value={it.hsn || ''} onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, hsn: e.target.value } : x)))} />
+                  <span className={dcLbl}>Qty:</span>
+                  <div className="inline-flex items-center gap-1">
                     <input
                       type="number" min={0}
+                      placeholder="Qty"
                       disabled={!it.selected}
                       value={it.qty}
                       onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))}
-                      className={`${compactCell} tabular-nums disabled:bg-slate-100`}
+                      className={`${dcInput} w-[3.5rem] tabular-nums disabled:bg-slate-100`}
                     />
-                    {it.avail != null && <p className="text-[10px] font-semibold text-violet-700 tabular-nums mt-0.5">Available: {it.avail}</p>}
+                    {it.avail != null && <span className="text-[9px] font-semibold text-violet-700 whitespace-nowrap">Avail:{it.avail}</span>}
                   </div>
-                  <input className={compactCell} placeholder="Nos" value={it.unit || ''} onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, unit: e.target.value } : x)))} />
-                  <input type="number" min={0} className={compactCell} placeholder="0.00" value={it.price || ''} onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, price: e.target.value } : x)))} />
-                  <input className={`${compactCell} bg-white font-bold tabular-nums`} value={amt ? amt.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : 0} disabled />
+                  <span className={dcLbl}>Unit:</span>
+                  <input className={`${dcInput} w-[3rem]`} placeholder="Nos" value={it.unit || ''} onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, unit: e.target.value } : x)))} />
+                  <span className={dcLbl}>Price:</span>
+                  <input type="number" min={0} className={`${dcInput} w-[4.25rem]`} placeholder="0.00" value={it.price || ''} onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, price: e.target.value } : x)))} />
+                  <span className="text-[11px] font-bold text-slate-700 tabular-nums min-w-[3.5rem] text-right">
+                    ₹{amt ? amt.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : 0}
+                  </span>
+                  {dcItems.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setDcItems(prev => prev.filter((_, i) => i !== idx))}
+                      className="text-slate-400 hover:text-rose-600 px-0.5 font-bold text-xs"
+                      title="Remove part line"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
               );
             })}
-            <datalist id="dc-product-list">
-              {(() => {
-                // Sales-order products carry their company and date/time as the second line; parts-master names follow.
-                const so = enquiryProductOptions(rawLeadsList, undefined, salesOrdersList).filter((o: any) => o.saleOrderRef || o.saleStamp);
-                const label = new Map<string, string>(so.map((o: any) => [o.name, [o.customer, o.saleLabel].filter(Boolean).join(' · ')]));
-                return Array.from(new Set([...so.map((o: any) => o.name), ...partsMaster.map((p: any) => p.part_name)].filter(Boolean)))
-                  .map((n: string) => <option key={n} value={n} label={label.get(n) || undefined} />);
-              })()}
-            </datalist>
-            <button type="button" onClick={() => setDcItems((prev) => [...prev, { name: '', avail: null, qty: '', selected: true, hsn: '', unit: 'Nos', price: '' }])} className="mt-1 flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] font-semibold text-brand-600 hover:text-brand-700">
-              <span className="text-sm">+</span> Add Part
-            </button>
-            {dcPricing.loading ? (
-              <p className="text-[11px] text-slate-400 mt-2">Resolving approved price…</p>
-            ) : dcPricing.lines.length > 0 && (
-              <div className="text-xs bg-brand-50/60 border border-brand-100 rounded-lg px-3 py-1.5 mt-2 space-y-0.5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-brand-700">Approved price (costing sheet)</p>
-                {dcPricing.lines.map((l) => (
-                  <p key={l.name} className="font-semibold text-slate-700 tabular-nums">
-                    {l.name} — {formatINR(l.unit)}/pc <span className="font-normal text-slate-500">({l.sheetRef})</span>
-                  </p>
-                ))}
+          </div>
+
+          <datalist id="dc-product-list">
+            {(() => {
+              const so = enquiryProductOptions(rawLeadsList, undefined, salesOrdersList);
+              const soOptions = so.map((o: any) => {
+                const s = splitProductAndRef(o.name);
+                const desc = [s.original, o.customer, s.reference || o.saleLabel].filter(Boolean).join(' · ');
+                return <option key={o.key || o.name} value={desc} label={desc} />;
+              });
+              const partOptions = partsMaster.map((p: any) => (
+                <option key={p.id || p.part_name} value={p.part_name} label={[p.part_name, p.part_code].filter(Boolean).join(' · ')} />
+              ));
+              return [...soOptions, ...partOptions];
+            })()}
+          </datalist>
+
+          {/* Row 4 - Signatures + Actions on one clean line */}
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-slate-200/50 pt-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <button
+                type="button"
+                onClick={() => setDcItems((prev) => [...prev, { name: '', originalName: '', reference: '', avail: null, qty: '', selected: true, hsn: '', unit: 'Nos', price: '' }])}
+                className="inline-flex items-center gap-0.5 rounded border border-brand-200 bg-brand-50/70 px-1.5 py-0.5 text-[10px] font-bold text-brand-600 hover:bg-brand-100 hover:text-brand-800 transition-colors shrink-0"
+              >
+                <span className="text-xs leading-none">+</span> Add Part
+              </button>
+              <span className="h-3.5 w-px bg-slate-300" aria-hidden="true" />
+              {renderDcField("Receiver", <input className={`${dcInput} w-[6rem]`} placeholder="Name" value={dcForm.receiverName || ''} onChange={e=>setDcForm({...dcForm, receiverName: e.target.value})} />)}
+              <div className="inline-flex items-center gap-1 shrink-0">
+                <span className={dcLbl}>Cust Sign:</span>
+                <div className="w-28">
+                  <SignaturePad height={24} compact value={dcForm.custSignature || null} onChange={(v) => setDcForm((prev: any) => ({ ...prev, custSignature: v }))} />
+                </div>
               </div>
-            )}
-          </div>
-          {/* Sign-off row. The pads cannot shrink to input height, so they keep their own
-              compact line with the names set inline beside them. */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 items-start">
-            <FormField label="Receiver Name" inline><input className={`${compactInput} w-[8rem]`} value={dcForm.receiverName || ''} onChange={e=>setDcForm({...dcForm, receiverName: e.target.value})} /></FormField>
-            <div>
-              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Customer Signature</span>
-              <SignaturePad height={56} value={dcForm.custSignature || null} onChange={(v) => setDcForm((prev: any) => ({ ...prev, custSignature: v }))} />
+              {renderDcField("Sender", <input className={`${dcInput} w-[6rem]`} placeholder="Name" value={dcForm.senderName || ''} onChange={e=>setDcForm({...dcForm, senderName: e.target.value})} />)}
+              <div className="inline-flex items-center gap-1 shrink-0">
+                <span className={dcLbl}>Auth Sign:</span>
+                <div className="w-28">
+                  <SignaturePad height={24} compact value={dcForm.authSignature || null} onChange={(v) => setDcForm((prev: any) => ({ ...prev, authSignature: v }))} />
+                </div>
+              </div>
             </div>
-            <FormField label="Sender Name" inline><input className={`${compactInput} w-[8rem]`} value={dcForm.senderName || ''} onChange={e=>setDcForm({...dcForm, senderName: e.target.value})} /></FormField>
-            <div>
-              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Authorized Signature</span>
-              <SignaturePad height={56} value={dcForm.authSignature || null} onChange={(v) => setDcForm((prev: any) => ({ ...prev, authSignature: v }))} />
+
+            <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+              {opts?.searchSlot && (
+                <div className="flex shrink-0 items-center scale-90 origin-right">
+                  {opts.searchSlot}
+                </div>
+              )}
+              {!opts?.popup && (
+                <>
+                  <button type="button" onClick={clearDcForm} className="h-6 px-2 text-[11px] font-medium rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors">Clear / Reset</button>
+                  <button type="button" onClick={() => void saveDeliveryChallan(true)} disabled={dcSaving} className="h-6 px-2.5 text-[11px] font-bold rounded text-white shadow-sm transition-colors bg-purple-700 hover:bg-purple-800 flex items-center gap-1 shrink-0" title="Save Delivery Challan and open print preview">
+                    <Printer size={12} />
+                    Save & Print
+                  </button>
+                  <button type="button" onClick={() => void saveDeliveryChallan(false)} disabled={dcSaving} className={`h-6 px-3 text-[11px] font-bold rounded text-white shadow-sm transition-colors ${MODULE_THEMES.DC.btnPrimary} ${dcSaving ? 'opacity-60 cursor-not-allowed' : ''}`}>{dcSaving ? 'Saving...' : 'Save'}</button>
+                </>
+              )}
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-2.5">
-          {opts?.searchSlot && (
-            <div className="flex shrink-0 items-center">
-              {opts.searchSlot}
-            </div>
-          )}
-          {!opts?.popup && (
-            <>
-          <Button variant="secondary" size="sm" onClick={clearDcForm}>Clear / Reset</Button>
-          <Button size="sm" onClick={saveDeliveryChallan} disabled={dcSaving} className={MODULE_THEMES.DC.btnPrimary}>{dcSaving ? 'Saving...' : 'Save'}</Button>
-            </>
-          )}
-        </div>
-      </div>
-    </section>
-  );
+      </section>
+    );
+  };
  
   // -- New Inward Entry form ---------------------------------------------
   // This used to be the body of the "Create Inward Entry" popup. InwardModule renders it
@@ -5828,13 +7122,20 @@ export function SalesPipelinePage() {
                   {(
                     <div className="flex shrink-0 items-center gap-1.5">
                       <label className="inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-700" title="A member paid this from their own pocket; it is reimbursed at month end">
-                        <input type="checkbox" className="h-3.5 w-3.5" checked={!!group.pettyCash} onChange={e => setGroup({ pettyCash: e.target.checked })} />
+                        <input type="checkbox" className="h-3.5 w-3.5" checked={!!group.pettyCash} onChange={e => {
+                          const checked = e.target.checked;
+                          setGroup({
+                            pettyCash: checked,
+                            pettyDate: checked ? (group.pettyDate || group.inwardDate || inwardForm.inwardDate || todayISO()) : group.pettyDate,
+                          });
+                        }} />
                         Petty cash
                       </label>
                       {group.pettyCash && (
                         <>
                           <MemberSelect className={`${compactInput} w-[11rem]`} placeholder="Paid by (member) *" options={memberNames} value={group.paidBy || ''} onChange={v => setGroup({ paidBy: v })} />
                           <input type="number" min={0} className={`${compactInput} w-[8rem]`} placeholder="Amount paid" title="How much the member paid (leave empty for the full amount)" value={group.pettyAmount ?? ''} onChange={e => setGroup({ pettyAmount: e.target.value })} />
+                          <input type="date" className={`${compactInput} w-[8.5rem]`} title="Petty cash date" value={group.pettyDate || group.inwardDate || inwardForm.inwardDate || todayISO()} onChange={e => setGroup({ pettyDate: e.target.value })} />
                         </>
                       )}
                     </div>
@@ -5844,11 +7145,21 @@ export function SalesPipelinePage() {
                 {(group.items || []).map((item: any, ii: number) => (
                   <div key={ii} className={opts?.popup ? 'mt-1.5 grid grid-cols-2 xl:grid-cols-4 items-center gap-x-2 gap-y-1.5 border-t border-slate-200 pt-1.5 pb-1' : 'mt-1.5 flex flex-nowrap items-center gap-1.5 border-t border-slate-200 pt-1.5 overflow-x-auto py-1'}>
                     <span className={opts?.popup ? 'hidden' : 'w-4 shrink-0 text-center text-[11px] font-bold text-slate-400'}>{ii + 1}</span>
-                    <div className={opts?.popup ? 'flex min-w-0 items-center' : 'flex shrink-0 min-w-0 items-center'}>
+                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 min-w-0 items-center gap-1'}>
                       {(group.category || 'GOODS PURCHASE') === 'EXPENSES' ? (
                         <>
-                          <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[12.5rem]`} list={`expense-products-${index}-${ii}`} placeholder="Search & select product / project" title="Product" value={item.productName || ''}
-                            onChange={e => onInwardProductInput(index, ii, e.target.value, { allowFreeText: true })} />
+                          <input className={opts?.popup ? `${compactInput} flex-1 min-w-[7rem]` : `${compactInput} w-[8rem]`} list={`expense-products-${index}-${ii}`} placeholder="Original Product" title="Original Product" value={item.originalProduct ?? (splitProductAndRef(item.productName || '').original || item.productName || '')}
+                            onChange={e => {
+                              const s = splitProductAndRef(e.target.value);
+                              setItem(ii, { originalProduct: s.original, productRef: s.reference || item.productRef || '', productName: e.target.value });
+                              onInwardProductInput(index, ii, e.target.value, { allowFreeText: true });
+                            }} />
+                          <input className={opts?.popup ? `${compactInput} w-[5.5rem]` : `${compactInput} w-[5.5rem]`} placeholder="Ref/Date" title="Reference" value={item.productRef ?? (splitProductAndRef(item.productName || '').reference || '')}
+                            onChange={e => {
+                              const ref = e.target.value;
+                              const orig = item.originalProduct ?? (splitProductAndRef(item.productName || '').original || item.productName || '');
+                              setItem(ii, { productRef: ref, productName: combineProductAndRef(orig, ref) });
+                            }} />
                           <datalist id={`expense-products-${index}-${ii}`}>
                             {eligibleCatalogue.map((m: any) => <option key={m.key} value={m.name}>{[m.code, m.unit ? `per ${m.unit}` : '', m.unitPrice ? `₹${m.unitPrice}` : ''].filter(Boolean).join(' · ')}</option>)}
                             {(inwardForm.productOptions || []).map((o: any) => <option key={o.key} value={o.name} />)}
@@ -5856,11 +7167,26 @@ export function SalesPipelinePage() {
                         </>
                       ) : (
                         <>
-                          <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[12.5rem]`} list={`inward-products-${index}-${ii}`} placeholder="Search & select product" title="Product" value={item.productDisplay || item.productName || ''}
-                            onChange={e => onInwardProductInput(index, ii, e.target.value)} />
+                          <input className={opts?.popup ? `${compactInput} w-[8.5rem] sm:w-[9.5rem]` : `${compactInput} w-[8.5rem] shrink-0`} list={`inward-products-${index}-${ii}`} placeholder="Original Product" title="Original Product" value={item.originalProduct ?? (splitProductAndRef(item.productDisplay || item.productName || '', allKnownCompanies.map((c: any) => c.company || c.name), group.partyName).original || item.productName || '')}
+                            onChange={e => {
+                              const s = splitProductAndRef(e.target.value, allKnownCompanies.map((c: any) => c.company || c.name), group.partyName);
+                              setItem(ii, { originalProduct: s.original, productRef: s.reference || item.productRef || '', productName: e.target.value });
+                              onInwardProductInput(index, ii, e.target.value);
+                            }} />
+                          <input className={opts?.popup ? `${compactInput} flex-1 min-w-[12rem] sm:min-w-[15rem]` : `${compactInput} w-[14rem] shrink-0`} placeholder="Product - Company - Date/Time" title={item.productRef || "Full Reference"} value={item.productRef ?? (splitProductAndRef(item.productDisplay || item.productName || '', allKnownCompanies.map((c: any) => c.company || c.name), group.partyName).reference || '')}
+                            onChange={e => {
+                              const ref = e.target.value;
+                              const orig = item.originalProduct ?? (splitProductAndRef(item.productDisplay || item.productName || '').original || item.productName || '');
+                              setItem(ii, { productRef: ref, productName: combineProductAndRef(orig, ref) });
+                            }} />
                           <datalist id={`inward-products-${index}-${ii}`}>
                             {eligibleCatalogue.map((m: any) => <option key={m.key} value={m.name}>{[m.code, m.unit ? `per ${m.unit}` : '', m.unitPrice ? `₹${m.unitPrice}` : ''].filter(Boolean).join(' · ')}</option>)}
-                            {productOptions.map((option: any) => <option key={option.key} value={option.display || option.name} />)}
+                            {productOptions.map((option: any) => {
+                              const s = splitProductAndRef(option.name);
+                              const ref = s.reference || option.saleLabel || '';
+                              const optVal = [s.original, option.customer, ref].filter(Boolean).join(' • ');
+                              return <option key={option.key} value={optVal} label={optVal} />;
+                            })}
                           </datalist>
                         </>
                       )}
@@ -6205,6 +7531,18 @@ export function SalesPipelinePage() {
     </div>
   );
 
+  const addCompanyButton = canView('companies') ? (
+    <button
+      type="button"
+      onClick={openNewLeadModal}
+      title="Add Company"
+      className="flex items-center gap-2 px-3.5 py-1.5 text-sm font-semibold rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900 shadow-sm transition-all cursor-pointer shrink-0 whitespace-nowrap"
+    >
+      <Plus size={15} className="text-brand-500 stroke-[2.5]" />
+      <span>Add Company</span>
+    </button>
+  ) : null;
+
   const allCompaniesButton = canView('companies') ? (
     <button
       type="button"
@@ -6272,8 +7610,9 @@ export function SalesPipelinePage() {
             <div className="flex flex-1 items-center justify-end min-w-0">{quotationTools}</div>
           )}
 
-          {/* 2. Right Side: All Companies Button + Search and Card Actions */}
+          {/* 2. Right Side: Add Company + All Companies Button + Search and Card Actions */}
           <div className="flex items-center ml-auto gap-2 sm:gap-3 flex-nowrap min-w-0">
+            {addCompanyButton}
             {allCompaniesButton}
             {!onQuotationView && (
               <>
@@ -6734,7 +8073,13 @@ export function SalesPipelinePage() {
               <Button size="sm" disabled={savingInward} onClick={() => void saveInward(false)} className={MODULE_THEMES.Inward.btnPrimary}>{savingInward ? 'Saving...' : 'Submit'}</Button>
             )}
             {addPopup === 'DC' && (
-              <Button size="sm" onClick={saveDeliveryChallan} disabled={dcSaving} className={MODULE_THEMES.DC.btnPrimary}>{dcSaving ? 'Saving...' : 'Save'}</Button>
+              <>
+                <Button size="sm" onClick={() => void saveDeliveryChallan(true)} disabled={dcSaving} className="bg-purple-700 hover:bg-purple-800 text-white flex items-center gap-1 shadow-sm">
+                  <Printer size={13} />
+                  Save & Print
+                </Button>
+                <Button size="sm" onClick={() => void saveDeliveryChallan(false)} disabled={dcSaving} className={MODULE_THEMES.DC.btnPrimary}>{dcSaving ? 'Saving...' : 'Save'}</Button>
+              </>
             )}
           </>
         }
@@ -6751,33 +8096,35 @@ export function SalesPipelinePage() {
       </Modal>
 
       {/* New Lead Modal */}
-      <Modal open={showNewLead} onClose={() => setShowNewLead(false)} title="Create New Company" size="sm" footer={<><Button variant="secondary" onClick={() => setShowNewLead(false)}>Cancel</Button><Button onClick={saveNewLead}>Save Company</Button></>}>
+      <Modal open={showNewLead} onClose={() => setShowNewLead(false)} title="Add Company" size="sm" footer={<><Button variant="secondary" onClick={() => setShowNewLead(false)}>Cancel</Button><Button onClick={saveNewLead}>Save Company</Button></>}>
         <div className="grid grid-cols-3 gap-3">
           <CustomerAutocomplete
             label="Company Name"
             required
             value={newLeadForm.company}
             onChange={val => {
+              const details = lookupCompanyDetails(val);
               const matched = allKnownCompanies.find(c => c.company.toLowerCase() === val.trim().toLowerCase());
               setNewLeadForm((prev: any) => ({
                 ...prev,
                 company: val,
-                contacts: matched && (matched.contact_person || matched.phone || matched.email)
-                  ? [{ person: matched.contact_person || '', phone: matched.phone || '', email: matched.email || '' }]
+                contacts: (details?.phone || (matched && (matched.contact_person || matched.phone || matched.email)))
+                  ? [{ person: (matched as any)?.contact_person || '', phone: details?.phone || matched?.phone || '', email: (matched as any)?.email || '' }]
                   : prev.contacts,
-                city: matched?.city || prev.city,
-                gst: matched?.gst || prev.gst
+                city: details?.address || matched?.address || matched?.city || prev.city,
+                gst: details?.gstin || matched?.gst || prev.gst
               }));
             }}
             onSelectCustomer={c => {
+              const details = lookupCompanyDetails(c.company);
               setNewLeadForm((prev: any) => ({
                 ...prev,
                 company: c.company,
                 contacts: (c.contact_person || c.phone || c.email)
-                  ? [{ person: c.contact_person || '', phone: c.phone || '', email: c.email || '' }]
+                  ? [{ person: c.contact_person || '', phone: details?.phone || c.phone || '', email: c.email || '' }]
                   : prev.contacts,
-                city: c.city || prev.city,
-                gst: c.gst || prev.gst
+                city: details?.address || c.address || c.city || prev.city,
+                gst: details?.gstin || c.gst || (c as any).gstin || prev.gst
               }));
             }}
             companies={allKnownCompanies}
@@ -6886,7 +8233,23 @@ export function SalesPipelinePage() {
             label="Company Name"
             required
             value={invoiceForm.partyName || ''}
-            onChange={val => setInvoiceForm((prev: any) => ({ ...prev, partyName: val }))}
+            onChange={val => {
+              const details = lookupCompanyDetails(val);
+              setInvoiceForm((prev: any) => ({
+                ...prev,
+                partyName: val,
+                ...(details?.partyCode ? { customer_id: details.partyCode } : {}),
+              }));
+            }}
+            onSelectCustomer={(c: any) => {
+              const nm = String(c.company || c.name || '');
+              const details = lookupCompanyDetails(nm);
+              setInvoiceForm((prev: any) => ({
+                ...prev,
+                partyName: nm,
+                customer_id: details?.partyCode || c.id || prev.customer_id,
+              }));
+            }}
             companies={allKnownCompanies}
             inputClass={inputClass}
             placeholder="Type or select company..."
@@ -6983,12 +8346,12 @@ export function SalesPipelinePage() {
                 ) : null },
                 { key: 'Finished Goods', node: renderRecordData('Finished Goods', viewModalData?.finished_goods) },
                 { key: 'Inward', node: (() => {
-                  // Rows saved from one inward card share product/category/ref/date:
+                  // Rows saved from one inward card share party/category/ref/date:
                   // show them as one section with its part lines, like the entry card.
                   const list = (Array.isArray(viewModalData?.inwards) && viewModalData.inwards.length
                     ? viewModalData.inwards : (viewModalData.inward ? [viewModalData.inward] : []));
                   if (!list.length) return null;
-                  const gkey = (r: any) => [r.product_name || '', r.category || '', r.reference_no || '', r.inward_date || ''].join('|');
+                  const gkey = (r: any) => [r.party_name || '', r.category || '', r.reference_no || '', r.inward_date || ''].join('|');
                   const groups: any[][] = [];
                   list.forEach((r: any) => {
                     const k = gkey(r);
@@ -6996,163 +8359,31 @@ export function SalesPipelinePage() {
                     if (!g) { g = []; groups.push(g); }
                     g.push(r);
                   });
-                  const lineKeys = ['part_name', 'quantity', 'price', 'discount_percent', 'gst_percent', 'total_amount'];
-                  const lineHead = ['Part Name', 'Qty', 'Price', 'Disc', 'GST', 'Total', 'Remarks'];
-                  return (<>{groups.map((g, gi) => (
-                    <div key={g[0].id || gi} className="mb-6">
-                      <h4 className="font-bold text-sm text-brand-800 border-b border-brand-100 pb-2 mb-3 uppercase flex justify-between items-center">
-                        <span>Inward Details #{gi + 1}</span>
-                        {viewEditMode && (
-                          <button type="button" data-testid="delete-inward" onClick={() => void deleteInwardRows(g.map((r: any) => String(r.id)), `inward #${gi + 1}`)}
-                            className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2.5 py-1 text-[11px] font-semibold normal-case text-red-600 hover:bg-red-50">
-                            <Trash2 size={12} /> Delete inward
-                          </button>
-                        )}
-                      </h4>
-                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
-                        <div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-4 mb-3">
-                          {viewEditMode ? (
-                            <div>
-                              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Category</span>
-                              <select
-                                className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500 cursor-pointer"
-                                value={g[0].category || ''}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  if (val !== String(g[0].category || '')) {
-                                    g.forEach((r: any) => { void handleInlineEdit('Inward', String(r.id), { category: val }); });
-                                  }
-                                }}
-                              >
-                                <option value="">Select category…</option>
-                                {g[0].category && !['EXPENSES', 'CUSTOMER DC', 'NEW PART', 'NO DC', 'GOODS PURCHASE', 'SERVICE PURCHASE'].includes(String(g[0].category)) && (
-                                  <option value={g[0].category}>{g[0].category}</option>
-                                )}
-                                {['EXPENSES', 'CUSTOMER DC', 'NEW PART', 'NO DC', 'GOODS PURCHASE', 'SERVICE PURCHASE'].map((c) => (
-                                  <option key={c} value={c}>{c}</option>
-                                ))}
-                              </select>
-                            </div>
-                          ) : (inwardCellFor(g[0], 'category', 'Category'))}
-                          {viewEditMode ? (
-                            <div>
-                              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Company</span>
-                              <select
-                                className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500 cursor-pointer"
-                                value={g[0].party_name || ''}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  if (val === '__custom__') {
-                                    const custom = window.prompt('Enter company name:', String(g[0].party_name || ''));
-                                    if (custom && custom.trim() && custom.trim() !== String(g[0].party_name || '')) {
-                                      g.forEach((r: any) => { void handleInlineEdit('Inward', String(r.id), { party_name: custom.trim() }); });
-                                    }
-                                    return;
-                                  }
-                                  if (val !== String(g[0].party_name || '')) {
-                                    g.forEach((r: any) => { void handleInlineEdit('Inward', String(r.id), { party_name: val }); });
-                                  }
-                                }}
-                              >
-                                <option value="">Select company…</option>
-                                <option value="__custom__">+ Enter custom company…</option>
-                                {g[0].party_name && !allKnownCompanies.some((c: any) => String(c.company).toLowerCase() === String(g[0].party_name).toLowerCase()) && (
-                                  <option value={g[0].party_name}>{g[0].party_name}</option>
-                                )}
-                                {(allKnownCompanies || []).map((c: any) => (
-                                  <option key={c.company} value={c.company}>{c.company}</option>
-                                ))}
-                              </select>
-                            </div>
-                          ) : (inwardCellFor(g[0], 'party_name', 'Company'))}
-                          {inwardCellFor(g[0], 'inward_date', 'Inward Date')}
-                          {inwardCellFor(g[0], 'reference_no', 'Reference No.')}
-                          <div>
-                            <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Files</span>
-                            <div className="flex flex-wrap gap-2">
-                              {g.flatMap((r: any, ri: number) => (Array.isArray(r.attachments) ? r.attachments : []).map((att: any, ai: number) => {
-                                const p = typeof att === 'string' ? att : (att.path || att.url || '');
-                                const n = typeof att === 'string' ? p.split('/').pop() : (att.name || p.split('/').pop() || `File ${ai + 1}`);
-                                if (!p) return null;
-                                return <button key={`${ri}-${ai}`} type="button" className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-blue-700 hover:border-brand-300" onClick={() => void openProductFile(p)}><FileText size={12} />{n}</button>;
-                              }))}
-                              {!g.some((r: any) => Array.isArray(r.attachments) && r.attachments.length > 0) && (
-                                <span className="text-sm text-slate-400">—</span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="overflow-x-auto">
-                        <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_4rem_4.75rem_4rem_3.75rem_5rem_minmax(0,1fr)_1.75rem] gap-2 items-center mb-1 px-1 min-w-[760px]">
-                          <span className="text-[10px] font-bold text-slate-500 uppercase">Product</span>
-                          {lineHead.map(h => <span key={h} className="text-[10px] font-bold text-slate-500 uppercase">{h}</span>)}
-                          <span />
-                        </div>
-                        {g.map((row: any, ri: number) => (
-                          <div key={row.id || ri} className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_4rem_4.75rem_4rem_3.75rem_5rem_minmax(0,1fr)_1.75rem] gap-2 items-center min-w-[760px] bg-white rounded-lg border border-slate-200 p-2 mb-2">
-                            <div>
-                              <select
-                                disabled={!viewEditMode}
-                                className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500 disabled:bg-slate-50 disabled:text-slate-700 cursor-pointer"
-                                value={row.product_name || ''}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  if (val === '__custom__') {
-                                    const custom = window.prompt('Enter product name:');
-                                    if (custom && custom.trim() && custom.trim() !== (row.product_name || '')) {
-                                      void handleInlineEdit('Inward', row.id, 'product_name', custom.trim());
-                                    }
-                                    return;
-                                  }
-                                  if (val !== (row.product_name || '')) {
-                                    const masterHit = (partsCatalogue || []).find((m: any) => normStr(m.name) === normStr(val) || (m.code && normStr(m.code) === normStr(val)));
-                                    const patch: Record<string, any> = { product_name: val };
-                                    if (masterHit) {
-                                      if (!String(row.part_name || '').trim() || String(row.part_name).trim() === String(row.product_name || '').trim()) {
-                                        patch.part_name = masterHit.name;
-                                      }
-                                    }
-                                    void handleInlineEdit('Inward', row.id, patch);
-                                  }
-                                }}
-                              >
-                                <option value="">Select product…</option>
-                                {viewEditMode && <option value="__custom__">+ Enter custom product name…</option>}
-                                {row.product_name && !inwardEditProductOptions.some(o => o.name.toLowerCase() === String(row.product_name).toLowerCase()) && (
-                                  <option value={row.product_name}>{row.product_name}</option>
-                                )}
-                                {inwardEditProductOptions.filter(o => o.group === 'catalogue').length > 0 && (
-                                  <optgroup label="Components & Raw Materials (Catalogue)">
-                                    {inwardEditProductOptions.filter(o => o.group === 'catalogue').map(o => (
-                                      <option key={`cat-${o.name}`} value={o.name}>
-                                        {o.name}{o.detail ? ` (${o.detail})` : ''}
-                                      </option>
-                                    ))}
-                                  </optgroup>
-                                )}
-                                {inwardEditProductOptions.filter(o => o.group === 'pipeline').length > 0 && (
-                                  <optgroup label="Pipeline Products (Enquiry / Sales Order)">
-                                    {inwardEditProductOptions.filter(o => o.group === 'pipeline').map(o => (
-                                      <option key={`pipe-${o.name}`} value={o.name}>
-                                        {o.name}{o.detail ? ` (${o.detail})` : ''}
-                                      </option>
-                                    ))}
-                                  </optgroup>
-                                )}
-                              </select>
-                            </div>
-                            {lineKeys.map(k => <div key={k} className="contents">{inwardCellFor(row, k, '')}</div>)}
-                            <div>{inwardCellFor(row, 'remarks', '')}</div>
-                            {viewEditMode && g.length > 1 ? (
-                              <button type="button" data-testid="delete-inward-line" title="Delete this part line" onClick={() => void deleteInwardRows([String(row.id)], `the part line “${row.part_name || row.product_name || ri + 1}”`)}
-                                className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 size={14} /></button>
-                            ) : <span />}
-                          </div>
-                        ))}
-                        </div>
-                      </div>
-                    </div>
-                  ))}</>);
+                  return (
+                    <>
+                      {groups.map((g, gi) => (
+                        <InwardGroupSection
+                          key={g[0]?.id || gi}
+                          group={g}
+                          groupIndex={gi}
+                          viewEditMode={viewEditMode}
+                          allKnownCompanies={allKnownCompanies}
+                          partsCatalogue={partsCatalogue}
+                          inwardEditProductOptions={inwardEditProductOptions}
+                          memberNames={memberNames}
+                          company={company}
+                          updateInwardGroup={updateInwardGroup}
+                          handleAddInwardPart={handleAddInwardPart}
+                          handleDeleteInwardPart={handleDeleteInwardPart}
+                          deleteInwardRows={deleteInwardRows}
+                          handleInlineEdit={handleInlineEdit}
+                          openProductFile={openProductFile}
+                          uploadInwardAttachment={uploadInwardAttachment}
+                          inwardLineTotal={inwardLineTotal}
+                        />
+                      ))}
+                    </>
+                  );
                 })() },
                 { key: 'Sales Order', node: viewModalTarget?.stage === 'DC' ? null : (viewModalData.order ? (
                   <SalesOrderSection

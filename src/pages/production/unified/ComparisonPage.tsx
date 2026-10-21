@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Upload } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { Badge, Button } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
@@ -277,7 +278,7 @@ export function ComparisonTimeline() {
             <button key={m} onClick={() => setMode(m)} className={`px-3 py-1 text-sm font-medium rounded-md ${mode === m ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{m === 'table' ? 'Table' : 'Calendar'}</button>
           ))}
         </div>
-        <Button variant="secondary" className="bg-white" onClick={exportCsv} disabled={rows.length === 0}>Export CSV</Button>
+        <Button variant="secondary" className="bg-white" icon={<Upload size={14} />} onClick={exportCsv} disabled={rows.length === 0}>Export CSV</Button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">

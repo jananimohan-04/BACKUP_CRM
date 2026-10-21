@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, ChevronDown, ChevronRight, Download, Play, Printer, TrendingUp } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Download, Upload, Play, Printer, TrendingUp } from 'lucide-react';
 import { PageHeader, EmptyState, LoadingState } from '@/components/ui/PageHeader';
 import { Button, Card } from '@/components/ui/Card';
 import { FormField, inputClass } from '@/components/ui/Modal';
@@ -251,7 +251,7 @@ export function ProfitLossPage() {
         <Button
           variant="secondary"
           size="sm"
-          icon={<Download size={14} />}
+          icon={<Upload size={14} />}
           onClick={() => csvRef.current()}
           disabled={!hasReport}
           className="h-7 py-1 text-xs px-2.5 shadow-sm"
@@ -303,7 +303,7 @@ export function ProfitLossPage() {
             Hide zero balances
           </label>
           <span className="ml-auto flex gap-2 shrink-0">
-            <Button variant="secondary" icon={<Download size={14} />} onClick={handleCsv} disabled={!report}>CSV</Button>
+            <Button variant="secondary" icon={<Upload size={14} />} onClick={handleCsv} disabled={!report} title="Export CSV">CSV</Button>
             <Button variant="secondary" icon={<Printer size={14} />} onClick={handlePrint} disabled={!report}>Print</Button>
           </span>
         </div>

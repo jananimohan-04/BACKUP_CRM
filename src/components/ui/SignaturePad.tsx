@@ -1,12 +1,14 @@
 import { useRef, useEffect } from 'react';
 
 /** Minimal signature capture: draw with mouse/touch, clear, returns a PNG data URL. */
-export function SignaturePad({ value, onChange, height = 72, readOnly = false }: {
+export function SignaturePad({ value, onChange, height = 72, readOnly = false, compact = false }: {
   value: string | null;
   onChange: (v: string | null) => void;
   height?: number;
   /** Show the saved signature without letting it be drawn on or cleared. */
   readOnly?: boolean;
+  /** Render compact canvas without bottom helper text or extra margins. */
+  compact?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
@@ -52,7 +54,7 @@ export function SignaturePad({ value, onChange, height = 72, readOnly = false }:
   };
 
   return (
-    <div>
+    <div className="relative w-full">
       <canvas
         ref={canvasRef}
         className={`w-full rounded border border-dashed border-slate-300 bg-white touch-none ${readOnly ? 'pointer-events-none bg-slate-50' : 'cursor-crosshair'}`}
@@ -84,14 +86,26 @@ export function SignaturePad({ value, onChange, height = 72, readOnly = false }:
         }}
         onPointerCancel={() => { drawing.current = false; }}
       />
-      <div className="mt-1 flex items-center justify-between">
-        <span className="text-[10px] text-slate-400">Sign above</span>
-        {!readOnly && (
-          <button type="button" onClick={() => onChange(null)} className="text-[11px] font-semibold text-slate-500 hover:text-rose-600">
-            Clear
-          </button>
-        )}
-      </div>
+      {!readOnly && value && compact && (
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          title="Clear signature"
+          className="absolute right-1 top-0.5 z-10 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-slate-100/90 text-[10px] font-bold text-slate-500 hover:bg-rose-100 hover:text-rose-600 transition-colors"
+        >
+          ×
+        </button>
+      )}
+      {!compact && (
+        <div className="mt-1 flex items-center justify-between">
+          <span className="text-[10px] text-slate-400">Sign above</span>
+          {!readOnly && (
+            <button type="button" onClick={() => onChange(null)} className="text-[11px] font-semibold text-slate-500 hover:text-rose-600">
+              Clear
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

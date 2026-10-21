@@ -3,10 +3,12 @@ import { supabase } from '@/lib/supabase';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { Badge, statusToVariant } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
-import { Package, Eye, Edit, Filter, Plus, Download, CheckCircle, Clock } from 'lucide-react';
+import { Package, Eye, Edit, Filter, Plus, Download, Upload, CheckCircle, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { getMockImage } from '@/lib/mockStorage';
+import { exportCsv } from '@/lib/reportExport';
+import { todayISO } from '@/lib/format';
 
 const WO_STATUSES = ['Planning', 'In Progress', 'On Hold', 'Completed', 'Dispatched'];
 
@@ -301,6 +303,23 @@ export function FinishedGoodsPage() {
     }
   ];
 
+  const handleExport = () => {
+    exportCsv(`Finished_Goods_${todayISO()}`, [
+      ['Product Name', 'Company Name', 'Sales Order No', 'Batch No', 'Ordered Qty', 'Completed Qty', 'Pending Qty', 'FG Stock', 'Status'],
+      ...filteredRecords.map((r: any) => [
+        r.part_name || '',
+        r.customer_name || '',
+        r.sales_order_no || '',
+        r.batch_no || '',
+        r.orderedQty ?? 0,
+        r.completedQty ?? 0,
+        r.pendingQty ?? 0,
+        r.fgStock ?? 0,
+        r.status || '',
+      ]),
+    ]);
+  };
+
   return (
     <div className="p-4 lg:p-6 bg-slate-50 min-h-full">
       {/* Header */}
@@ -311,7 +330,7 @@ export function FinishedGoodsPage() {
         </div>
         <div className="flex items-center gap-3">
           <Button variant="secondary" className="gap-2 bg-white"><Filter size={16} /> Stock Report</Button>
-          <Button variant="secondary" className="gap-2 bg-white"><Download size={16} /> Export</Button>
+          <Button variant="secondary" className="gap-2 bg-white" onClick={handleExport} title="Export CSV"><Upload size={16} /> Export</Button>
           <Button variant="primary" className="gap-2 bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-500/20" onClick={() => setShowAddFG(true)}>
             <Plus size={16} /> Add Finished Goods
           </Button>

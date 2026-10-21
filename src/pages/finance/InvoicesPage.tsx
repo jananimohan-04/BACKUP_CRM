@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Download, Eye, FileText, Plus, Printer, CreditCard, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { ArrowLeft, Download, Upload, Eye, FileText, Plus, Printer, CreditCard, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { Badge, Button, Card, statusToVariant } from '@/components/ui/Card';
 import { FormField, inputClass, Modal } from '@/components/ui/Modal';
 import { financeApi, type InvoiceDetail, type InvoiceRow, type InvoiceSummary } from '@/lib/finance';
@@ -13,6 +13,8 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { downloadSalesInvoice, fetchCompanyPrintDetails } from '@/lib/brandedDocument';
+import { splitProductAndRef, combineProductAndRef, formatFullReference } from '@/lib/productLabel';
+import { loadTerms } from '@/lib/termsLibrary';
 
 const PAGE = 10;
 const cash = (v: string | number | null | undefined) => formatINR(v, { decimals: 'auto' });
@@ -67,6 +69,9 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
   const [form, setForm] = useState<any>({ invoice_type: 'Sales Invoice', invoice_date: todayISO(), customer_name: '', customer_id: '', due_days: '', po_no: '', dc_no: '', delivery_id: '', payment_terms: '' });
   const [lines, setLines] = useState<any[]>([{ description: '', quantity: '', unit: '', rate: '', gst_rate: '', discount_pct: '0' }]);
   const [payment, setPayment] = useState<any>({ account_id: '', amount: '', txn_date: todayISO(), mode: '', reference_no: '' });
+  const [partsList, setPartsList] = useState<any[]>([]);
+  const [quotesList, setQuotesList] = useState<any[]>([]);
+  const [salesOrdersList, setSalesOrdersList] = useState<any[]>([]);
 
   const reload = async (p = page, f = effFilters, t = tab) => {
     setLoading(true); setError('');
@@ -108,9 +113,35 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
       if (!active) return;
       const qty = Number(delivery.dispatch_qty ?? delivery.quantity ?? 0);
       const unitRate = Number(order?.quantity || 0) > 0 ? Number(order?.value || 0) / Number(order?.quantity) : 0;
+      let qTerms = '';
+      if (delivery.sales_order_id) {
+        const { data: so } = await supabase.from('cnc_sales_orders')
+          .select('quotation_id,quote_no,payment_terms')
+          .eq('id', delivery.sales_order_id).maybeSingle();
+        if (so) {
+          if (so.quotation_id) {
+            const { data: q } = await supabase.from('cnc_quotations').select('payment_terms').eq('id', so.quotation_id).maybeSingle();
+            if (q?.payment_terms) qTerms = q.payment_terms;
+          }
+          if (!qTerms && so.quote_no) {
+            const { data: q } = await supabase.from('cnc_quotations').select('payment_terms').eq('quote_no', so.quote_no).maybeSingle();
+            if (q?.payment_terms) qTerms = q.payment_terms;
+          }
+          if (!qTerms && so.payment_terms) qTerms = so.payment_terms;
+        }
+      }
+      if (!qTerms && delivery.customer_name) {
+        const { data: q } = await supabase.from('cnc_quotations')
+          .select('payment_terms')
+          .eq('customer', delivery.customer_name)
+          .order('created_at', { ascending: false })
+          .limit(1).maybeSingle();
+        if (q?.payment_terms) qTerms = q.payment_terms;
+      }
+      const days = qTerms ? extractDueDays(qTerms) : '';
       setSelected(null);
       setEditId('');
-      setForm({ invoice_type: 'Sales Invoice', invoice_date: delivery.delivery_date || todayISO(), customer_name: delivery.customer_name || '', customer_id: delivery.customer_id || '', billing_address: delivery.delivery_address || '', due_days: '', po_no: '', dc_no: delivery.delivery_no || '', delivery_id: delivery.id, sales_order_id: delivery.sales_order_id || '', payment_terms: '' });
+      setForm({ invoice_type: 'Sales Invoice', invoice_date: delivery.delivery_date || todayISO(), customer_name: delivery.customer_name || '', customer_id: delivery.customer_id || '', billing_address: delivery.delivery_address || '', due_days: days || '', po_no: '', dc_no: delivery.delivery_no || '', delivery_id: delivery.id, sales_order_id: delivery.sales_order_id || '', payment_terms: qTerms || '' });
       setLines([{ description: delivery.part_name || '', quantity: String(qty), unit: '', rate: String(unitRate), gst_rate: '', discount_pct: '0' }]);
       setFormOpen(true);
     })().catch(e => { if (active) setError(e instanceof Error ? e.message : 'Unable to load the delivery challan.'); });
@@ -122,11 +153,17 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
       supabase.from('cnc_customers').select('id,name').order('name'),
       supabase.from('cnc_deliveries').select('*').order('created_at', { ascending: false }),
       financeApi.bankFilters(),
-    ]).then(([c, d, b]) => {
+      supabase.from('cnc_parts').select('id,part_name,part_code,hsn,unit,unit_price,gst_rate').order('part_name'),
+      supabase.from('cnc_quotations').select('id,quote_no,customer,customer_id,part_name,payment_terms,delivery_terms,terms').order('created_at', { ascending: false }),
+      supabase.from('cnc_sales_orders').select('id,order_no,customer,quote_no,quotation_id,payment_terms,part_name,items').order('created_at', { ascending: false }),
+    ]).then(([c, d, b, p, q, so]) => {
       if (!active) return;
       if (c.data) setCustomers(c.data as any[]);
       if (d.data) setDeliveries((d.data as any[]).filter(x => !['Billed', 'Cancelled'].includes(String(x.status))));
       setAccounts(b.accounts || []);
+      if (p.data) setPartsList(p.data as any[]);
+      if (q.data) setQuotesList(q.data as any[]);
+      if (so.data) setSalesOrdersList(so.data as any[]);
     }).catch(() => {});
     return () => { active = false; };
   }, [company?.id]);
@@ -159,7 +196,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     setLines(selected.items?.length ? selected.items.map(item => ({ description: item.description, quantity: item.quantity, unit: item.unit || '', rate: item.rate, gst_rate: item.gst_rate, discount_pct: item.discount_pct || '0' })) : [{ description: selected.part_name || '', quantity: String(quantity), unit: '', rate: String(taxable / quantity), gst_rate: String(taxRate), discount_pct: '0' }]);
     setFormOpen(true);
   };
-  const save = async () => {
+  const save = async (printAfter: boolean | unknown = false) => {
     if (!form.customer_name?.trim() || !lines.length || lines.some(line => !line.description?.trim() || Number(line.quantity) <= 0 || Number(line.rate) < 0)) { setError('Company and at least one item with a positive quantity and valid rate are required.'); return; }
     setBusy(true); setError('');
     try {
@@ -169,7 +206,21 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
         ? addDaysISO(form.invoice_date, Number(form.due_days))
         : (form.due_date || '');
       const result = await financeApi.saveInvoice({ ...form, due_date: dueDate, quantity: items.reduce((sum, item) => sum + item.quantity, 0), part_name: items.map(item => item.description).join(', ') }, items);
+      
+      const savedInvoiceRecord = {
+        ...form,
+        id: result.id,
+        invoice_no: result.invoice_no || form.invoice_no || result.id,
+        items,
+        total: items.reduce((sum, item) => sum + (item.quantity * item.rate), 0),
+      };
+
       await reload(1);
+
+      if (printAfter === true) {
+        printInvoice(savedInvoiceRecord);
+      }
+
       if (editId) {
         // Editing an existing invoice still happens in the popup, which closes on save.
         setFormOpen(false);
@@ -184,10 +235,134 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     } catch (e) { setError(e instanceof Error ? e.message : 'Unable to save invoice.'); }
     finally { setBusy(false); }
   };
+  const extractDueDays = (termsText: string): string => {
+    const s = String(termsText || '').trim();
+    if (!s) return '';
+    const m = s.match(/\b(?:net\s*|credit\s*)?(\d{1,3})\s*(?:days?|d\b)/i) || s.match(/\b(\d{1,3})\s*days?\b/i);
+    if (m) return m[1];
+    if (/advance|immediate|cod|prior to dispatch/i.test(s)) return '0';
+    return '';
+  };
+
+  const findQuoteTermsForDelivery = (d: any) => {
+    if (!d) return '';
+    const so = salesOrdersList.find(s =>
+      (d.sales_order_id && String(s.id) === String(d.sales_order_id)) ||
+      (d.sales_order_no && String(s.order_no) === String(d.sales_order_no))
+    );
+    if (so) {
+      if (so.quotation_id || so.quote_no) {
+        const q = quotesList.find(x =>
+          (so.quotation_id && String(x.id) === String(so.quotation_id)) ||
+          (so.quote_no && String(x.quote_no).trim().toLowerCase() === String(so.quote_no).trim().toLowerCase())
+        );
+        if (q?.payment_terms) return q.payment_terms;
+      }
+      if (so.payment_terms) return so.payment_terms;
+    }
+    const cust = String(d.customer_name || '').trim().toLowerCase();
+    const part = String(d.part_name || '').trim().toLowerCase();
+    if (cust) {
+      const qByCustPart = quotesList.find(x =>
+        String(x.customer || '').trim().toLowerCase() === cust &&
+        (part && (String(x.part_name || '').trim().toLowerCase() === part || String(x.part_name || '').toLowerCase().includes(part))) &&
+        x.payment_terms
+      );
+      if (qByCustPart?.payment_terms) return qByCustPart.payment_terms;
+      const qByCust = quotesList.find(x => String(x.customer || '').trim().toLowerCase() === cust && x.payment_terms);
+      if (qByCust?.payment_terms) return qByCust.payment_terms;
+    }
+    return '';
+  };
+
+  const findQuoteTermsForCustomer = (custName: string) => {
+    const cust = String(custName || '').trim().toLowerCase();
+    if (!cust) return '';
+    const q = quotesList.find(x => String(x.customer || '').trim().toLowerCase() === cust && x.payment_terms);
+    return q?.payment_terms || '';
+  };
+
+  const quotationTermsOptions = useMemo(() => {
+    const list: { value: string; label: string }[] = [];
+    const seen = new Set<string>();
+
+    quotesList.forEach(q => {
+      const pt = String(q.payment_terms || '').trim();
+      if (pt && !seen.has(pt.toLowerCase())) {
+        seen.add(pt.toLowerCase());
+        list.push({ value: pt, label: q.customer ? `${pt} (${q.customer})` : pt });
+      }
+    });
+
+    salesOrdersList.forEach(so => {
+      const pt = String(so.payment_terms || '').trim();
+      if (pt && !seen.has(pt.toLowerCase())) {
+        seen.add(pt.toLowerCase());
+        list.push({ value: pt, label: so.customer ? `${pt} (${so.customer})` : pt });
+      }
+    });
+
+    try {
+      const tl = loadTerms(company?.id);
+      (tl.templates || []).forEach(t => {
+        const m = t.body.match(/payment\s*terms?\s*:\s*([^\n\r.]+)/i);
+        const termVal = m ? m[1].trim() : t.title;
+        if (termVal && !seen.has(termVal.toLowerCase())) {
+          seen.add(termVal.toLowerCase());
+          list.push({ value: termVal, label: `${termVal} · ${t.title}` });
+        }
+      });
+    } catch {}
+
+    const standards = [
+      '100% Advance',
+      '50% Advance, 50% Before Dispatch',
+      'Net 15 Days',
+      'Net 30 Days',
+      'Net 45 Days',
+      'Net 60 Days',
+      'Immediate / Against Delivery',
+    ];
+    standards.forEach(s => {
+      if (!seen.has(s.toLowerCase())) {
+        seen.add(s.toLowerCase());
+        list.push({ value: s, label: s });
+      }
+    });
+
+    return list;
+  }, [quotesList, salesOrdersList, company?.id]);
+
   const chooseDelivery = (id: string) => {
     const d = deliveries.find(x => String(x.id) === id);
-    setForm({ ...form, delivery_id: id, dc_no: d?.delivery_no || '', sales_order_id: d?.sales_order_id || '', customer_id: d?.customer_id || '', customer_name: d?.customer_name || form.customer_name });
-    if (d) setLines(current => current.map((line, index) => index === 0 ? { ...line, description: d.part_name || '', quantity: String(d.dispatch_qty ?? d.quantity ?? 1) } : line));
+    const qTerms = findQuoteTermsForDelivery(d);
+    const days = qTerms ? extractDueDays(qTerms) : '';
+    setForm({
+      ...form,
+      delivery_id: id,
+      dc_no: d?.delivery_no || '',
+      sales_order_id: d?.sales_order_id || '',
+      customer_id: d?.customer_id || '',
+      customer_name: d?.customer_name || form.customer_name,
+      po_no: d?.po_no || d?.customer_po_no || form.po_no || '',
+      billing_address: d?.delivery_address || d?.party_address || form.billing_address || '',
+      payment_terms: qTerms || form.payment_terms || '',
+      due_days: (days && (!form.due_days || form.due_days === '0')) ? days : form.due_days,
+    });
+    if (d) {
+      const partMatch = partsList.find(p =>
+        String(p.part_name || '').trim().toLowerCase() === String(d.part_name || '').trim().toLowerCase() ||
+        String(p.part_code || '').trim().toLowerCase() === String(d.part_name || '').trim().toLowerCase()
+      );
+      setLines(current => current.map((line, index) => index === 0 ? {
+        ...line,
+        description: d.part_name || '',
+        quantity: String(d.dispatch_qty ?? d.quantity ?? 1),
+        unit: d.unit || partMatch?.unit || line.unit || 'Nos',
+        rate: String(d.unit_price || d.price || partMatch?.unit_price || line.rate || ''),
+        gst_rate: String(d.gst_rate || partMatch?.gst_rate || line.gst_rate || '18'),
+      } : line));
+    }
   };
   const recordReceipt = async () => {
     if (!selected) return;
@@ -220,10 +395,19 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     } catch (e) { setError(e instanceof Error ? e.message : 'Export failed.'); }
     finally { setBusy(false); }
   };
-  const printInvoice = () => {
-    if (!selected) { window.print(); return; }
-    const items = (selected.items || []).map((x,i) => '<tr><td>'+(i+1)+'</td><td>'+escapeHtml(x.description)+'</td><td>'+escapeHtml(x.quantity)+'</td><td>'+cash(x.rate)+'</td><td>'+cash(x.amount)+'</td></tr>').join('');
-    printHtml(selected.invoice_no, '<h1>ARGUS CNC</h1><h2>Tax Invoice</h2><p>'+escapeHtml(selected.invoice_no)+' · '+escapeHtml(formatDate(selected.invoice_date))+'</p><p>Bill To: '+escapeHtml(selected.customer_name||'')+'</p><table><thead><tr><th>#</th><th>Product</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>'+items+'</tbody></table><h3>Total: '+cash(selected.total)+'</h3>');
+  const printInvoice = (invToPrint?: any) => {
+    const inv = invToPrint || selected;
+    if (!inv) { window.print(); return; }
+    const itemsList = (inv.items && inv.items.length ? inv.items : lines) || [];
+    const items = itemsList.map((x: any, i: number) => {
+      const desc = x.description || x.part_name || '';
+      const qty = x.quantity ?? '';
+      const rate = x.rate ?? x.unit_price ?? x.price ?? 0;
+      const amt = x.amount ?? (Number(qty) * Number(rate));
+      return '<tr><td>'+(i+1)+'</td><td>'+escapeHtml(desc)+'</td><td>'+escapeHtml(String(qty))+'</td><td>'+cash(rate)+'</td><td>'+cash(amt)+'</td></tr>';
+    }).join('');
+    const tot = inv.total != null ? cash(inv.total) : cash(itemsList.reduce((s: number, it: any) => s + (Number(it.amount ?? (Number(it.quantity || 0) * Number(it.rate || it.unit_price || 0))) || 0), 0));
+    printHtml(inv.invoice_no || 'Invoice', '<h1>ARGUS CNC</h1><h2>Tax Invoice</h2><p>'+escapeHtml(inv.invoice_no || 'Invoice')+' · '+escapeHtml(formatDate(inv.invoice_date || todayISO()))+'</p><p>Bill To: '+escapeHtml(inv.customer_name||'')+'</p><table><thead><tr><th>#</th><th>Product</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>'+items+'</tbody></table><h3>Total: '+tot+'</h3>');
   };
   const downloadInvoice = async () => {
     if (!selected) { setError('Select an invoice first.'); return; }
@@ -313,45 +497,329 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     });
   }, [rows, companyFilter, tableStatusFilter]);
 
+  const invInput = 'h-6 px-1.5 py-0 text-[11px] font-medium rounded border border-[color:var(--entry-border)] bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-brand-500 shadow-none';
+  const invLbl = 'whitespace-nowrap text-[9px] font-bold text-slate-600 uppercase tracking-tight';
+
+  const renderInvField = (label: string, children: React.ReactNode, required?: boolean) => (
+    <div className="inline-flex items-center gap-1 shrink-0">
+      <span className={invLbl}>
+        {label}{required && <span className="text-red-500 ml-0.5">*</span>}
+      </span>
+      {children}
+    </div>
+  );
+
   // The invoice fields live in exactly one place: rendered by the always-visible
   // New Invoice card above the table, and by the popup used when editing a record.
   const invoiceFormBody = (<>
-      {/* One compact row for the header fields. flex-wrap keeps every field reachable on
-          narrow screens, where they simply flow onto extra lines. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <FormField label="Invoice Type" inline><select className={`${compactInput} w-[10rem]`} value={form.invoice_type} onChange={e=>setForm({...form,invoice_type:e.target.value})}><option>Sales Invoice</option><option>Proforma Invoice</option></select></FormField>
-        <FormField label="Invoice No (optional)" inline><input className={`${compactInput} w-[11rem]`} value={form.invoice_no||''} onChange={e=>setForm({...form,invoice_no:e.target.value})} placeholder="Auto-number if blank"/></FormField>
-        <FormField label="Delivery Challan" inline><select className={`${compactInput} w-[16rem]`} value={form.delivery_id||''} onChange={e=>chooseDelivery(e.target.value)}><option value="">Not linked</option>{deliveries.map(d=><option key={d.id} value={d.id}>{d.delivery_no||d.id} · {d.customer_name||''}</option>)}</select></FormField>
-        <FormField label="Company" required inline><select className={`${compactInput} w-[15rem]`} value={form.customer_id||''} onChange={e=>{const c=customers.find(x=>x.id===e.target.value);setForm({...form,customer_id:e.target.value,customer_name:c?.name||''})}}><option value="">Select company</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></FormField>
-        <FormField label="Invoice Date" inline><input type="date" className={`${compactInput} w-[10.5rem]`} value={form.invoice_date} onChange={e=>setForm({...form,invoice_date:e.target.value})}/></FormField>
-        <FormField label="Due Days" inline><input type="number" min={0} className={`${compactInput} w-[6rem]`} value={form.due_days||''} onChange={e=>setForm({...form,due_days:e.target.value})} placeholder="Days"/>{form.due_days !== '' && form.invoice_date && addDaysISO(form.invoice_date, Number(form.due_days)) ? <span className="text-[11px] text-slate-500 whitespace-nowrap">due {addDaysISO(form.invoice_date, Number(form.due_days)).split('-').reverse().join('-')}</span> : null}</FormField>
-        <FormField label="PO No" inline><input className={`${compactInput} w-[9rem]`} value={form.po_no||''} onChange={e=>setForm({...form,po_no:e.target.value})}/></FormField>
-        <FormField label="Payment Terms" inline><input className={`${compactInput} w-[11rem]`} value={form.payment_terms||''} onChange={e=>setForm({...form,payment_terms:e.target.value})}/></FormField>
-      </div>
-      <div className="mt-2.5 space-y-2 border-t border-slate-200/70 pt-2.5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Invoice Products</h3>
-          <div className="flex items-center gap-2 shrink-0">
-            <Button size="sm" variant="secondary" icon={<Plus size={13}/>} onClick={()=>setLines([...lines,{description:'',quantity:'',unit:'',rate:'',gst_rate:'',discount_pct:'0'}])}>Add Product</Button>
-            {!editId && (
-              <>
-                <Button variant="secondary" size="sm" onClick={() => { startNew(); setSavedNote(''); }}>Clear / Reset</Button>
-                <Button size="sm" onClick={() => void save()} disabled={busy || !canCreateInv} title={!canCreateInv ? 'Invoice create permission is required' : undefined}>{busy ? 'Saving...' : 'Save Invoice'}</Button>
-              </>
-            )}
-          </div>
-        </div>
-        {lines.map((line,index)=>(
-          <div key={index} className="flex flex-wrap items-center gap-2 rounded border border-slate-200 bg-white/70 px-2 py-1.5">
-            <FormField label="Product" inline><input className={`${compactInput} w-[16rem]`} value={line.description} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,description:e.target.value}:x))}/></FormField>
-            <FormField label="Quantity" inline><input type="number" min="0" className={`${compactInput} w-[5.5rem]`} value={line.quantity} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,quantity:e.target.value}:x))}/></FormField>
-            <FormField label="Unit" inline><input className={`${compactInput} w-[5rem]`} value={line.unit} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,unit:e.target.value}:x))}/></FormField>
-            <FormField label="Rate" inline><input type="number" min="0" className={`${compactInput} w-[7rem]`} value={line.rate} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,rate:e.target.value}:x))}/></FormField>
-            <FormField label="GST %" inline><input type="number" min="0" className={`${compactInput} w-[6.5rem]`} value={line.gst_rate} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,gst_rate:e.target.value}:x))} placeholder="Company default"/></FormField>
-            <FormField label="Discount %" inline><input type="number" min="0" className={`${compactInput} w-[7rem]`} value={line.discount_pct} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,discount_pct:e.target.value}:x))}/></FormField>
-            <button type="button" aria-label="Remove item" disabled={lines.length===1} onClick={()=>setLines(lines.filter((_,i)=>i!==index))} className="h-8 shrink-0 rounded border border-slate-300 px-2 text-rose-600 transition-colors hover:border-rose-300 hover:bg-rose-50 disabled:opacity-40"><Trash2 size={14} className="mx-auto"/></button>
+      {/* Row 1: Header Fields */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        {renderInvField("Type", (
+          <select className={`${invInput} w-[6.5rem]`} value={form.invoice_type} onChange={e=>setForm({...form,invoice_type:e.target.value})}>
+            <option>Sales Invoice</option>
+            <option>Proforma Invoice</option>
+          </select>
+        ))}
+        {renderInvField("Invoice No", (
+          <input className={`${invInput} w-[6.5rem]`} value={form.invoice_no||''} onChange={e=>setForm({...form,invoice_no:e.target.value})} placeholder="Auto if blank"/>
+        ))}
+        {renderInvField("Delivery Challan", (
+          <select className={`${invInput} w-[8.5rem]`} value={form.delivery_id||''} onChange={e=>chooseDelivery(e.target.value)}>
+            <option value="">Not linked</option>
+            {deliveries.map(d=><option key={d.id} value={d.id}>{d.delivery_no||d.id} · {d.customer_name||''}</option>)}
+          </select>
+        ))}
+        {renderInvField("Company", (
+          <select className={`${invInput} w-[8.5rem]`} value={form.customer_id||''} onChange={e=>{
+            const c = customers.find(x=>x.id===e.target.value);
+            const cName = c?.name || '';
+            const qTerms = findQuoteTermsForCustomer(cName);
+            const days = qTerms ? extractDueDays(qTerms) : '';
+            setForm({
+              ...form,
+              customer_id: e.target.value,
+              customer_name: cName,
+              payment_terms: qTerms || form.payment_terms,
+              due_days: (days && (!form.due_days || form.due_days === '0')) ? days : form.due_days,
+            });
+          }}>
+            <option value="">Select company</option>
+            {customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        ), true)}
+        {renderInvField("Date", (
+          <input type="date" className={`${invInput} w-[6.5rem]`} value={form.invoice_date} onChange={e=>setForm({...form,invoice_date:e.target.value})}/>
+        ))}
+        {renderInvField("Due Days", (
+          <div className="inline-flex items-center gap-1">
+            <input type="number" min={0} className={`${invInput} w-[2.75rem]`} value={form.due_days||''} onChange={e=>setForm({...form,due_days:e.target.value})} placeholder="Days"/>
+            {form.due_days !== '' && form.invoice_date && addDaysISO(form.invoice_date, Number(form.due_days)) ? <span className="text-[9px] text-slate-500 whitespace-nowrap">due {addDaysISO(form.invoice_date, Number(form.due_days)).split('-').reverse().join('-')}</span> : null}
           </div>
         ))}
+        {renderInvField("PO No", (
+          <input className={`${invInput} w-[5rem]`} placeholder="PO No" value={form.po_no||''} onChange={e=>setForm({...form,po_no:e.target.value})}/>
+        ))}
+        {renderInvField("Payment Terms", (
+          <select
+            className={`${invInput} w-[9.5rem] sm:w-[11.5rem]`}
+            value={form.payment_terms || ''}
+            onChange={e => {
+              const val = e.target.value;
+              if (val === '__custom__') {
+                const custom = window.prompt('Enter custom payment terms:', form.payment_terms || '');
+                if (custom !== null) {
+                  const days = extractDueDays(custom);
+                  setForm({
+                    ...form,
+                    payment_terms: custom,
+                    due_days: (days && (!form.due_days || form.due_days === '0')) ? days : form.due_days,
+                  });
+                }
+                return;
+              }
+              const days = extractDueDays(val);
+              setForm({
+                ...form,
+                payment_terms: val,
+                due_days: (days && (!form.due_days || form.due_days === '0')) ? days : form.due_days,
+              });
+            }}
+          >
+            <option value="">Select terms…</option>
+            {form.payment_terms && !quotationTermsOptions.some(o => o.value.toLowerCase() === String(form.payment_terms).toLowerCase()) && (
+              <option value={form.payment_terms}>★ {form.payment_terms}</option>
+            )}
+            <optgroup label="Quotation Terms">
+              {quotationTermsOptions.map((opt, i) => (
+                <option key={`term-${i}`} value={opt.value}>
+                  {opt.label || opt.value}
+                </option>
+              ))}
+            </optgroup>
+            <option value="__custom__">+ Enter Custom Terms…</option>
+          </select>
+        ))}
+      </div>
+
+      {/* Row 2: Product Line(s) */}
+      <div className="space-y-1">
+        {lines.map((line,index)=>{
+          const q = Number(line.quantity) || 0;
+          const r = Number(line.rate) || 0;
+          const disc = Number(line.discount_pct) || 0;
+          const gst = Number(line.gst_rate) || 0;
+          const baseAmt = q * r * (1 - disc / 100);
+          const totalAmt = baseAmt * (1 + gst / 100);
+          return (
+            <div key={index} className="flex flex-wrap items-center gap-1.5 rounded border border-slate-200/90 bg-white/70 px-1.5 py-0.5">
+              <span className={invLbl}>Original:</span>
+              <input
+                className={`${invInput} w-[8.5rem] sm:w-[9.5rem]`}
+                list="inv-product-list"
+                placeholder="Product name"
+                value={line.originalName ?? (splitProductAndRef(line.description || '', allCompanies, form.customer_name).original || line.description || '')}
+                onChange={e => {
+                  const val = e.target.value;
+                  const split = splitProductAndRef(val, allCompanies, form.customer_name);
+                  const orig = split.original;
+                  const key = orig.trim().toLowerCase();
+                  const compKey = (split.company || form.customer_name || '').trim().toLowerCase();
+
+                  // Look up matching delivery
+                  const dMatch = deliveries.find(d => {
+                    const dCust = String(d.customer_name || '').trim().toLowerCase();
+                    const dPart = String(d.part_name || '').trim().toLowerCase();
+                    const dOrig = splitProductAndRef(d.part_name || '').original.toLowerCase();
+                    const dNo = String(d.delivery_no || '').trim().toLowerCase();
+                    const custMatches = !compKey || dCust === compKey;
+                    return custMatches && (dPart === key || dOrig === key || dNo === key || dPart.includes(key));
+                  }) || deliveries.find(d => {
+                    const dPart = String(d.part_name || '').trim().toLowerCase();
+                    const dOrig = splitProductAndRef(d.part_name || '').original.toLowerCase();
+                    return dPart === key || dOrig === key;
+                  });
+
+                  // Look up matching sales order
+                  const soMatch = salesOrdersList.find(s => {
+                    const sCust = String(s.customer || s.customer_name || '').trim().toLowerCase();
+                    const custMatches = !compKey || sCust === compKey;
+                    if (!custMatches) return false;
+                    let items: any[] = [];
+                    try { items = typeof s.items === 'string' ? JSON.parse(s.items) : (s.items || []); } catch {}
+                    const inItems = Array.isArray(items) && items.some((it: any) => {
+                      const itName = String(it.partName || it.productName || it.part_name || it.description || '').trim().toLowerCase();
+                      const itOrig = splitProductAndRef(itName).original.toLowerCase();
+                      return itName === key || itOrig === key;
+                    });
+                    const sPart = String(s.part_name || '').trim().toLowerCase();
+                    const sOrig = splitProductAndRef(s.part_name || '').original.toLowerCase();
+                    return inItems || sPart === key || sOrig === key;
+                  });
+
+                  // Look up matching quotation
+                  const qMatch = quotesList.find(q => {
+                    const qCust = String(q.customer || '').trim().toLowerCase();
+                    const custMatches = !compKey || qCust === compKey;
+                    const qPart = String(q.part_name || '').trim().toLowerCase();
+                    const qOrig = splitProductAndRef(q.part_name || '').original.toLowerCase();
+                    return custMatches && (qPart === key || qOrig === key || qPart.includes(key));
+                  });
+
+                  // Look up matching parts master
+                  const pMatch = partsList.find(p =>
+                    String(p.part_name || '').trim().toLowerCase() === key ||
+                    String(p.part_code || '').trim().toLowerCase() === key
+                  );
+
+                  const targetCust = split.company || dMatch?.customer_name || soMatch?.customer || soMatch?.customer_name || qMatch?.customer || form.customer_name || '';
+                  const custMatch = customers.find(c => String(c.name || '').trim().toLowerCase() === targetCust.trim().toLowerCase());
+
+                  const dtRef = split.dateTime || (dMatch?.delivery_date ? formatDate(dMatch.delivery_date) : '');
+                  const fullRef = split.reference || formatFullReference(orig, targetCust, dtRef);
+                  const combined = combineProductAndRef(orig, fullRef);
+
+                  // Resolve quantity
+                  let resolvedQty = '';
+                  if (dMatch?.dispatch_qty != null && Number(dMatch.dispatch_qty) > 0) resolvedQty = String(dMatch.dispatch_qty);
+                  else if (dMatch?.quantity != null && Number(dMatch.quantity) > 0) resolvedQty = String(dMatch.quantity);
+                  else if (soMatch?.quantity != null && Number(soMatch.quantity) > 0) resolvedQty = String(soMatch.quantity);
+                  else if (qMatch?.quantity != null && Number(qMatch.quantity) > 0) resolvedQty = String(qMatch.quantity);
+
+                  const resolvedUnit = pMatch?.unit || dMatch?.unit || soMatch?.unit || 'Nos';
+                  const resolvedHsn = pMatch?.hsn || pMatch?.hsn_code || dMatch?.hsn || (soMatch as any)?.hsn || '';
+
+                  // Resolve unit price / rate
+                  let resolvedRate = '';
+                  if (dMatch?.unit_price != null && Number(dMatch.unit_price) > 0) resolvedRate = String(dMatch.unit_price);
+                  else if (dMatch?.price != null && Number(dMatch.price) > 0) resolvedRate = String(dMatch.price);
+                  else if (pMatch?.unit_price != null && Number(pMatch.unit_price) > 0) resolvedRate = String(pMatch.unit_price);
+                  else if (qMatch?.unit_price != null && Number(qMatch.unit_price) > 0) resolvedRate = String(qMatch.unit_price);
+                  else if (soMatch?.value && soMatch?.quantity && Number(soMatch.quantity) > 0) resolvedRate = String((Number(soMatch.value) / Number(soMatch.quantity)).toFixed(2));
+
+                  const resolvedGst = pMatch?.gst_rate != null ? String(pMatch.gst_rate) : (dMatch?.gst_rate != null ? String(dMatch.gst_rate) : (qMatch?.gst_percent != null ? String(qMatch.gst_percent) : '18'));
+
+                  // Resolve payment terms & due days from quotation / order
+                  const qTerms = dMatch ? findQuoteTermsForDelivery(dMatch) : (soMatch?.payment_terms || qMatch?.payment_terms || findQuoteTermsForCustomer(targetCust));
+                  const days = qTerms ? extractDueDays(qTerms) : '';
+
+                  // Update line items
+                  setLines(lines.map((x, i) => i === index ? {
+                    ...x,
+                    originalName: orig,
+                    reference: fullRef,
+                    description: combined,
+                    hsn: resolvedHsn || x.hsn || '',
+                    quantity: resolvedQty || x.quantity || '1',
+                    unit: resolvedUnit || x.unit || 'Nos',
+                    rate: resolvedRate || x.rate || '',
+                    gst_rate: resolvedGst || x.gst_rate || '18',
+                  } : x));
+
+                  // Update header form with all DB details
+                  setForm((prev: any) => ({
+                    ...prev,
+                    customer_name: targetCust || prev.customer_name,
+                    customer_id: custMatch?.id || dMatch?.customer_id || prev.customer_id,
+                    delivery_id: dMatch ? String(dMatch.id) : prev.delivery_id,
+                    dc_no: dMatch?.delivery_no || prev.dc_no,
+                    sales_order_id: dMatch?.sales_order_id || soMatch?.id || prev.sales_order_id,
+                    po_no: dMatch?.po_no || dMatch?.customer_po_no || soMatch?.po_no || soMatch?.customer_po_no || prev.po_no,
+                    billing_address: dMatch?.delivery_address || dMatch?.billing_address || (custMatch as any)?.address || (custMatch as any)?.billing_address || prev.billing_address,
+                    payment_terms: qTerms || prev.payment_terms,
+                    due_days: (days && (!prev.due_days || prev.due_days === '0')) ? days : prev.due_days,
+                  }));
+                }}
+              />
+              <span className={invLbl}>Reference:</span>
+              <input
+                className={`${invInput} flex-1 min-w-[13rem] sm:min-w-[16rem]`}
+                placeholder="Product - Company - Date/Time"
+                title={line.reference || "Full Reference"}
+                value={line.reference ?? (splitProductAndRef(line.description || '', allCompanies, form.customer_name).reference || '')}
+                onChange={e => {
+                  const ref = e.target.value;
+                  const orig = line.originalName ?? (splitProductAndRef(line.description || '').original || line.description || '');
+                  const combined = combineProductAndRef(orig, ref);
+                  setLines(lines.map((x, i) => i === index ? { ...x, reference: ref, description: combined } : x));
+                }}
+              />
+              <span className={invLbl}>Qty:</span>
+              <input type="number" min="0" className={`${invInput} w-[3.75rem]`} placeholder="Qty" value={line.quantity} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,quantity:e.target.value}:x))}/>
+              <span className={invLbl}>Unit:</span>
+              <input className={`${invInput} w-[3.25rem]`} placeholder="Unit" value={line.unit} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,unit:e.target.value}:x))}/>
+              <span className={invLbl}>Rate:</span>
+              <input type="number" min="0" className={`${invInput} w-[4.5rem]`} placeholder="Rate" value={line.rate} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,rate:e.target.value}:x))}/>
+              <span className={invLbl}>GST %:</span>
+              <input type="number" min="0" className={`${invInput} w-[3.5rem]`} placeholder="GST" value={line.gst_rate} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,gst_rate:e.target.value}:x))}/>
+              <span className={invLbl}>Disc %:</span>
+              <input type="number" min="0" className={`${invInput} w-[3rem]`} placeholder="0" value={line.discount_pct} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,discount_pct:e.target.value}:x))}/>
+              <span className="text-[11px] font-bold text-slate-700 tabular-nums min-w-[3.5rem] text-right">₹{totalAmt ? totalAmt.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : 0}</span>
+              {lines.length > 1 && (
+                <button type="button" aria-label="Remove item" onClick={()=>setLines(lines.filter((_,i)=>i!==index))} className="text-slate-400 hover:text-rose-600 px-0.5 font-bold text-xs">✕</button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <datalist id="inv-product-list">
+        {deliveries.map((d: any) => {
+          const s = splitProductAndRef(d.part_name || '', allCompanies, d.customer_name);
+          const dt = s.dateTime || (d.delivery_date ? formatDate(d.delivery_date) : '');
+          const disp = formatFullReference(s.original, d.customer_name, dt || d.delivery_no);
+          return <option key={`dlv-${d.id}`} value={disp} label={disp} />;
+        })}
+        {salesOrdersList.map((so: any) => {
+          const s = splitProductAndRef(so.part_name || '', allCompanies, so.customer);
+          const disp = formatFullReference(s.original, so.customer, s.dateTime || so.order_no);
+          return <option key={`so-${so.id}`} value={disp} label={disp} />;
+        })}
+        {partsList.map((p: any) => (
+          <option key={`prt-${p.id}`} value={p.part_name} label={[p.part_name, p.part_code].filter(Boolean).join(' • ')} />
+        ))}
+      </datalist>
+
+      {/* Row 3: Action Controls */}
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-slate-200/50 pt-1">
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={()=>setLines([...lines,{description:'',quantity:'',unit:'',rate:'',gst_rate:'',discount_pct:'0'}])}
+            className="inline-flex items-center gap-0.5 rounded border border-brand-200 bg-brand-50/70 px-1.5 py-0.5 text-[10px] font-bold text-brand-600 hover:bg-brand-100 hover:text-brand-800 transition-colors shrink-0"
+          >
+            <span className="text-xs leading-none">+</span> Add Product
+          </button>
+        </div>
+
+        {!editId && (
+          <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+            <button
+              type="button"
+              onClick={() => { startNew(); setSavedNote(''); }}
+              className="h-6 px-2 text-[11px] font-medium rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              Clear / Reset
+            </button>
+            <button
+              type="button"
+              onClick={() => void save(true)}
+              disabled={busy || !canCreateInv}
+              title={!canCreateInv ? 'Invoice create permission is required' : 'Save invoice and print'}
+              className={`h-6 px-2.5 text-[11px] font-bold rounded text-white bg-brand-700 hover:bg-brand-800 shadow-sm transition-colors flex items-center gap-1 shrink-0 ${busy ? 'opacity-60 cursor-not-allowed' : ''}`}
+            >
+              <Printer size={12} /> Save & Print
+            </button>
+            <button
+              type="button"
+              onClick={() => void save(false)}
+              disabled={busy || !canCreateInv}
+              title={!canCreateInv ? 'Invoice create permission is required' : undefined}
+              className={`h-6 px-3 text-[11px] font-bold rounded text-white bg-brand-600 hover:bg-brand-700 shadow-sm transition-colors ${busy ? 'opacity-60 cursor-not-allowed' : ''}`}
+            >
+              {busy ? 'Saving...' : 'Save Invoice'}
+            </button>
+          </div>
+        )}
       </div>
   </>);
  
@@ -376,11 +844,19 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
         </div>
       </div>
       <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-        <Button variant="secondary" size="sm" icon={<Download size={13}/>} onClick={() => void exportRows()} disabled={busy || !canExportInv} title={!canExportInv ? 'Invoice export permission is required' : undefined} className="h-7 py-1 text-xs px-2.5 shadow-xs">
+        <Button variant="secondary" size="sm" icon={<Upload size={13}/>} onClick={() => void exportRows()} disabled={busy || !canExportInv} title={!canExportInv ? 'Invoice export permission is required' : undefined} className="h-7 py-1 text-xs px-2.5 shadow-xs">
           Export
         </Button>
-        <Button variant="secondary" size="sm" icon={<Printer size={13}/>} onClick={printInvoice} className="h-7 py-1 text-xs px-2.5 shadow-xs">
-          Print
+        <Button variant="secondary" size="sm" icon={<Printer size={13}/>} onClick={() => {
+          if (form.customer_name?.trim() && lines.some(l => l.description?.trim())) {
+            void save(true);
+          } else if (selected) {
+            printInvoice();
+          } else {
+            setError('Please enter company and product details to Save & Print, or select an invoice to print.');
+          }
+        }} className="h-7 py-1 text-xs px-2.5 shadow-xs">
+          Save & Print
         </Button>
       </div>
     </div>
@@ -398,10 +874,10 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
         the page opens, directly above the invoice table. Fields, validation, the item
         rows and save() are the same code as before - only the modal chrome is gone. */}
     {formOpen && !editId && (
-      <section className={`rounded-xl border shadow-sm ${tint('Invoice').panel}`} data-testid="invoice-entry-form">
-        <div className="space-y-2.5 p-3">
+      <section className={`rounded-lg border shadow-sm ${tint('Invoice').panel} p-2 text-xs`} data-testid="invoice-entry-form">
+        <div className="space-y-1.5">
           {savedNote && (
-            <div role="status" data-testid="invoice-saved-note" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+            <div role="status" data-testid="invoice-saved-note" className="flex items-center justify-between gap-2 rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
               <span>&#10003; Invoice {savedNote} saved. The table below has been refreshed.</span>
               <button type="button" onClick={() => setSavedNote('')} className="font-bold underline hover:text-emerald-900">Dismiss</button>
             </div>
@@ -504,8 +980,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     </div>
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4"><Card className="p-4"><h3 className="font-bold text-sm mb-3">Invoice Activity</h3><div className="h-24 flex items-end gap-1 border-b">{stats.monthly.length?stats.monthly.map(x=><div key={x.day} title={formatDate(x.day)+' '+cash(x.invoiced)} className="flex-1 bg-blue-500 rounded-t" style={{height:Math.max(3,Number(x.invoiced)/Math.max(1,...stats.monthly.map(y=>Number(y.invoiced)))*90)}}/>):<span className="w-full text-center text-xs text-slate-400">No invoice activity.</span>}</div><p className="text-[10px] text-slate-500 mt-2">Actual invoice amounts from the selected date range</p></Card><Card className="p-4"><h3 className="font-bold text-sm mb-2">Outstanding by Ageing</h3><Total label="0-30 days" value={cash(stats.ageing.current)}/><Total label="31-60 days" value={cash(stats.ageing.d31_60)}/><Total label="61-90 days" value={cash(stats.ageing.d61_90)}/><Total label="Over 90 days" value={cash(stats.ageing.d90_plus)}/></Card><Card className="p-4"><h3 className="font-bold text-sm mb-2">Invoice Status</h3><div className="grid grid-cols-2 gap-2">{['Paid','Partially Paid','Overdue','Credit Note','Cancelled'].map(x=><div key={x} className="border rounded p-2 flex justify-between text-xs">{x}<b>{stats.by_status?.[x]||0}</b></div>)}</div><h4 className="font-semibold text-xs mt-3">Top Companies</h4>{stats.top_customers?.slice(0,4).map(x=><Total key={x.customer} label={x.customer} value={cash(x.value)}/>)}</Card></div>
 
-    <Modal open={formOpen && !!editId} onClose={()=>!busy&&setFormOpen(false)} title="Edit Invoice" subtitle="Tax totals and ledger postings are calculated by the database." size="2xl" footer={<><Button variant="secondary" onClick={()=>setFormOpen(false)}>Cancel</Button><Button onClick={()=>void save()} disabled={busy || !canEditInv} title={!canEditInv ? 'Invoice edit permission is required' : undefined}>{busy?'Saving...':'Save Invoice'}</Button></>}>
-      {invoiceFormBody}
+    <Modal open={formOpen && !!editId} onClose={()=>!busy&&setFormOpen(false)} title="Edit Invoice" subtitle="Tax totals and ledger postings are calculated by the database." size="2xl" footer={<><Button variant="secondary" onClick={()=>setFormOpen(false)}>Cancel</Button><Button variant="secondary" onClick={()=>void save(true)} disabled={busy || !canEditInv} title={!canEditInv ? 'Invoice edit permission is required' : 'Save invoice and print'}><Printer size={13}/> Save & Print</Button><Button onClick={()=>void save(false)} disabled={busy || !canEditInv} title={!canEditInv ? 'Invoice edit permission is required' : undefined}>{busy?'Saving...':'Save Invoice'}</Button></>}>
       {invoiceFormBody}
     </Modal>
     <Modal open={payOpen} onClose={()=>!busy&&setPayOpen(false)} title="Record Company Receipt" subtitle={selected?.invoice_no} footer={<><Button variant="secondary" onClick={()=>setPayOpen(false)}>Cancel</Button><Button onClick={()=>void saveReceipt()} disabled={busy}>Record Receipt</Button></>}>

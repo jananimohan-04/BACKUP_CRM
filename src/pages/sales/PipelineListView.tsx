@@ -1,10 +1,12 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Download, Eye, Edit2, Trash2 } from 'lucide-react';
+import { Search, Download, Upload, Eye, Edit2, Trash2 } from 'lucide-react';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 import { KanbanCard } from './SalesPipelinePage';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { recordDateOf } from '@/lib/globalDate';
+import { exportCsv } from '@/lib/reportExport';
+import { todayISO } from '@/lib/format';
 
 interface PipelineListViewProps {
   cards: KanbanCard[];
@@ -66,6 +68,22 @@ export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineLi
   const pager = usePager(filteredCards, `${search}|${companyFilter}|${stageFilter}|${globalFrom}|${globalTo}`);
   const { pageCards, start } = { pageCards: pager.pageItems, start: pager.start };
 
+  const handleExport = () => {
+    exportCsv(`Sales_Pipeline_${todayISO()}`, [
+      ['#', 'Reference No', 'Date', 'Company', 'Products', 'Stage', 'Qty', 'Remarks'],
+      ...filteredCards.map((card, i) => [
+        i + 1,
+        card.refNo || '',
+        card.date || '',
+        card.customer || '',
+        card.part || '',
+        stageOf(card) || '',
+        card.qty ?? '',
+        card.raw?.remarks || card.raw?.internal_remarks || '',
+      ]),
+    ]);
+  };
+
   return (
     <div className="flex flex-col">
       <div className="pb-2 flex flex-wrap gap-3 items-center">
@@ -84,8 +102,8 @@ export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineLi
           {stageOptions.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
 
-        <button className="p-2 border border-slate-300 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors" title="Export">
-          <Download className="w-4 h-4" />
+        <button onClick={handleExport} className="p-2 border border-slate-300 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors" title="Export CSV">
+          <Upload className="w-4 h-4" />
         </button>
       </div>
 

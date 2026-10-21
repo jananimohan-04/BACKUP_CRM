@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  AlertTriangle, LayoutList, BookOpen, ChevronDown, ChevronRight, Download, Edit, ExternalLink, FileText, ListTree, Lock, Plus,
+  AlertTriangle, LayoutList, BookOpen, ChevronDown, ChevronRight, Download, Upload, Edit, ExternalLink, FileText, ListTree, Lock, Plus,
   Printer, Search, Trash2, X,
 } from 'lucide-react';
 import { EmptyState, LoadingState } from '@/components/ui/PageHeader';
@@ -332,7 +332,7 @@ function LedgerTab({ fyr, accounts, companyName, onOpenVoucher }: {
           </FormField>
           <div className="flex gap-2">
             <Button icon={<Search size={14} />} onClick={show} disabled={loading}>Show</Button>
-            <Button variant="secondary" icon={<Download size={14} />} onClick={handleCsv} disabled={!ledger}>CSV</Button>
+            <Button variant="secondary" icon={<Upload size={14} />} onClick={handleCsv} disabled={!ledger} title="Export CSV">CSV</Button>
             <Button variant="secondary" icon={<Printer size={14} />} onClick={handlePrint} disabled={!ledger}>Print</Button>
           </div>
         </div>

@@ -9,7 +9,7 @@
 
 import { useState, useEffect, useMemo, useRef, Fragment, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { productWithCompany } from '@/lib/productLabel';
+import { productWithCompany, splitProductAndRef, combineProductAndRef, formatFullReference } from '@/lib/productLabel';
 import { calcWorkings, rowCost, type WorkRow, type Workings } from '@/lib/quotationWorkings';
 import { supabase } from '@/lib/supabase';
 import { todayISO } from '@/lib/format';
@@ -899,6 +899,8 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   const [pickCompany, setPickCompany] = useState('');
   const [pickProduct, setPickProduct] = useState('');
   const [pickText, setPickText] = useState('');
+  const [pickOriginal, setPickOriginal] = useState('');
+  const [pickReference, setPickReference] = useState('');
   const pickInputRef = useRef<HTMLInputElement>(null);
   const [pickTick, setPickTick] = useState(0);
   const [prodDropdownOpen, setProdDropdownOpen] = useState(false);
@@ -924,7 +926,17 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
     // One row per product, written as "Company - Product - date time". Typing matches any part of that text,
     // so the company name finds it too.
     const rowsAll = pickOptions
-      .map((o) => ({ key: `${o.company}||${o.product}`, company: String(o.company || '').trim(), product: o.product, label: productWithCompany(o.product, String(o.company || ''), o.qty) }))
+      .map((o) => {
+        const s = splitProductAndRef(o.product);
+        const ref = s.reference;
+        const disp = [s.original, o.company, ref].filter(Boolean).join(' • ') + (o.qty ? ` - Qty ${o.qty}` : '');
+        return {
+          key: `${o.company}||${o.product}`,
+          company: String(o.company || '').trim(),
+          product: o.product,
+          label: disp,
+        };
+      })
       .sort((a, b) => a.label.localeCompare(b.label));
     const words = key(pickText).split(/\s+/).filter(Boolean);
     const rows = rowsAll.filter((r) => words.every((w) => r.label.toLowerCase().includes(w)));
@@ -937,16 +949,19 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
           <div className="flex flex-wrap items-center gap-2">
             {titleSlot ?? <h3 className="text-[10px] font-bold uppercase tracking-widest text-brand-600">Section 1 — Transaction Details</h3>}
             <div className="flex items-center gap-1.5 relative" ref={prodRef}>
-              <span className={inlineLbl}>Product *</span>
+              <span className={inlineLbl}>Original *</span>
               <div className="relative">
                 <input
                   ref={pickInputRef}
-                  className={`${compactInput} w-[26rem] max-w-[60vw] pr-6`}
-                  placeholder="Type company or product, or select"
-                  value={pickText}
+                  className={`${compactInput} w-[9.5rem] pr-6`}
+                  placeholder="Product name"
+                  value={pickOriginal || splitProductAndRef(pickText, [], pickCompany).original || pickText}
                   onFocus={() => setProdDropdownOpen(true)}
                   onChange={(e) => {
                     const v = e.target.value;
+                    const s = splitProductAndRef(v, [], pickCompany);
+                    setPickOriginal(s.original);
+                    if (s.reference) setPickReference(s.reference);
                     setPickText(v);
                     const hit = rowsAll.find((r) => key(r.label) === key(v));
                     setPickProduct(hit ? hit.product : '');
@@ -976,6 +991,9 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                         className="cursor-pointer px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-brand-50 hover:text-brand-800"
                         onMouseDown={(e) => {
                           e.preventDefault();
+                          const s = splitProductAndRef(r.product);
+                          setPickOriginal(s.original);
+                          setPickReference(s.reference);
                           setPickText(r.label);
                           setPickProduct(r.product);
                           setPickCompany(r.company);
@@ -993,9 +1011,35 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                   document.body,
                 )}
               </div>
+              <span className={inlineLbl}>Reference</span>
+              <input
+                className={`${compactInput} w-[18rem] max-w-[45vw]`}
+                placeholder="Product - Company - Date/Time"
+                title={pickReference || splitProductAndRef(pickProduct, [], pickCompany).reference || ''}
+                value={pickReference || splitProductAndRef(pickProduct, [], pickCompany).reference || ''}
+                onChange={(e) => {
+                  const ref = e.target.value;
+                  setPickReference(ref);
+                  const orig = pickOriginal || splitProductAndRef(pickProduct).original || pickProduct;
+                  const comb = combineProductAndRef(orig, ref);
+                  setPickProduct(comb);
+                }}
+              />
             </div>
             <Button variant="secondary" size="sm" icon={<X size={14} />} onClick={onClose}>Cancel</Button>
-            <Button size="sm" disabled={!pickCompany.trim() || !pickProduct.trim()} onClick={() => onPick?.(pickCompany.trim(), pickProduct.trim())} className="!bg-teal-600 hover:!bg-teal-500 text-white shadow-md shadow-teal-500/25 !border-teal-600">Continue</Button>
+            <Button
+              size="sm"
+              disabled={!pickCompany.trim() || (!pickOriginal.trim() && !pickProduct.trim())}
+              onClick={() => {
+                const orig = pickOriginal.trim() || splitProductAndRef(pickProduct).original || pickProduct.trim();
+                const ref = pickReference.trim() || splitProductAndRef(pickProduct).reference;
+                const prod = combineProductAndRef(orig, ref);
+                onPick?.(pickCompany.trim(), prod);
+              }}
+              className="!bg-teal-600 hover:!bg-teal-500 text-white shadow-md shadow-teal-500/25 !border-teal-600"
+            >
+              Continue
+            </Button>
             {searchSlot}
           </div>
         </div>
@@ -1091,7 +1135,16 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                             className="h-3.5 w-3.5 accent-orange-600"
                             aria-label={`Select ${r.name}`}
                           />
-                          <span className="min-w-0 flex-1 truncate font-semibold text-slate-800" title={productWithCompany(r.name, card?.customer ?? '')}>{productWithCompany(r.name, card?.customer ?? '')}</span>
+                          {(() => {
+                            const s = splitProductAndRef(r.name);
+                            return (
+                              <span className="min-w-0 flex-1 truncate font-semibold text-slate-800 flex items-center gap-1.5" title={productWithCompany(r.name, card?.customer ?? '')}>
+                                <span>{s.original}</span>
+                                {card?.customer && <span className="text-[10px] text-slate-500 font-normal">({card.customer})</span>}
+                                {s.reference && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono font-normal">{s.reference}</span>}
+                              </span>
+                            );
+                          })()}
                           {whs.length > 0 && (
                             <select
                               aria-label={`Warehouse for ${r.name}`} title="Warehouse (default shown; change if needed)"

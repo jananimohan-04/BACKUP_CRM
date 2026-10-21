@@ -350,6 +350,9 @@ export function InventoryPage() {
         all.push(...res.rows);
         if (res.rows.length < 500 || all.length >= res.total) break;
       }
+      if (all.length === 0 && items?.rows && items.rows.length > 0) {
+        all.push(...items.rows);
+      }
       const catName = categories.find(c => c.id === applied.categoryId)?.name ?? 'All-Items';
       exportCsv(`Inventory_${catName.replace(/\W+/g, '-')}_${todayISO()}`, [
         ['#', 'Product Code', 'Product Name', 'Category', 'Specification', 'Unit', 'Current Stock', 'Min Stock', 'Reorder Qty', 'Rate (INR)', 'Value (INR)', 'Status', 'Supplier', 'Warehouse', 'Location', 'Product Status'],
@@ -359,7 +362,18 @@ export function InventoryPage() {
         ]),
       ]);
     } catch (e) {
-      setExportError(errText(e));
+      if (items?.rows && items.rows.length > 0) {
+        const catName = categories.find(c => c.id === applied.categoryId)?.name ?? 'All-Items';
+        exportCsv(`Inventory_${catName.replace(/\W+/g, '-')}_${todayISO()}`, [
+          ['#', 'Product Code', 'Product Name', 'Category', 'Specification', 'Unit', 'Current Stock', 'Min Stock', 'Reorder Qty', 'Rate (INR)', 'Value (INR)', 'Status', 'Supplier', 'Warehouse', 'Location', 'Product Status'],
+          ...items.rows.map((r, i) => [
+            i + 1, r.code, r.name, r.category_name ?? '', r.specification ?? '', r.unit ?? '', r.current_stock, r.min_stock, r.reorder_qty,
+            r.rate, r.value, r.status, r.supplier_name ?? '', r.warehouse_name ?? '', r.location_name ?? '', r.item_status,
+          ]),
+        ]);
+      } else {
+        setExportError(errText(e));
+      }
     } finally {
       setExporting(false);
     }
@@ -407,8 +421,8 @@ export function InventoryPage() {
           </button>
         )}
         {canManage && (
-          <button type="button" onClick={() => setImportOpen(true)} className={topbarBtn}>
-            <Upload size={13} /> Import
+          <button type="button" onClick={() => setImportOpen(true)} className={topbarBtn} title="Import Products">
+            <Download size={13} /> Import
           </button>
         )}
         {canManage && (
@@ -421,27 +435,15 @@ export function InventoryPage() {
             <Store size={13} className="text-blue-600" /> Retail Store Sync
           </button>
         )}
-        <div className="relative" data-floating-menu>
-          <button
-            type="button"
-            onClick={e => { e.stopPropagation(); setExportOpen(o => !o); }}
-            disabled={exporting || !ready}
-            className={topbarBtn}
-          >
-            {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} Export <ChevronDown size={11} />
-          </button>
-          {exportOpen && (
-            <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-slate-200 rounded-lg shadow-xl z-50 overflow-hidden">
-              <button
-                type="button"
-                onClick={() => { setExportOpen(false); void handleExport(); }}
-                className="w-full text-left px-3.5 py-2 text-xs hover:bg-slate-50 flex items-center gap-2"
-              >
-                <FileSpreadsheet size={14} className="text-emerald-600" /> CSV (current filters)
-              </button>
-            </div>
-          )}
-        </div>
+        <button
+          type="button"
+          onClick={() => void handleExport()}
+          disabled={exporting || !ready}
+          className={topbarBtn}
+          title="Export CSV"
+        >
+          {exporting ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />} Export
+        </button>
         <button type="button" onClick={() => setEditing('new')} disabled={!filters} className={topbarPrimaryBtn}>
           <Plus size={13} /> Add Product
         </button>
@@ -522,23 +524,14 @@ export function InventoryPage() {
             <button onClick={() => setTransferOpen(true)} className={outlineBtn}><ArrowLeftRight size={16} /> Stock Transfer</button>
           )}
           {canManage && (
-            <button onClick={() => setImportOpen(true)} className={outlineBtn}><Upload size={16} /> Import</button>
+            <button onClick={() => setImportOpen(true)} className={outlineBtn} title="Import Products"><Download size={16} /> Import</button>
           )}
           {canManage && (
             <button onClick={() => setMasterOpen(true)} className={outlineBtn}><Building2 size={16} /> Warehouse Master</button>
           )}
-          <div className="relative" data-floating-menu>
-            <button onClick={() => setExportOpen(o => !o)} disabled={exporting || !ready} className={outlineBtn}>
-              {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} Export <ChevronDown size={14} />
-            </button>
-            {exportOpen && (
-              <div className="absolute right-0 top-full mt-1 w-60 bg-white border border-slate-200 rounded-lg shadow-xl z-30 overflow-hidden">
-                <button onClick={handleExport} className="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 flex items-center gap-2">
-                  <FileSpreadsheet size={15} className="text-emerald-600" /> CSV (current filters)
-                </button>
-              </div>
-            )}
-          </div>
+          <button onClick={() => void handleExport()} disabled={exporting || !ready} className={outlineBtn} title="Export CSV">
+            {exporting ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} Export
+          </button>
           <button onClick={() => setEditing('new')} disabled={!filters} className={primaryBtn}><Plus size={16} /> Add Product</button>
         </div>
       </div>
@@ -856,7 +849,7 @@ export function InventoryPage() {
         <WarehouseMasterModal onClose={() => setMasterOpen(false)} onChanged={() => { setFgKey(k => k + 1); }} />
       )}
       {importOpen && canManage && (
-        <ImportModal onClose={() => setImportOpen(false)} onImported={refreshAll} />
+        <ImportModal categories={categories} onClose={() => setImportOpen(false)} onImported={refreshAll} />
       )}
       {retailSyncOpen && canManage && (
         <RetailSyncModal
@@ -1691,13 +1684,28 @@ function TransferModal({ onClose, onSaved }: { onClose: () => void; onSaved: () 
   );
 }
 
-function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
+function ImportModal({ categories, onClose, onImported }: { categories: { id: string; name: string; code?: string }[]; onClose: () => void; onImported: () => void }) {
   const [rows, setRows] = useState<ImportRow[] | null>(null);
   const [fileName, setFileName] = useState('');
   const [parseError, setParseError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
+
+  const downloadTemplate = () => {
+    const catNames = categories && categories.length > 0
+      ? categories.map(c => c.name)
+      : ['Raw Materials', 'Components', 'Consumables', 'Tools'];
+
+    const sampleRows = [
+      ['RM-SS304-25', 'Stainless Steel Round Bar 25mm', catNames[0] || 'Raw Materials', 'SS304 Grade 25mm Dia Rod', 'Mtr', '10', '50', '450', 'Steel Tech Corp', 'Rack-A1', '25'],
+      ['CP-BRG-6204', 'Deep Groove Ball Bearing 6204', catNames[1] || catNames[0] || 'Components', '20x47x14mm Chrome Steel', 'Nos', '20', '100', '185', 'Apex Bearings Ltd', 'Bin-B4', '60'],
+      ['CS-COOL-001', 'CNC Coolant Cutting Fluid', catNames[2] || catNames[0] || 'Consumables', 'Water Soluble Synthetic Coolant 20L', 'Ltr', '5', '20', '3200', 'Industrial Oils Co', 'Shelf-C2', '12'],
+      ['TL-END-010', 'Carbide End Mill 10mm 4-Flute', catNames[3] || catNames[0] || 'Tools', 'TiAlN Coated Solid Carbide', 'Nos', '4', '15', '1250', 'Precision Tools Inc', 'Tool-Cab-1', '8'],
+    ];
+
+    exportCsv('inventory-import-template', [IMPORT_COLUMNS as unknown as string[], ...sampleRows]);
+  };
 
   const readFile = async (file: File | null) => {
     setRows(null); setResult(null); setParseError(null); setError(null);
@@ -1746,16 +1754,23 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
       <ModalError message={error} />
       <div className="space-y-4">
         <div className="text-sm text-slate-600 bg-white border border-slate-200 rounded-lg p-4">
-          <p className="mb-2">Upload a CSV file with these columns (header row recommended):</p>
+          <p className="mb-2 font-medium text-slate-800">Upload a CSV file with these columns:</p>
           <code className="block text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-slate-800 break-all">{IMPORT_COLUMNS.join(',')}</code>
           <ul className="mt-2 text-xs text-slate-500 list-disc pl-5 space-y-0.5">
             <li><b>category</b>: category name or code; <b>supplier</b>: supplier name; <b>location</b>: location code or name.</li>
             <li>Quantities and rate are plain numbers (no ₹ or commas). <b>opening_qty</b> posts an opening stock entry.</li>
             <li>Invalid or duplicate rows are skipped and listed; valid rows are saved.</li>
           </ul>
-          <button onClick={() => exportCsv('inventory-import-template', [IMPORT_COLUMNS])} className={`${outlineBtn} mt-3 h-9`}>
-            <Download size={15} /> Download template
+          <button onClick={downloadTemplate} className={`${outlineBtn} mt-3 h-9`}>
+            <Download size={15} /> Download template with sample data
           </button>
+          <div className="mt-3 p-2.5 bg-blue-50 border border-blue-200 rounded text-xs text-blue-900">
+            <span className="font-semibold">Available Categories: </span>
+            {categories && categories.length > 0 ? categories.map(c => c.name).join(', ') : 'Raw Materials, Bought-Out Components, Consumables, Tools'}
+          </div>
+          <p className="mt-1 text-[11px] text-slate-500 italic">
+            * Sample products are included in the template as examples. You can edit or replace them with your actual products.
+          </p>
         </div>
         <FormField label="CSV file">
           <input type="file" accept=".csv,text/csv" onChange={e => readFile(e.target.files?.[0] ?? null)} className="text-sm text-slate-600" />

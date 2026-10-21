@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Wallet, Save, Eraser, Trash2, FileSpreadsheet, Inbox, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Wallet, Save, Eraser, Trash2, FileSpreadsheet, Inbox, AlertTriangle, CheckCircle2, Upload } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { intersectRange } from '@/lib/globalDate';
@@ -230,7 +230,7 @@ export function PettyCashPage() {
         <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
           <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/70 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Petty cash details <span className="ml-2 text-xs font-medium normal-case text-slate-500" data-testid="pc-count">{view.length} entr{view.length === 1 ? 'y' : 'ies'}</span></h2>
-            <button type="button" className={`${btn} !h-9 text-slate-700 bg-white border border-slate-200 hover:bg-slate-50`} onClick={exportRows} disabled={!view.length}><FileSpreadsheet size={14} />Export CSV</button>
+            <button type="button" className={`${btn} !h-9 text-slate-700 bg-white border border-slate-200 hover:bg-slate-50`} onClick={exportRows} disabled={!view.length}><Upload size={14} />Export CSV</button>
           </div>
           {loadErr && <div role="alert" className="m-4 flex items-start gap-2 text-sm rounded-xl border border-red-200 bg-red-50 text-red-800 px-3.5 py-2.5"><AlertTriangle size={16} className="mt-0.5 shrink-0" /><span>{loadErr}</span></div>}
           <div className="overflow-auto max-h-[520px]">

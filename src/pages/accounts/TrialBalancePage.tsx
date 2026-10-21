@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, CheckCircle2, Download, Play, Printer, Scale } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Download, Upload, Play, Printer, Scale } from 'lucide-react';
 import { PageHeader, EmptyState, LoadingState } from '@/components/ui/PageHeader';
 import { Badge, Button, Card } from '@/components/ui/Card';
 import { FormField, inputClass } from '@/components/ui/Modal';
@@ -181,7 +181,7 @@ export function TrialBalancePage() {
         <Button
           variant="secondary"
           size="sm"
-          icon={<Download size={14} />}
+          icon={<Upload size={14} />}
           onClick={() => csvRef.current()}
           disabled={!hasReport}
           className="h-7 py-1 text-xs px-2.5 shadow-sm"
@@ -223,7 +223,7 @@ export function TrialBalancePage() {
           title="Trial Balance"
           description={`Closing debit and credit balance of every account of ${company.company_name}.`}
           actions={<>
-            <Button variant="secondary" icon={<Download size={14} />} onClick={handleCsv} disabled={!report}>CSV</Button>
+            <Button variant="secondary" icon={<Upload size={14} />} onClick={handleCsv} disabled={!report} title="Export CSV">CSV</Button>
             <Button variant="secondary" icon={<Printer size={14} />} onClick={handlePrint} disabled={!report}>Print</Button>
           </>}
         />

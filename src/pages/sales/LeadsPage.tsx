@@ -180,19 +180,24 @@ export function LeadsPage({ hideHeader = false, toolbarLeft }: { hideHeader?: bo
   }
 
   const allKnownCompanies = useMemo(() => {
-    const map = new Map<string, { company: string; contact_person?: string; phone?: string; email?: string; city?: string; gst?: string }>();
+    const map = new Map<string, { company: string; contact_person?: string; phone?: string; email?: string; city?: string; address?: string; gst?: string; gstin?: string; id?: string }>();
     (leadsData || []).forEach((l: any) => {
       const name = (l.company || l.customer)?.trim();
       if (!name) return;
       const key = name.toLowerCase();
       const existing = map.get(key);
+      const addr = l.address || l.city || existing?.address || existing?.city || '';
+      const gstVal = l.gst || l.gstin || existing?.gst || existing?.gstin || '';
       map.set(key, {
         company: name,
         contact_person: l.contactPerson || l.contact_person || existing?.contact_person || '',
         phone: l.phone || existing?.phone || '',
         email: l.email || existing?.email || '',
         city: l.city || existing?.city || '',
-        gst: l.gst || existing?.gst || ''
+        address: addr,
+        gst: gstVal,
+        gstin: gstVal,
+        id: l.id || existing?.id || '',
       });
     });
     (customerList || []).forEach((c: any) => {
@@ -200,13 +205,19 @@ export function LeadsPage({ hideHeader = false, toolbarLeft }: { hideHeader?: bo
       if (!name) return;
       const key = name.toLowerCase();
       const existing = map.get(key);
+      const addrCandidates = [c.address, c.billing_address, c.city, existing?.address, existing?.city].filter(Boolean).map((s: any) => String(s).trim());
+      const bestAddr = addrCandidates.sort((a, b) => b.length - a.length)[0] || '';
+      const gstVal = c.gst || c.gstin || c.gst_number || (c as any).gst_no || existing?.gst || existing?.gstin || '';
       map.set(key, {
         company: name,
         contact_person: existing?.contact_person || c.contact || '',
         phone: existing?.phone || c.phone || '',
         email: existing?.email || c.email || '',
-        city: existing?.city || c.city || '',
-        gst: existing?.gst || c.gst || c.gstin || c.gst_number || ''
+        city: c.city || existing?.city || '',
+        address: bestAddr,
+        gst: gstVal,
+        gstin: gstVal,
+        id: c.id || existing?.id || '',
       });
     });
     return Array.from(map.values()).sort((a, b) => a.company.localeCompare(b.company));
@@ -776,8 +787,8 @@ export function LeadsPage({ hideHeader = false, toolbarLeft }: { hideHeader?: bo
                 contacts: matched && (matched.contact_person || matched.phone || matched.email)
                   ? [{ person: matched.contact_person || '', phone: matched.phone || '', email: matched.email || '' }]
                   : prev.contacts,
-                city: matched?.city || prev.city,
-                gst: matched?.gst || prev.gst
+                city: matched?.address || matched?.city || prev.city,
+                gst: matched?.gst || (matched as any)?.gstin || prev.gst
               }));
             }}
             onSelectCustomer={c => {
@@ -787,8 +798,8 @@ export function LeadsPage({ hideHeader = false, toolbarLeft }: { hideHeader?: bo
                 contacts: (c.contact_person || c.phone || c.email)
                   ? [{ person: c.contact_person || '', phone: c.phone || '', email: c.email || '' }]
                   : prev.contacts,
-                city: c.city || prev.city,
-                gst: c.gst || prev.gst
+                city: (c as any).address || c.city || prev.city,
+                gst: c.gst || (c as any).gstin || prev.gst
               }));
             }}
             companies={allKnownCompanies}

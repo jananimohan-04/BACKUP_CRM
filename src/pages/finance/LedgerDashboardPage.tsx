@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen, BookText, RefreshCw, Landmark, FileText, PackageOpen, Search, Filter, ArrowUp, ArrowDown, ArrowUpDown, Inbox, AlertTriangle, FileDown, FileSpreadsheet, ChevronLeft, ChevronRight, X, MoreVertical, Printer, Eye } from 'lucide-react';
+import { BookOpen, BookText, RefreshCw, Landmark, FileText, PackageOpen, Search, Filter, ArrowUp, ArrowDown, ArrowUpDown, Inbox, AlertTriangle, FileDown, FileSpreadsheet, ChevronLeft, ChevronRight, X, MoreVertical, Printer, Eye, Upload } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { useAuth } from '@/contexts/AuthContext';
@@ -288,7 +288,7 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
               <button className={btn} data-testid="ledger-preview" title="Preview, then download or print" onClick={() => void openPreview()}><Eye size={14} />Preview</button>
               <button className={btn} data-testid="ledger-print" onClick={printReport}><Printer size={14} />Print</button>
               <button className={btn} data-testid="ledger-pdf" title="Download PDF" onClick={() => void downloadPdf()}><FileDown size={14} />PDF</button>
-              <button className={btn} title="Export CSV" onClick={exportRows}><FileSpreadsheet size={14} />CSV</button>
+              <button className={btn} title="Export CSV" onClick={exportRows}><Upload size={14} />CSV</button>
             </span>
             <div className="relative shrink-0" ref={menuRef}>
               <button type="button" aria-label="More options" aria-haspopup="menu" aria-expanded={menuOpen} data-testid="ledger-menu" className={`${btn} !px-2.5`} onClick={() => setMenuOpen(o => !o)}>

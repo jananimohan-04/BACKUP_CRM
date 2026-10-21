@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState, useRef, useEffect } from 'react';
 import { useDateRange } from '@/contexts/DateRangeContext';
-import { Calendar, Download, Filter, Bell } from 'lucide-react';
+import { Calendar, Download, Upload, Filter, Bell } from 'lucide-react';
 
 export function PageHeader({
   title,
@@ -108,8 +108,8 @@ export function FilterButton() {
 
 export function ExportButton() {
   return (
-    <button className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200 bg-white">
-      <Download size={14} />
+    <button className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200 bg-white" title="Export">
+      <Upload size={14} />
       Export
     </button>
   );

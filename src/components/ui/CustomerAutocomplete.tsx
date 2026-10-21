@@ -9,6 +9,10 @@ export interface CustomerOption {
   email?: string;
   city?: string;
   gst?: string;
+  address?: string;
+  gstin?: string;
+  id?: string;
+  [key: string]: any;
 }
 
 export interface CustomerAutocompleteProps {

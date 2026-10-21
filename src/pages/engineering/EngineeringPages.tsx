@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Plus, Eye, Edit, Trash2, Boxes, FileText, Cog, ShieldCheck, GitBranch, Download } from 'lucide-react';
+import { Plus, Eye, Edit, Trash2, Boxes, FileText, Cog, ShieldCheck, GitBranch, Download, Upload } from 'lucide-react';
 import { PageHeader, ExportButton, DateSelector } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Card, Badge, Button, StatCard, statusToVariant } from '@/components/ui/Card';
@@ -501,7 +501,7 @@ export function BOMPage() {
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Bill of Materials" description={parentPart ? `Multi-level BOM for ${parentPart.part_name}` : 'Multi-level BOM — select a parent part'} actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<ParentPartSelect parts={parentParts} value={parentPartNo} onChange={setParentPartNo} /><Button size="sm" icon={<Plus size={14} />} disabled={!parentPartNo} onClick={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }}>Add Component</Button><Button variant="secondary" size="sm" icon={<Download size={14} />} onClick={handleExport}>Export</Button></div>} />
+      <PageHeader title="Bill of Materials" description={parentPart ? `Multi-level BOM for ${parentPart.part_name}` : 'Multi-level BOM — select a parent part'} actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<ParentPartSelect parts={parentParts} value={parentPartNo} onChange={setParentPartNo} /><Button size="sm" icon={<Plus size={14} />} disabled={!parentPartNo} onClick={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }}>Add Component</Button><Button variant="secondary" size="sm" icon={<Upload size={14} />} onClick={handleExport}>Export</Button></div>} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="BOM Levels" value={maxLevel.toString()} icon={<Boxes size={20} />} accent="brand" />
         <StatCard label="Total Components" value={bomData.length.toString()} icon={<Boxes size={20} />} accent="accent" />

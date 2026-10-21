@@ -6,7 +6,7 @@
 // pipeline card, modal and detail view uses.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, PackageSearch, Search } from 'lucide-react';
+import { Upload, PackageSearch, Search } from 'lucide-react';
 import { Button, Card } from '@/components/ui/Card';
 import { FormField, inputClass } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -206,7 +206,7 @@ export function QuantityTrackingPage({ embedded = false }: { embedded?: boolean 
         <Button
           variant="secondary"
           size="sm"
-          icon={<Download size={14} />}
+          icon={<Upload size={14} />}
           onClick={() => exportReportRef.current()}
           disabled={loading}
           className="h-7 py-1 text-xs px-2.5 shadow-sm"
@@ -287,7 +287,7 @@ export function QuantityTrackingPage({ embedded = false }: { embedded?: boolean 
             <Button
               variant="secondary"
               size="sm"
-              icon={<Download size={14} />}
+              icon={<Upload size={14} />}
               onClick={() => exportReportRef.current()}
               disabled={loading}
               className="h-8 text-xs shadow-sm"
@@ -302,7 +302,7 @@ export function QuantityTrackingPage({ embedded = false }: { embedded?: boolean 
         <PageHeader
           title="Order Quantity Tracking"
           description="Partial production, rejections, batch deliveries and invoice quantities — reconciled from live ERP rows."
-          actions={<Button variant="secondary" size="sm" icon={<Download size={14} />} onClick={exportReport} disabled={loading}><span>Export CSV</span></Button>}
+          actions={<Button variant="secondary" size="sm" icon={<Upload size={14} />} onClick={exportReport} disabled={loading}><span>Export CSV</span></Button>}
         />
         <div className="flex gap-2 border-b border-slate-200 my-2">
           <button

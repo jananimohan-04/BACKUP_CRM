@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { Download, Upload } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -69,8 +70,8 @@ export function ProductionMainPage() {
             actions={
               <div className="flex items-center gap-2">
                 {loading && <span className="text-xs text-slate-400">Syncing...</span>}
-                <Button variant="secondary">Import</Button>
-                <Button variant="secondary">Export</Button>
+                <Button variant="secondary" icon={<Download size={14} />}>Import</Button>
+                <Button variant="secondary" icon={<Upload size={14} />}>Export</Button>
                 <Button variant="secondary">Print</Button>
               </div>
             }

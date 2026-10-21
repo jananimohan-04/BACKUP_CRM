@@ -343,6 +343,11 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
                     }`}>
                       {record.category || 'GOODS PURCHASE'}
                     </span>
+                    {record.petty_cash && (
+                      <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-300" title={`Petty Cash: Paid by ${record.paid_by || 'Member'}${record.petty_date ? ' on ' + record.petty_date : ''}`}>
+                        Petty Cash
+                      </span>
+                    )}
                   </td>
                   <td className="py-2 px-3 text-sm text-slate-700">{record.part_name || '-'}</td>
                   <td className="py-2 px-3 text-sm text-slate-700">{record.quantity ?? '-'}</td>
@@ -384,6 +389,16 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
                   <span className="text-sm text-slate-800 font-medium break-words">{v === null || v === undefined || v === '' ? '—' : String(v)}</span>
                 </div>
               ))}
+              <div>
+                <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Petty Cash</span>
+                {selectedRecord.petty_cash ? (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
+                    Paid by {selectedRecord.paid_by || 'Member'}{selectedRecord.petty_amount ? ` (Rs. ${Number(selectedRecord.petty_amount).toLocaleString('en-IN')})` : ' (Full Amount)'}{selectedRecord.petty_date ? ` · ${selectedRecord.petty_date}` : ''}
+                  </span>
+                ) : (
+                  <span className="text-sm text-slate-400">No</span>
+                )}
+              </div>
               <div>
                 <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Files</span>
                 <div className="flex flex-wrap gap-2">

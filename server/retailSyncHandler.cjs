@@ -28,6 +28,29 @@ function saveLogs() {
   } catch (e) {}
 }
 
+function loadLocalEnv() {
+  const root = path.join(__dirname, '..');
+  for (const f of ['.env.local', '.env']) {
+    const p = path.join(root, f);
+    if (fs.existsSync(p)) {
+      try {
+        const lines = fs.readFileSync(p, 'utf8').split('\n');
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#')) continue;
+          const idx = trimmed.indexOf('=');
+          if (idx > 0) {
+            const k = trimmed.slice(0, idx).trim();
+            const v = trimmed.slice(idx + 1).trim();
+            if (!process.env[k]) process.env[k] = v;
+          }
+        }
+      } catch (e) {}
+    }
+  }
+}
+loadLocalEnv();
+
 // Config from environment variables. Nothing secret is written in the code:
 //   RETAIL_STORE_API_BASE_URL   where the retail store runs (default http://localhost:4000)
 //   RETAIL_STORE_API_KEY        the shared ERP <-> retail key (also read from ERP_INTEGRATION_KEY); required

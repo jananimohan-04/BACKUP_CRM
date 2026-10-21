@@ -4,13 +4,13 @@
 // "Gear - ABC Industries - 14-10-2026 14:31".
 
 const STAMPS = [
-  /\s*-\s*\d{2}[-/.]\d{2}[-/.]\d{2,4}\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?/i,
-  /\s*-\s*\d{2}[A-Za-z]{3}\d{2}[-,]\s*\d{1,2}:\d{2}(?:\s*[AP]M)?/i,
+  /\s*[-•·]\s*\d{2}[-/.]\d{2}[-/.]\d{2,4}\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?/i,
+  /\s*[-•·]\s*\d{2}[A-Za-z]{3}\d{2}[-,]\s*\d{1,2}:?\d{2}(?:\s*[AP]M)?/i,
 ];
 
 /** "02:31 PM" -> "14:31" inside any date-time text; text already on 24 hours is left alone. */
 export function to24Hour(text: string): string {
-  return text.replace(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AP]M)/gi, (_m, h: string, mi: string, s: string | undefined, ap: string) => {
+  return text.replace(/(\d{1,2}):?(\d{2})(?::(\d{2}))?\s*([AP]M)/gi, (_m, h: string, mi: string, s: string | undefined, ap: string) => {
     let hh = Number(h) % 12;
     if (/p/i.test(ap)) hh += 12;
     return `${String(hh).padStart(2, '0')}:${mi}${s ? `:${s}` : ''}`;
@@ -38,4 +38,117 @@ export function productOnly(product: string): string {
   let name = String(product ?? '').trim();
   for (const rx of STAMPS) name = name.replace(rx, '');
   return name.trim();
+}
+
+const registeredCompanies = new Set<string>();
+
+/**
+ * Register known company names to help disambiguate composite strings like
+ * "Product - Company - Date Time".
+ */
+export function registerKnownCompanies(companies: (string | null | undefined)[]) {
+  for (const c of companies) {
+    if (c && typeof c === 'string' && c.trim()) {
+      registeredCompanies.add(c.trim().toLowerCase());
+    }
+  }
+}
+
+/** Formats a full reference label showing: product name + company name + date and time. */
+export function formatFullReference(product: string, company?: string, dateTime?: string): string {
+  const p = String(product || '').trim();
+  const c = String(company || '').trim();
+  const dt = String(dateTime || '').trim();
+  return [p, c, dt].filter(Boolean).join(' - ');
+}
+
+/**
+ * Splits a composite product label like:
+ * - "p1 - 30-09-2026 00:40"
+ * - "p1 - ABC Industries - 30-09-2026 00:40"
+ * - "p1 • ABC Industries • 30-09-2026 00:40"
+ * - "p1 - ABC Industries - 30-09-2026 00:40 - Qty 5"
+ * into:
+ * { original: "p1", reference: "p1 - ABC Industries - 30-09-2026 00:40", company: "ABC Industries", dateTime: "30-09-2026 00:40" }
+ */
+export function splitProductAndRef(
+  fullText: string,
+  knownCompanies: string[] = [],
+  defaultCompany: string = ''
+): { original: string; reference: string; company?: string; dateTime?: string } {
+  let str = String(fullText || '').trim();
+  if (!str) return { original: '', reference: '', company: '', dateTime: '' };
+
+  // Strip trailing quantity if present: " - Qty 10" or " • Qty 10"
+  str = str.replace(/\s*[-•·]\s*Qty\s*\d+\s*$/i, '').trim();
+
+  let dt = '';
+  let company = '';
+  let orig = str;
+
+  for (const rx of STAMPS) {
+    const m = rx.exec(str);
+    if (m) {
+      dt = to24Hour(m[0].replace(/^\s*[-•·]\s*/, '').trim());
+      orig = (str.slice(0, m.index) + str.slice(m.index + m[0].length)).trim();
+      break;
+    }
+  }
+
+  if (!dt) {
+    const parenMatch = /\s*\(([^)]+)\)\s*$/.exec(str);
+    if (parenMatch) {
+      orig = str.slice(0, parenMatch.index).trim();
+      dt = parenMatch[1].trim();
+    }
+  }
+
+  // Check for bullet or middle-dot separator: "Product • Company"
+  const dotParts = orig.split(/\s*[•·]\s*/);
+  if (dotParts.length >= 2) {
+    orig = dotParts[0].trim();
+    company = dotParts.slice(1).join(' - ').trim();
+  } else {
+    // Check known companies against dash separation: "Product - Company"
+    const compList = [...knownCompanies.map((c) => String(c).trim().toLowerCase()), ...registeredCompanies];
+    const knownSet = new Set(compList);
+    const dashParts = orig.split(/\s+-\s+/);
+    if (dashParts.length >= 2) {
+      const last = dashParts[dashParts.length - 1].trim();
+      if (knownSet.has(last.toLowerCase())) {
+        company = last;
+        orig = dashParts.slice(0, -1).join(' - ').trim();
+      }
+    }
+  }
+
+  const effCompany = company || defaultCompany || '';
+  const fullRef = dt ? formatFullReference(orig, effCompany, dt) : (effCompany ? `${orig} - ${effCompany}` : '');
+
+  return {
+    original: orig,
+    reference: fullRef || dt,
+    company: effCompany,
+    dateTime: dt,
+  };
+}
+
+/**
+ * Combines an original product name and reference back into a canonical product label for database storage.
+ */
+export function combineProductAndRef(original: string, reference: string): string {
+  const o = String(original || '').trim();
+  const r = String(reference || '').trim();
+  if (!r) return o;
+  if (!o) return r;
+  // If reference is the full composite "p1 - ABC Industries - 30-09-2026 00:40", extract the timestamp
+  for (const rx of STAMPS) {
+    const m = rx.exec(r);
+    if (m) {
+      const dt = to24Hour(m[0].replace(/^\s*[-•·]\s*/, '').trim());
+      return `${o} - ${dt}`;
+    }
+  }
+  if (o.toLowerCase().endsWith(r.toLowerCase())) return o;
+  return `${o} - ${r}`;
 }

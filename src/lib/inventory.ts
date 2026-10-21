@@ -176,6 +176,84 @@ async function call<T>(fn: string, args?: Record<string, unknown>): Promise<T> {
   return data as T;
 }
 
+async function fallbackSaveImport(rows: ImportRow[], preloadedFilters?: InventoryFilters | null): Promise<ImportResult> {
+  let filters = preloadedFilters;
+  if (!filters) {
+    try { filters = await inventoryApi.filters(); } catch { filters = null; }
+  }
+  const categories = filters?.categories ?? [];
+  const suppliers = filters?.suppliers ?? [];
+  const locations = filters?.locations ?? [];
+
+  let created = 0;
+  const errors: { row: number; code: string | null; message: string }[] = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const n = i + 1;
+    if (!r.code?.trim() || !r.name?.trim()) {
+      errors.push({ row: n, code: r.code || null, message: 'Item code and name are required' });
+      continue;
+    }
+
+    // Match category
+    const catInput = (r.category || '').trim().toLowerCase();
+    let cat = categories.find(c => c.name.toLowerCase() === catInput || c.code.toLowerCase() === catInput);
+    if (!cat && catInput) {
+      cat = categories.find(c => c.name.toLowerCase().includes(catInput) || catInput.includes(c.name.toLowerCase()));
+    }
+    if (!cat && categories.length > 0) {
+      cat = categories[0];
+    }
+    if (!cat) {
+      errors.push({ row: n, code: r.code, message: `Unknown category "${r.category}"` });
+      continue;
+    }
+
+    // Match supplier
+    let supplierId: string | null = null;
+    if (r.supplier?.trim()) {
+      const sup = suppliers.find(s => s.name.toLowerCase() === r.supplier.trim().toLowerCase());
+      if (sup) supplierId = sup.id;
+    }
+
+    // Match location
+    let locationId: string | null = null;
+    if (r.location?.trim()) {
+      const loc = locations.find(l => l.name.toLowerCase() === r.location.trim().toLowerCase() || l.code.toLowerCase() === r.location.trim().toLowerCase());
+      if (loc) locationId = loc.id;
+    }
+
+    const itemKind: ItemKind = cat.kind === 'MANUFACTURED' ? 'PART' : 'RAW';
+    const payload: SaveItemInput = {
+      id: null,
+      kind: itemKind,
+      code: r.code.trim(),
+      name: r.name.trim(),
+      category_id: cat.id,
+      specification: (r.specification || '').trim(),
+      unit: (r.unit || 'Nos').trim(),
+      min_stock: r.min_stock || '0',
+      reorder_qty: r.reorder_qty || '0',
+      rate: r.rate || '0',
+      supplier_id: supplierId,
+      location_id: locationId,
+      image_url: null,
+      status: 'Active',
+      opening_qty: r.opening_qty || '0',
+    };
+
+    try {
+      await inventoryApi.saveItem(payload);
+      created++;
+    } catch (e: any) {
+      errors.push({ row: n, code: r.code, message: e?.message || 'Failed to save product' });
+    }
+  }
+
+  return { created, errors };
+}
+
 export const inventoryApi = {
   filters: () => call<InventoryFilters>('erp_inventory_filters'),
   items: (q: InventoryItemsQuery) => call<InventoryItemsPage>('erp_inventory_items', {
@@ -196,7 +274,64 @@ export const inventoryApi = {
       p_kind: args.kind, p_id: args.id, p_from_warehouse: args.fromWarehouse, p_to_warehouse: args.toWarehouse,
       p_qty: args.qty, p_reason: args.reason, p_reference: args.reference, p_date: args.date,
     }),
-  importItems: (rows: ImportRow[]) => call<ImportResult>('erp_import_inventory_items', { p_rows: rows }),
+  importItems: async (rows: ImportRow[]): Promise<ImportResult> => {
+    let filters: InventoryFilters | null = null;
+    try { filters = await inventoryApi.filters(); } catch { filters = null; }
+
+    const normalizedRows: ImportRow[] = rows.map(r => {
+      const copy = { ...r };
+      const catTrim = (copy.category || '').trim();
+      if (filters?.categories && filters.categories.length > 0) {
+        const exact = filters.categories.find(c =>
+          c.name.trim().toLowerCase() === catTrim.toLowerCase() ||
+          c.code.trim().toLowerCase() === catTrim.toLowerCase()
+        );
+        if (exact) {
+          copy.category = exact.name;
+        } else {
+          const fuzzy = filters.categories.find(c => {
+            const cn = c.name.trim().toLowerCase().replace(/s$/, '');
+            const ct = catTrim.toLowerCase().replace(/s$/, '');
+            return cn === ct || cn.includes(ct) || ct.includes(cn);
+          });
+          if (fuzzy) {
+            copy.category = fuzzy.name;
+          } else if (!catTrim) {
+            copy.category = filters.categories[0].name;
+          }
+        }
+      }
+
+      if (copy.supplier && filters?.suppliers) {
+        const foundSup = filters.suppliers.find(s => s.name.trim().toLowerCase() === copy.supplier.trim().toLowerCase());
+        if (!foundSup) copy.supplier = '';
+      }
+
+      if (copy.location && filters?.locations) {
+        const foundLoc = filters.locations.find(l =>
+          l.code.trim().toLowerCase() === copy.location.trim().toLowerCase() ||
+          l.name.trim().toLowerCase() === copy.location.trim().toLowerCase()
+        );
+        if (!foundLoc) copy.location = '';
+      }
+
+      return copy;
+    });
+
+    try {
+      const res = await call<ImportResult>('erp_import_inventory_items', { p_rows: normalizedRows });
+      if (res && typeof res.created === 'number' && (res.created > 0 || !res.errors?.length)) {
+        return res;
+      }
+      if (res && res.errors?.length > 0 && res.created === 0) {
+        return await fallbackSaveImport(normalizedRows, filters);
+      }
+      return res || { created: 0, errors: [] };
+    } catch (rpcErr) {
+      console.warn('erp_import_inventory_items RPC call failed, falling back to direct save:', rpcErr);
+      return await fallbackSaveImport(normalizedRows, filters);
+    }
+  },
 };
 
 // ---- Images (private bucket, company-scoped paths) --------------------------------------

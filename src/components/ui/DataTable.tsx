@@ -1,5 +1,5 @@
 import { useState, useMemo, type ReactNode } from 'react';
-import { ChevronUp, ChevronDown, Search, Download, SlidersHorizontal, Plus } from 'lucide-react';
+import { ChevronUp, ChevronDown, Search, Upload, SlidersHorizontal, Plus } from 'lucide-react';
 import { Button } from './Card';
 import { PagerFooter, usePager } from './TablePager';
 
@@ -177,7 +177,7 @@ export function DataTable<T extends Record<string, any>>({
             </Button>
           )}
           <button onClick={handleExport} className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold tracking-wide text-slate-600 hover:text-brand-700 bg-white hover:bg-brand-50 rounded-md transition-colors border border-slate-200 hover:border-brand-200 shadow-sm">
-            <Download size={14} />
+            <Upload size={14} />
             EXPORT
           </button>
           {onAdd && !inlineAdd && (
