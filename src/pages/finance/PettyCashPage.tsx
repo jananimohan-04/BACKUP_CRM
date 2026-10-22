@@ -48,6 +48,42 @@ function inwardLineTotal(q: any, p: any, d: any, g: any) {
   return Math.round(total * 100) / 100;
 }
 
+function cleanItemDesc(text: string, projName?: string, soRef?: string, inwNo?: string): string {
+  if (!text) return '';
+  let s = text.trim();
+  if (inwNo && s.toLowerCase() === inwNo.toLowerCase()) return '';
+  if (projName && s.toLowerCase() === projName.toLowerCase()) return '';
+  if (soRef && s.toLowerCase() === soRef.toLowerCase()) return '';
+
+  // Remove Inward Numbers: INW-2026-xxxx
+  s = s.replace(/\bINW[-_]\d{4}[-_]\d+\b/gi, '').trim();
+
+  // Remove Sales Order Numbers: SO-xxxx or SO_xxxx
+  s = s.replace(/\bSO[-_]\d+[-_]?\d*\b/gi, '').trim();
+
+  // Remove Project / Lead numbers with timestamp stamps: e.g. 1010-28Sep26-0994PM or 1010-14Oct26-1105AM
+  s = s.replace(/\b\d{3,5}-\d{2}[A-Za-z]{3}\d{2}-\d{3,5}[AP]M\b/gi, '').trim();
+
+  // If specific project_name or sales_order_ref was passed, strip them
+  if (projName) {
+    const escaped = projName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    s = s.replace(new RegExp(`\\b${escaped}\\b`, 'gi'), '').trim();
+    const base = projName.split(/[-_]/)[0];
+    if (base && base.length >= 3) {
+      const escBase = base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      s = s.replace(new RegExp(`\\b${escBase}\\b`, 'gi'), '').trim();
+    }
+  }
+  if (soRef) {
+    const escSo = soRef.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    s = s.replace(new RegExp(`\\b${escSo}\\b`, 'gi'), '').trim();
+  }
+
+  // Clean leading / trailing dashes, bullets, spaces
+  s = s.replace(/^[\s\-•·]+|[\s\-•·]+$/g, '').trim();
+  return s;
+}
+
 /** The kind of ledger an account is, as a short readable label. */
 function ledgerTypeOf(a: Pick<Account, 'account_type' | 'system_key'> | undefined | null): string {
   if (!a) return '';
@@ -115,7 +151,7 @@ export function PettyCashPage() {
           .select('id,txn_no,txn_date,direction,account_id,contra_account_id,amount,description,status,created_at,created_by')
           .eq('source_type', SOURCE).order('created_at', { ascending: false }).limit(1000),
         supabase.from('cnc_inwards')
-          .select('id,inward_no,inward_date,petty_cash,paid_by,petty_amount,petty_date,category,party_name,part_name,product_name,total_amount,quantity,price,discount_percent,gst_percent,status,created_at')
+          .select('id,inward_no,inward_date,petty_cash,paid_by,petty_amount,petty_date,category,party_name,part_name,product_name,project_name,sales_order_ref,total_amount,quantity,price,discount_percent,gst_percent,status,created_at')
           .eq('petty_cash', true).order('created_at', { ascending: false }).limit(1000),
       ]);
       if (bankRes.error) throw new Error(bankRes.error.message);
@@ -137,7 +173,18 @@ export function PettyCashPage() {
           : null;
         const amt = pAmt !== null ? pAmt : lineTotal;
 
-        const pName = String(x.part_name || x.product_name || '').trim();
+        const inwNo = String(x.inward_no ?? '').trim();
+        const projName = String(x.project_name ?? '').trim();
+        const soRef = String(x.sales_order_ref ?? '').trim();
+
+        const cleanPart = cleanItemDesc(String(x.part_name || '').trim(), projName, soRef, inwNo);
+        const cleanProd = cleanItemDesc(String(x.product_name || '').trim(), projName, soRef, inwNo);
+
+        let pName = cleanPart || cleanProd;
+        if (cleanPart && cleanProd && cleanPart.toLowerCase() !== cleanProd.toLowerCase()) {
+          pName = `${cleanProd} · ${cleanPart}`;
+        }
+
         const vendor = String(x.party_name || '').trim();
         const paidBy = String(x.paid_by || '').trim();
         const category = String(x.category || '').trim();
@@ -148,13 +195,13 @@ export function PettyCashPage() {
         if (vendor) descParts.push(vendor);
         let desc = descParts.join(' · ');
         if (paidBy) desc += ` (Paid by ${paidBy})`;
-        if (!desc) desc = 'Inward Petty Cash';
+        if (!desc) desc = category || 'Expense';
 
         const vDate = toISODate(x.petty_date) || toISODate(x.inward_date) || toISODate(x.created_at) || todayISO();
 
         return {
           id: String(x.id),
-          txn_no: String(x.inward_no ?? ''),
+          txn_no: inwNo,
           txn_date: vDate,
           direction: 'OUT',
           account_id: '',
@@ -372,15 +419,7 @@ export function PettyCashPage() {
                     <tr key={`${r.source || 'bank'}-${r.id}`} data-testid="pc-row" className={`border-t border-slate-100 ${cancelled ? 'opacity-50 line-through' : 'hover:bg-slate-50'}`}>
                       <td className="px-3 py-2 whitespace-nowrap text-slate-500">{stamp(r.created_at)}</td>
                       <td className="px-3 py-2 whitespace-nowrap font-medium">{dmy(r.txn_date)}</td>
-                      <td className="px-3 py-2 max-w-[320px] truncate" title={`${r.source === 'inward' ? `[Inward ${r.txn_no}] ` : ''}${r.description ?? ''}`}>
-                        {r.source === 'inward' && (
-                          <span className="inline-block px-1.5 py-0.5 mr-1.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 uppercase tracking-wider">
-                            Inward
-                          </span>
-                        )}
-                        {r.source === 'inward' && r.txn_no && (
-                          <span className="font-mono text-xs text-slate-500 mr-1 font-medium">{r.txn_no} ·</span>
-                        )}
+                      <td className="px-3 py-2 max-w-[320px] truncate" title={r.description ?? ''}>
                         <span>{r.description}</span>
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums font-semibold text-red-600">{r.direction === 'OUT' ? money(r.amount) : ''}</td>
