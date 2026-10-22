@@ -7170,10 +7170,10 @@ export function SalesPipelinePage() {
                 {(group.items || []).map((item: any, ii: number) => (
                   <div key={ii} className={opts?.popup ? 'mt-1.5 grid grid-cols-2 xl:grid-cols-4 items-center gap-x-2 gap-y-1.5 border-t border-slate-200 pt-1.5 pb-1' : 'mt-1.5 flex flex-nowrap items-center gap-1 border-t border-slate-200 pt-1.5 py-1 w-full min-w-0'}>
                     <span className={opts?.popup ? 'hidden' : 'w-4 shrink-0 text-center text-[10px] font-bold text-slate-400'}>{ii + 1}</span>
-                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex flex-[2.2_2.2_0%] min-w-0 items-center gap-1'}>
+                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex flex-[1.6_1.6_0%] min-w-0 items-center gap-1'}>
                       {(group.category || 'GOODS PURCHASE') === 'EXPENSES' ? (
                         <>
-                          <input autoComplete="off" className={opts?.popup ? `${compactInput} flex-1 min-w-[12rem]` : `${compactInput} flex-[1.4_1.4_0%] min-w-0 font-medium`} list={`expense-products-${index}-${ii}`} placeholder="Product - Date/Time - Qty" title="Reference (Product - Date/Time - Qty)" value={item.productRef ?? (splitProductAndRef(item.productName || '', [], '', item.quantity).reference || '')}
+                          <input autoComplete="off" className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} flex-1 min-w-0 font-medium`} list={`expense-products-${index}-${ii}`} placeholder="Product - Date/Time - Qty" title="Reference (Product - Date/Time - Qty)" value={item.productRef ?? (splitProductAndRef(item.productName || '', [], '', item.quantity).reference || '')}
                             onChange={e => {
                               const s = splitProductAndRef(e.target.value, [], '', item.quantity);
                               setItem(ii, {
@@ -7184,12 +7184,6 @@ export function SalesPipelinePage() {
                               });
                               onInwardProductInput(index, ii, e.target.value, { allowFreeText: true });
                             }} />
-                          <input autoComplete="off" className={opts?.popup ? `${compactInput} w-[10rem]` : `${compactInput} flex-[1_1_0%] min-w-0 font-medium`} placeholder="Original Product" title="Original Product" value={item.originalProduct ?? (splitProductAndRef(item.productName || '').original || item.productName || '')}
-                            onChange={e => {
-                              const orig = e.target.value;
-                              const ref = item.productRef ?? (splitProductAndRef(item.productName || '').reference || '');
-                              setItem(ii, { originalProduct: orig, productName: combineProductAndRef(orig, ref) });
-                            }} />
                           <datalist id={`expense-products-${index}-${ii}`}>
                             {eligibleCatalogue.map((m: any) => <option key={m.key} value={m.name}>{[m.code, m.unit ? `per ${m.unit}` : '', m.unitPrice ? `₹${m.unitPrice}` : ''].filter(Boolean).join(' · ')}</option>)}
                             {(inwardForm.productOptions || []).map((o: any) => <option key={o.key} value={o.name}>{o.name}</option>)}
@@ -7197,7 +7191,7 @@ export function SalesPipelinePage() {
                         </>
                       ) : (
                         <>
-                          <input autoComplete="off" className={opts?.popup ? `${compactInput} flex-1 min-w-[14rem]` : `${compactInput} flex-[1.4_1.4_0%] min-w-0 font-medium`} list={`inward-products-${index}-${ii}`} placeholder="Product - Company - Date/Time - Qty" title={item.productRef || "Full Reference (Product - Company - Date/Time - Qty)"} value={item.productRef ?? (splitProductAndRef(item.productDisplay || item.productName || '', allKnownCompanies.map((c: any) => c.company || c.name), group.partyName, item.quantity).reference || '')}
+                          <input autoComplete="off" className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} flex-1 min-w-0 font-medium`} list={`inward-products-${index}-${ii}`} placeholder="Product - Company - Date/Time - Qty" title={item.productRef || "Full Reference (Product - Company - Date/Time - Qty)"} value={item.productRef ?? (splitProductAndRef(item.productDisplay || item.productName || '', allKnownCompanies.map((c: any) => c.company || c.name), group.partyName, item.quantity).reference || '')}
                             onChange={e => {
                               const s = splitProductAndRef(e.target.value, allKnownCompanies.map((c: any) => c.company || c.name), group.partyName, item.quantity);
                               const orig = s.original;
@@ -7206,19 +7200,10 @@ export function SalesPipelinePage() {
                                 originalProduct: orig,
                                 productRef: ref,
                                 productName: combineProductAndRef(orig, ref),
+                                partName: (!item.partName || item.partName === item.originalProduct) ? orig : item.partName,
                                 ...(s.qty && (!item.quantity || item.quantity === '0')) ? { quantity: s.qty } : {}
                               });
                               onInwardProductInput(index, ii, e.target.value);
-                            }} />
-                          <input autoComplete="off" className={opts?.popup ? `${compactInput} w-[10rem]` : `${compactInput} flex-[1_1_0%] min-w-0 font-medium`} placeholder="Original Product" title="Original Product" value={item.originalProduct ?? (splitProductAndRef(item.productDisplay || item.productName || '', allKnownCompanies.map((c: any) => c.company || c.name), group.partyName).original || item.productName || '')}
-                            onChange={e => {
-                              const orig = e.target.value;
-                              const ref = item.productRef ?? (splitProductAndRef(item.productDisplay || item.productName || '', allKnownCompanies.map((c: any) => c.company || c.name), group.partyName, item.quantity).reference || '');
-                              setItem(ii, {
-                                originalProduct: orig,
-                                productName: combineProductAndRef(orig, ref),
-                                partName: (!item.partName || item.partName === item.originalProduct) ? orig : item.partName
-                              });
                             }} />
                           <datalist id={`inward-products-${index}-${ii}`}>
                             {eligibleCatalogue.map((m: any) => <option key={m.key} value={m.name}>{[m.code, m.unit ? `per ${m.unit}` : '', m.unitPrice ? `₹${m.unitPrice}` : ''].filter(Boolean).join(' · ')}</option>)}
