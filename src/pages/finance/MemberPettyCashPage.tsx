@@ -57,12 +57,20 @@ export function MemberPettyCashPage() {
   const [openMember, setOpenMember] = useState('');
   const memberPayable = chart.find(a => a.system_key === 'MEMBER_PAYABLE');
   const loadSpent = useCallback(async () => {
-    const r = await supabase.from('cnc_inwards').select('paid_by,total_amount,petty_amount,status').eq('petty_cash', true).neq('status', 'Deleted');
+    const r = await supabase.from('cnc_inwards').select('paid_by,total_amount,petty_amount,quantity,price,discount_percent,gst_percent,status').eq('petty_cash', true).neq('status', 'Deleted');
     if (r.error) { setSpentRows([]); setDuesErr(/petty_cash|petty_amount/.test(r.error.message) ? 'Petty cash tracking is not set up yet. Run the 20261019000000_expense_accounting.sql migration.' : r.error.message); return; }
     setDuesErr('');
     setSpentRows(((r.data ?? []) as Record<string, unknown>[]).map(x => {
-      const total = Number(x.total_amount) || 0;
-      const paid = x.petty_amount == null ? total : Math.min(total, Number(x.petty_amount) || 0);
+      const q = Number(x.quantity) || 0;
+      const p = Number(x.price) || 0;
+      const d = Number(x.discount_percent) || 0;
+      const g = Number(x.gst_percent) || 0;
+      const base = q * p;
+      const afterDisc = base - (base * d / 100);
+      const calcTotal = Math.round((afterDisc + (afterDisc * g / 100)) * 100) / 100;
+      const total = Number(x.total_amount) || calcTotal;
+      const pAmt = x.petty_amount !== null && x.petty_amount !== undefined && String(x.petty_amount).trim() !== '' ? Number(x.petty_amount) : null;
+      const paid = pAmt !== null ? (total > 0 ? Math.min(total, pAmt) : pAmt) : total;
       return { member: String(x.paid_by ?? '').trim() || 'Unnamed member', amount: paid };
     }));
   }, []);

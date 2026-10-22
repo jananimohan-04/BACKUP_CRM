@@ -25,6 +25,29 @@ const stamp = (iso: string) => {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' });
 };
 
+function toISODate(d: unknown): string {
+  if (!d) return '';
+  const s = String(d).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  if (/^\d{2}-\d{2}-\d{4}/.test(s)) {
+    const parts = s.slice(0, 10).split('-');
+    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  }
+  const dt = new Date(s);
+  return Number.isNaN(dt.getTime()) ? '' : dt.toISOString().slice(0, 10);
+}
+
+function inwardLineTotal(q: any, p: any, d: any, g: any) {
+  const qty = Number(q) || 0;
+  const price = Number(p) || 0;
+  const disc = Number(d) || 0;
+  const gst = Number(g) || 0;
+  const base = qty * price;
+  const afterDisc = base - (base * disc / 100);
+  const total = afterDisc + (afterDisc * gst / 100);
+  return Math.round(total * 100) / 100;
+}
+
 /** The kind of ledger an account is, as a short readable label. */
 function ledgerTypeOf(a: Pick<Account, 'account_type' | 'system_key'> | undefined | null): string {
   if (!a) return '';
@@ -36,6 +59,7 @@ function ledgerTypeOf(a: Pick<Account, 'account_type' | 'system_key'> | undefine
 interface PettyRow {
   id: string; txn_no: string; txn_date: string; direction: 'IN' | 'OUT'; account_id: string; contra_account_id: string | null;
   amount: number; description: string | null; status: string; created_at: string; created_by: string | null;
+  source?: 'bank' | 'inward'; bank_name?: string; ledger_name?: string; ledger_type?: string;
 }
 
 type Note = { kind: 'ok' | 'err'; text: string } | null;
@@ -74,6 +98,10 @@ export function PettyCashPage() {
 
   const accounts = options?.accounts ?? [];
   const canManage = !!options?.can_manage;
+  const defaultCashAccount = useMemo(() =>
+    accounts.find(a => a.type === 'Cash') ||
+    chart.find(a => a.system_key === 'CASH' || a.name.toLowerCase().includes('cash')),
+  [accounts, chart]);
   const ledgers = useMemo(() => chart.filter(a => !a.is_group && a.status === 'Active' && a.id !== bankId), [chart, bankId]);
   const label = (a: Account) => `${a.code} · ${a.name}`;
   const ledger = useMemo(() => ledgers.find(a => label(a) === ledgerText.trim()) ?? ledgers.find(a => a.name.toLowerCase() === ledgerText.trim().toLowerCase()), [ledgers, ledgerText]);
@@ -82,16 +110,73 @@ export function PettyCashPage() {
   const load = useCallback(async () => {
     setLoading(true); setLoadErr('');
     try {
-      const r = await supabase.from('cnc_bank_transactions')
-        .select('id,txn_no,txn_date,direction,account_id,contra_account_id,amount,description,status,created_at,created_by')
-        .eq('source_type', SOURCE).order('created_at', { ascending: false }).limit(1000);
-      if (r.error) throw new Error(r.error.message);
-      setRows(((r.data ?? []) as Record<string, unknown>[]).map(x => ({
-        id: String(x.id), txn_no: String(x.txn_no ?? ''), txn_date: String(x.txn_date ?? '').slice(0, 10), direction: x.direction === 'IN' ? 'IN' : 'OUT',
+      const [bankRes, inwRes] = await Promise.all([
+        supabase.from('cnc_bank_transactions')
+          .select('id,txn_no,txn_date,direction,account_id,contra_account_id,amount,description,status,created_at,created_by')
+          .eq('source_type', SOURCE).order('created_at', { ascending: false }).limit(1000),
+        supabase.from('cnc_inwards')
+          .select('id,inward_no,inward_date,petty_cash,paid_by,petty_amount,petty_date,category,party_name,part_name,product_name,total_amount,quantity,price,discount_percent,gst_percent,status,created_at')
+          .eq('petty_cash', true).order('created_at', { ascending: false }).limit(1000),
+      ]);
+      if (bankRes.error) throw new Error(bankRes.error.message);
+      if (inwRes.error) console.warn('Could not load inward petty cash entries:', inwRes.error.message);
+
+      const bankRows: PettyRow[] = ((bankRes.data ?? []) as Record<string, unknown>[]).map(x => ({
+        id: String(x.id), txn_no: String(x.txn_no ?? ''), txn_date: toISODate(x.txn_date) || todayISO(), direction: x.direction === 'IN' ? 'IN' : 'OUT',
         account_id: String(x.account_id ?? ''), contra_account_id: x.contra_account_id ? String(x.contra_account_id) : null,
         amount: Number(x.amount) || 0, description: (x.description as string) ?? '', status: String(x.status ?? ''),
-        created_at: String(x.created_at ?? ''), created_by: (x.created_by as string) ?? null,
-      })));
+        created_at: String(x.created_at ?? ''), created_by: (x.created_by as string) ?? null, source: 'bank',
+      }));
+
+      const inwData = inwRes.error ? [] : ((inwRes.data ?? []) as Record<string, unknown>[]);
+      const inwRows: PettyRow[] = inwData.map(x => {
+        const calcTotal = inwardLineTotal(x.quantity, x.price, x.discount_percent, x.gst_percent);
+        const lineTotal = Number(x.total_amount) || calcTotal;
+        const pAmt = x.petty_amount !== null && x.petty_amount !== undefined && String(x.petty_amount).trim() !== ''
+          ? Number(x.petty_amount)
+          : null;
+        const amt = pAmt !== null ? pAmt : lineTotal;
+
+        const pName = String(x.part_name || x.product_name || '').trim();
+        const vendor = String(x.party_name || '').trim();
+        const paidBy = String(x.paid_by || '').trim();
+        const category = String(x.category || '').trim();
+
+        const descParts: string[] = [];
+        if (pName) descParts.push(pName);
+        else if (category) descParts.push(category);
+        if (vendor) descParts.push(vendor);
+        let desc = descParts.join(' · ');
+        if (paidBy) desc += ` (Paid by ${paidBy})`;
+        if (!desc) desc = 'Inward Petty Cash';
+
+        const vDate = toISODate(x.petty_date) || toISODate(x.inward_date) || toISODate(x.created_at) || todayISO();
+
+        return {
+          id: String(x.id),
+          txn_no: String(x.inward_no ?? ''),
+          txn_date: vDate,
+          direction: 'OUT',
+          account_id: '',
+          contra_account_id: null,
+          amount: amt,
+          description: desc,
+          status: String(x.status ?? 'Pending'),
+          created_at: String(x.created_at ?? ''),
+          created_by: paidBy || null,
+          source: 'inward',
+          bank_name: 'Cash in Hand',
+          ledger_name: category || 'Company Expenses',
+          ledger_type: 'Expense',
+        };
+      });
+
+      const combined = [...bankRows, ...inwRows].sort((a, b) => {
+        const ta = a.created_at || a.txn_date;
+        const tb = b.created_at || b.txn_date;
+        return tb.localeCompare(ta);
+      });
+      setRows(combined);
     } catch (e) { setRows([]); setLoadErr(e instanceof Error ? e.message : 'Could not load petty cash entries.'); }
     finally { setLoading(false); }
   }, []);
@@ -135,29 +220,65 @@ export function PettyCashPage() {
   };
 
   const cancelRow = async (r: PettyRow) => {
-    if (!window.confirm(`Delete entry ${r.txn_no}? It is cancelled and reversed in the ledger.`)) return;
-    try { await financeApi.bankSetStatus(r.id, 'Cancelled'); await load(); setNote({ kind: 'ok', text: `${r.txn_no} deleted.` }); }
-    catch (e) { setNote({ kind: 'err', text: e instanceof Error ? e.message : 'Could not delete the entry.' }); }
+    const label = r.txn_no ? `entry ${r.txn_no}` : 'this entry';
+    if (!window.confirm(`Delete ${label}? It is cancelled and reversed in the ledger.`)) return;
+    try {
+      if (r.source === 'inward') {
+        const { error } = await supabase.from('cnc_inwards').update({ status: 'Deleted' }).eq('id', r.id);
+        if (error) throw new Error(error.message);
+      } else {
+        await financeApi.bankSetStatus(r.id, 'Cancelled');
+      }
+      await load();
+      setNote({ kind: 'ok', text: `${r.txn_no || 'Entry'} deleted.` });
+    } catch (e) {
+      setNote({ kind: 'err', text: e instanceof Error ? e.message : 'Could not delete the entry.' });
+    }
   };
 
   // Global Topbar range intersects this page's own From/To (either may be empty).
   const { from: globalFrom, to: globalTo } = useGlobalDateFilter();
   const { from: effFrom, to: effTo } = intersectRange(fFrom, fTo, globalFrom, globalTo);
-  const view = useMemo(() => rows.filter(r =>
-    (!effFrom || r.txn_date >= effFrom) && (!effTo || r.txn_date <= effTo) && (!fBank || r.account_id === fBank) &&
-    (!fLedger || r.contra_account_id === fLedger) && (!fType || ledgerTypeOf(r.contra_account_id ? accName.get(r.contra_account_id) : null) === fType)), [rows, effFrom, effTo, fBank, fLedger, fType, accName]);
-  const live = view.filter(r => r.status !== 'Cancelled');
+  const view = useMemo(() => rows.filter(r => {
+    const rowDate = r.txn_date;
+    if (effFrom && rowDate < effFrom) return false;
+    if (effTo && rowDate > effTo) return false;
+    const effBankId = r.account_id || (r.source === 'inward' ? defaultCashAccount?.id : '');
+    if (fBank && effBankId !== fBank) return false;
+    const effLedgerId = r.contra_account_id || (r.ledger_name ? chart.find(a => a.name.toLowerCase() === r.ledger_name?.toLowerCase())?.id : '');
+    if (fLedger && effLedgerId !== fLedger) return false;
+    const effType = r.contra_account_id ? ledgerTypeOf(accName.get(r.contra_account_id)) : (r.ledger_type || 'Expense');
+    if (fType && effType !== fType) return false;
+    return true;
+  }), [rows, effFrom, effTo, fBank, fLedger, fType, defaultCashAccount, chart, accName]);
+
+  const live = view.filter(r => r.status !== 'Cancelled' && r.status !== 'Deleted');
   const totalDebit = live.filter(r => r.direction === 'OUT').reduce((n, r) => n + r.amount, 0);
   const totalCredit = live.filter(r => r.direction === 'IN').reduce((n, r) => n + r.amount, 0);
-  const usedLedgers = useMemo(() => Array.from(new Set(rows.map(r => r.contra_account_id).filter((x): x is string => !!x))).map(id => accName.get(id)).filter((a): a is Account => !!a), [rows, accName]);
   const filtersOn = !!(fFrom || fTo || fBank || fLedger || fType);
   const clearFilters = () => { setFFrom(''); setFTo(''); setFBank(''); setFLedger(''); setFType(''); };
 
   const exportRows = () => {
     if (!view.length) return;
     exportCsv(`petty-cash-${todayISO()}`, [['Entry No', 'Timestamp', 'Value Date', 'Description', 'Debit', 'Credit', 'Bank Name', 'Ledger Name', 'Ledger Type', 'Status'],
-      ...view.map(r => [r.txn_no, stamp(r.created_at), dmy(r.txn_date), r.description ?? '', r.direction === 'OUT' ? r.amount : '', r.direction === 'IN' ? r.amount : '',
-        accName.get(r.account_id)?.name ?? '', r.contra_account_id ? accName.get(r.contra_account_id)?.name ?? '' : '', ledgerTypeOf(r.contra_account_id ? accName.get(r.contra_account_id) : null), r.status])]);
+      ...view.map(r => {
+        const bankName = (accName.get(r.account_id) || (r.source === 'inward' ? defaultCashAccount : null))?.name || r.bank_name || 'Cash in Hand';
+        const la = r.contra_account_id ? accName.get(r.contra_account_id) : (r.ledger_name ? chart.find(a => a.name.toLowerCase() === r.ledger_name?.toLowerCase()) : null);
+        const ledgerName = la?.name || r.ledger_name || 'Company Expenses';
+        const ledgerType = la ? ledgerTypeOf(la) : (r.ledger_type || 'Expense');
+        return [
+          r.txn_no,
+          stamp(r.created_at),
+          dmy(r.txn_date),
+          r.description ?? '',
+          r.direction === 'OUT' ? r.amount : '',
+          r.direction === 'IN' ? r.amount : '',
+          bankName,
+          ledgerName,
+          ledgerType,
+          r.status,
+        ];
+      })]);
   };
 
   const typeOptions = ['Expense', 'Income', 'Receivable', 'Payable', 'Asset', 'Liability', 'Equity'];
@@ -240,19 +361,51 @@ export function PettyCashPage() {
               </tr></thead>
               <tbody>
                 {view.map(r => {
-                  const cancelled = r.status === 'Cancelled';
-                  const la = r.contra_account_id ? accName.get(r.contra_account_id) : undefined;
+                  const cancelled = r.status === 'Cancelled' || r.status === 'Deleted';
+                  const la = r.contra_account_id
+                    ? accName.get(r.contra_account_id)
+                    : (r.ledger_name ? chart.find(a => a.name.toLowerCase() === r.ledger_name?.toLowerCase()) : null);
+                  const bankDisplayName = (accName.get(r.account_id) || (r.source === 'inward' ? defaultCashAccount : null))?.name || r.bank_name || 'Cash in Hand';
+                  const ledgerDisplayName = la?.name || r.ledger_name || 'Company Expenses';
+                  const ledgerTypeDisplay = la ? ledgerTypeOf(la) : (r.ledger_type || 'Expense');
                   return (
-                    <tr key={r.id} data-testid="pc-row" className={`border-t border-slate-100 ${cancelled ? 'opacity-50 line-through' : 'hover:bg-slate-50'}`}>
+                    <tr key={`${r.source || 'bank'}-${r.id}`} data-testid="pc-row" className={`border-t border-slate-100 ${cancelled ? 'opacity-50 line-through' : 'hover:bg-slate-50'}`}>
                       <td className="px-3 py-2 whitespace-nowrap text-slate-500">{stamp(r.created_at)}</td>
                       <td className="px-3 py-2 whitespace-nowrap font-medium">{dmy(r.txn_date)}</td>
-                      <td className="px-3 py-2 max-w-[280px] truncate" title={r.description ?? ''}>{r.description}</td>
+                      <td className="px-3 py-2 max-w-[320px] truncate" title={`${r.source === 'inward' ? `[Inward ${r.txn_no}] ` : ''}${r.description ?? ''}`}>
+                        {r.source === 'inward' && (
+                          <span className="inline-block px-1.5 py-0.5 mr-1.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 uppercase tracking-wider">
+                            Inward
+                          </span>
+                        )}
+                        {r.source === 'inward' && r.txn_no && (
+                          <span className="font-mono text-xs text-slate-500 mr-1 font-medium">{r.txn_no} ·</span>
+                        )}
+                        <span>{r.description}</span>
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums font-semibold text-red-600">{r.direction === 'OUT' ? money(r.amount) : ''}</td>
                       <td className="px-3 py-2 text-right tabular-nums font-semibold text-emerald-600">{r.direction === 'IN' ? money(r.amount) : ''}</td>
-                      <td className="px-3 py-2">{accName.get(r.account_id)?.name ?? ''}</td>
-                      <td className="px-3 py-2">{la?.name ?? ''}</td>
-                      <td className="px-3 py-2">{la && <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold border bg-slate-50 text-slate-600 border-slate-200">{ledgerTypeOf(la)}</span>}</td>
-                      <td className="px-3 py-2">{!cancelled && canManage && <button type="button" aria-label={`Delete ${r.txn_no}`} title="Delete entry" onClick={() => void cancelRow(r)} className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50"><Trash2 size={15} /></button>}{cancelled && <span className="text-[11px] font-semibold text-slate-500 no-underline">Deleted</span>}</td>
+                      <td className="px-3 py-2">{bankDisplayName}</td>
+                      <td className="px-3 py-2">{ledgerDisplayName}</td>
+                      <td className="px-3 py-2">
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold border bg-slate-50 text-slate-600 border-slate-200">
+                          {ledgerTypeDisplay}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        {!cancelled && canManage && (
+                          <button
+                            type="button"
+                            aria-label={`Delete ${r.txn_no || 'entry'}`}
+                            title="Delete entry"
+                            onClick={() => void cancelRow(r)}
+                            className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        )}
+                        {cancelled && <span className="text-[11px] font-semibold text-slate-500 no-underline">Deleted</span>}
+                      </td>
                     </tr>
                   );
                 })}
