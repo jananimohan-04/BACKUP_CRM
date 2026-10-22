@@ -23,6 +23,7 @@ import { exportCsv, printHtml } from '@/lib/reportExport';
 import { downloadBrandedDocument } from '@/lib/brandedDocument';
 import { REJECTION_TYPES } from '@/lib/orderQuantities';
 import { insertTolerant } from '@/lib/partRouting';
+import { formatWorkOrderOption } from '@/lib/workOrderFormat';
 import {
   canTransition, durationMins, generateJobNo, grossOf, isActiveCard, isEligibleWO,
   isSelectableOp, recordJobResult, remainingOf, transitionJob, updateJobTolerant,
@@ -630,7 +631,7 @@ export function JobCardsTab({ workOrders }: { workOrders: any[] }) {
                   <option value="">Choose work order…</option>
                   {eligibleWOs.map((w) => (
                     <option key={w.id} value={w.id}>
-                      {w.wo_no} – {w.part_name} – {w.customer} – {fmt(Number(w.quantity) || 0)}
+                      {formatWorkOrderOption(w)}
                     </option>
                   ))}
                 </select>

@@ -11,6 +11,7 @@ import { ComparisonTimeline } from './ComparisonPage';
 import { ActualTimeline } from './ActualPage';
 import { ActualListView } from './ActualListView';
 import { PlannedListView } from './PlannedListView';
+import { formatWorkOrderOption } from '@/lib/workOrderFormat';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 
 function ActualScheduling() {
@@ -994,7 +995,7 @@ function ActualScheduling() {
               <option value="">-- Select Order --</option>
               {schedulableWOs.map(wo => (
                 <option key={wo.id} value={wo.wo_no}>
-                  {wo.wo_no} - {wo.part_name} - {wo.customer} - Qty {wo.quantity}
+                  {formatWorkOrderOption(wo)}
                 </option>
               ))}
             </select>

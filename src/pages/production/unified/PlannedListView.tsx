@@ -3,6 +3,7 @@ import { Search, Download, Trash2, Edit2, Calendar, Clock, Layers, Users, Cpu, C
 import { supabase } from '@/lib/supabase';
 import { exportCsv } from '@/lib/reportExport';
 import { todayISO } from '@/lib/format';
+import { formatWorkOrderOption } from '@/lib/workOrderFormat';
 import { fmtTime24, parseYmd, toMinutes, ymd } from '@/lib/operationPlans';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
@@ -71,7 +72,7 @@ export function PlannedListView() {
     try {
       const [p, w, m, pr, jc, opRes] = await Promise.all([
         supabase.from('cnc_operation_plans').select('*').order('plan_date', { ascending: false }).order('start_time', { ascending: true }),
-        supabase.from('cnc_work_orders').select('id,wo_no,part_name,customer,status,quantity,completed'),
+        supabase.from('cnc_work_orders').select('id,wo_no,part_name,customer,status,quantity,completed,created_at'),
         supabase.from('cnc_machines').select('code'),
         supabase.from('cnc_processes').select('machine_type'),
         supabase.from('cnc_job_cards').select('operator'),
@@ -813,7 +814,7 @@ export function PlannedListView() {
               <option value="">-- Select Work Order --</option>
               {wos.map((w) => (
                 <option key={w.id} value={w.id}>
-                  {w.wo_no} — {w.part_name} ({w.customer || 'No customer'}) · Qty: {w.quantity ?? '—'}
+                  {formatWorkOrderOption(w)}
                 </option>
               ))}
             </select>

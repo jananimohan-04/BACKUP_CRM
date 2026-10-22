@@ -6,6 +6,7 @@ import { PageHeader, FilterButton, ExportButton } from '@/components/ui/PageHead
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Card, Badge, Button, StatCard, statusToVariant } from '@/components/ui/Card';
 import { Modal, ConfirmDialog, FormField, inputClass } from '@/components/ui/Modal';
+import { formatWorkOrderOption } from '@/lib/workOrderFormat';
 import { useAuth } from '@/contexts/AuthContext';
 
 // Mirrors the real cnc_raw_materials columns (the mockData RawMaterial type has fields the DB doesn't store).
@@ -973,7 +974,7 @@ export function MaterialRequestsPage() {
               <select value={selectedWo} onChange={(e) => handleWoChange(e.target.value)} className={inputClass}>
                  <option value="">-- Select Work Order --</option>
                  {workOrders.map(w => (
-                    <option key={w.id} value={w.id}>{w.wo_no} - {w.part_name} (Qty: {w.quantity})</option>
+                    <option key={w.id} value={w.id}>{formatWorkOrderOption(w)}</option>
                  ))}
               </select>
               <p className="text-xs text-brand-600 mt-2">Selecting a Work Order automatically loads required materials from its BOM.</p>

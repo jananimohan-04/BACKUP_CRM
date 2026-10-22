@@ -3,6 +3,7 @@ import { Search, Download, Calendar, Clock, Play, CheckCircle2, AlertCircle, Lay
 import { supabase } from '@/lib/supabase';
 import { exportCsv } from '@/lib/reportExport';
 import { todayISO } from '@/lib/format';
+import { formatWorkOrderOption } from '@/lib/workOrderFormat';
 import { fmtTime24, parseYmd, ymd } from '@/lib/operationPlans';
 import { generateJobNo } from '@/lib/jobCards';
 import { insertTolerant } from '@/lib/partRouting';
@@ -70,7 +71,7 @@ export function ActualListView() {
     try {
       const [j, w, m] = await Promise.all([
         supabase.from('cnc_job_cards').select('*').order('created_at', { ascending: false }).limit(2000),
-        supabase.from('cnc_work_orders').select('id,wo_no,part_name,customer,status,quantity,completed'),
+        supabase.from('cnc_work_orders').select('id,wo_no,part_name,customer,status,quantity,completed,created_at'),
         supabase.from('cnc_machines').select('code'),
       ]);
 
@@ -647,7 +648,7 @@ export function ActualListView() {
               <option value="">-- Select Work Order --</option>
               {wos.map((w) => (
                 <option key={w.id} value={w.id}>
-                  {w.wo_no} — {w.part_name} ({w.customer || 'No customer'}) · Qty: {w.quantity ?? '—'}
+                  {formatWorkOrderOption(w)}
                 </option>
               ))}
             </select>

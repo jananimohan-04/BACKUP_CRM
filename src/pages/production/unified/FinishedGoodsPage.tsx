@@ -9,6 +9,7 @@ import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { getMockImage } from '@/lib/mockStorage';
 import { exportCsv } from '@/lib/reportExport';
 import { todayISO } from '@/lib/format';
+import { formatWorkOrderOption } from '@/lib/workOrderFormat';
 
 const WO_STATUSES = ['Planning', 'In Progress', 'On Hold', 'Completed', 'Dispatched'];
 
@@ -483,7 +484,9 @@ export function FinishedGoodsPage() {
             }}>
               <option value="">Select Production Order...</option>
               {availableWOs.map(w => (
-                <option key={w.id} value={w.id}>{w.wo_no} - {w.part_name} ({w.pendingQty} pending)</option>
+                <option key={w.id} value={w.id}>
+                  {formatWorkOrderOption(w)} ({w.pendingQty} pending)
+                </option>
               ))}
             </select>
           </FormField>

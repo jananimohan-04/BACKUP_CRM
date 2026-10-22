@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { Badge, Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
+import { formatWorkOrderOption } from '@/lib/workOrderFormat';
 import { PlanEditor } from './PlanEditor';
 import {
   addDays, emptyPlan, expandPlan, fmtTime24, isMissingTable, parseYmd, planError, segmentHours, toMinutes, ymd,
@@ -584,7 +585,7 @@ export function PlannedTimeline() {
           <FormField label="Work Order" required>
             <select className={inputClass} value={form.woId} onChange={e => pickWo(e.target.value)}>
               <option value="">-- Select work order --</option>
-              {wos.map(w => <option key={w.id} value={w.id}>{w.wo_no} - {w.part_name} - {w.customer} - Qty {w.quantity}</option>)}
+              {wos.map(w => <option key={w.id} value={w.id}>{formatWorkOrderOption(w)}</option>)}
             </select>
           </FormField>
           {form.woId && opsForWo.length > 0 && (
@@ -664,7 +665,7 @@ export function PlannedTimeline() {
               <FormField label="Work Order" required>
                 <select className={inputClass} value={editForm.woId} onChange={e => pickEditWo(e.target.value)}>
                   <option value="">-- Select work order --</option>
-                  {wos.map(w => <option key={w.id} value={w.id}>{w.wo_no} - {w.part_name} - {w.customer} - Qty {w.quantity}</option>)}
+                  {wos.map(w => <option key={w.id} value={w.id}>{formatWorkOrderOption(w)}</option>)}
                 </select>
               </FormField>
 
