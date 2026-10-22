@@ -6104,6 +6104,8 @@ export function SalesPipelinePage() {
     const items = [...(group.items || [])];
     const prev = { ...(items[ii] || {}) };
     const v = String(value ?? '');
+    // GOODS PURCHASE: the part name is typed by hand, never copied from the product.
+    const keepPartBlank = String(group.category || inwardForm.category || '').trim().toUpperCase() === 'GOODS PURCHASE';
     const dupeOf = (identity: string) => {
       const all: { gi: number; jj: number; label: string }[] = [];
       (inwardForm.parts || []).forEach((g: any, gi: number) => (g.items || []).forEach((it: any, jj: number) => {
@@ -6123,7 +6125,7 @@ export function SalesPipelinePage() {
       const supplier = group.partyName ?? inwardForm.partyName ?? '';
       const r = resolvePurchasePrice(masterHit, supplier);
       const s = splitProductAndRef(masterHit.name);
-      items[ii] = { ...prev, originalProduct: s.original, productRef: s.reference, productDisplay: '', productKey: masterHit.key, productName: masterHit.name, partId: masterHit.id, partCode: masterHit.code, partName: String(prev.partName || '').trim() ? prev.partName : s.original, enquiryId: '', projectName: '', price: r.price, _resolvedPrice: r.price, gst: prev.gst ?? '18', discount: prev.discount ?? '0' };
+      items[ii] = { ...prev, originalProduct: s.original, productRef: s.reference, productDisplay: '', productKey: masterHit.key, productName: masterHit.name, partId: masterHit.id, partCode: masterHit.code, partName: String(prev.partName || '').trim() ? prev.partName : (keepPartBlank ? '' : s.original), enquiryId: '', projectName: '', price: r.price, _resolvedPrice: r.price, gst: prev.gst ?? '18', discount: prev.discount ?? '0' };
     } else {
       const split = splitProductAndRef(v, allKnownCompanies.map((c: any) => c.company || c.name), group.partyName);
       const rawProduct = split.original || v;
@@ -6149,7 +6151,7 @@ export function SalesPipelinePage() {
           productRef: ref,
           productName: comb,
           productDisplay: leg.display || '',
-          partName: String(prev.partName || '').trim() ? prev.partName : orig,
+          partName: String(prev.partName || '').trim() ? prev.partName : (keepPartBlank ? '' : orig),
           quantity: String(prev.quantity || '').trim() ? prev.quantity : qty,
           productKey: leg.key,
           partId: '',
@@ -7184,7 +7186,7 @@ export function SalesPipelinePage() {
                               originalProduct: orig,
                               productRef: ref,
                               productName: combineProductAndRef(orig, ref),
-                              partName: (!item.partName || item.partName === item.originalProduct) ? orig : item.partName,
+                              partName: String(group.category || inwardForm.category || '').trim().toUpperCase() === 'GOODS PURCHASE' ? (item.partName || '') : ((!item.partName || item.partName === item.originalProduct) ? orig : item.partName),
                               ...(s.qty && (!item.quantity || item.quantity === '0')) ? { quantity: s.qty } : {}
                             });
                             onInwardProductInput(index, ii, e.target.value);

@@ -1,3 +1,4 @@
+import { AddRunsModal, defaultPlanSlot } from './AddRunsModal';
 import { workOrderTitle } from '@/lib/workOrderFormat';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react';
@@ -157,6 +158,7 @@ export function PlannedTimeline() {
   const [nowMin, setNowMin] = useState(() => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); });
 
   const [showPlan, setShowPlan] = useState(false);
+  const [planSlot, setPlanSlot] = useState(defaultPlanSlot());
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<{ woId: string; seq: string; process: string; machine: string; operator: string; qty: string; plan: PlanDraft }>({ woId: '', seq: '', process: '', machine: '', operator: '', qty: '', plan: emptyPlan() });
 
@@ -272,10 +274,7 @@ export function PlannedTimeline() {
   const conflicts = (form.machine || form.operator) ? segments.flatMap(s => overlaps({ machine: form.machine, operator: form.operator.trim(), date: s.date, start: s.start, end: s.end }).map(o => ({ s, o }))) : [];
 
   const openPlan = (pre?: { date: string; start: string; end: string }) => {
-    setForm({
-      woId: '', seq: '', process: '', machine: '', operator: '', qty: '',
-      plan: pre ? { from: pre.date, to: pre.date, slots: [{ start: pre.start, end: pre.end }] } : { ...emptyPlan(), from: anchor, to: anchor },
-    });
+    setPlanSlot(pre ?? defaultPlanSlot(anchor));
     setShowPlan(true);
   };
 
@@ -580,42 +579,7 @@ export function PlannedTimeline() {
       </div>
       {!loading && rows.length === 0 && !missing && <p className="text-sm text-slate-500">Nothing is planned yet. Drag on the calendar to plan a time, use Plan Operation, or plan an operation while releasing a work order in Production.</p>}
 
-      <Modal open={showPlan} onClose={() => setShowPlan(false)} title="Plan Operation" size="lg"
-        footer={<><Button variant="secondary" onClick={() => setShowPlan(false)}>Cancel</Button><Button variant="primary" onClick={savePlan} disabled={saving}>{saving ? 'Saving…' : 'Save Plan'}</Button></>}>
-        <div className="space-y-4">
-          <FormField label="Work Order" required>
-            <select className={inputClass} value={form.woId} onChange={e => pickWo(e.target.value)}>
-              <option value="">-- Select work order --</option>
-              {wos.map(w => <option key={w.id} value={w.id}>{formatWorkOrderOption(w)}</option>)}
-            </select>
-          </FormField>
-          {form.woId && opsForWo.length > 0 && (
-            <FormField label="Operation" required>
-              <select className={inputClass} value={form.seq} onChange={e => pickOp(e.target.value)}>
-                <option value="">-- Select operation --</option>
-                {opsForWo.map(o => <option key={o.id} value={o.operation_sequence}>Seq {o.operation_sequence} - {o.process_name || o.process_code}</option>)}
-              </select>
-            </FormField>
-          )}
-          <FormField label="Machine" required>
-            <input className={inputClass} list="plan-machines" value={form.machine} onChange={e => setForm(f => ({ ...f, machine: e.target.value }))} placeholder="Select or type a machine" />
-            <datalist id="plan-machines">{machines.map(m => <option key={m} value={m} />)}</datalist>
-          </FormField>
-          <FormField label="Operator (man)">
-            <input className={inputClass} list="plan-operators" value={form.operator} onChange={e => setForm(f => ({ ...f, operator: e.target.value }))} placeholder="Select or type the operator" />
-            <datalist id="plan-operators">{operators.map(m => <option key={m} value={m} />)}</datalist>
-          </FormField>
-          <FormField label="Quantity (pcs)">
-            <input type="number" min={0} className={inputClass} value={form.qty} onChange={e => setForm(f => ({ ...f, qty: e.target.value }))} placeholder="e.g. 100" />
-          </FormField>
-          <PlanEditor value={form.plan} onChange={plan => setForm(f => ({ ...f, plan }))} />
-          {conflicts.length > 0 && (
-            <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2" data-testid="plan-conflict">
-              {form.machine} is already planned at these times: {conflicts.slice(0, 3).map(c => `${workOrderTitle(woById.get(String(c.o.work_order_id))) || 'another order'} on ${dayLabel(c.s.date)} ${fmtTime24(hh(c.o.start_time))}–${fmtTime24(hh(c.o.end_time))}`).join('; ')}{conflicts.length > 3 ? ` and ${conflicts.length - 3} more` : ''}.
-            </p>
-          )}
-        </div>
-      </Modal>
+      <AddRunsModal open={showPlan} onClose={() => setShowPlan(false)} initial={planSlot} mode="plan" onSaved={() => { void load(); }} />
 
       <Modal open={!!picked} onClose={() => setPicked(null)} title="Edit Planned Slot" size="md"
         subtitle={picked ? (() => {

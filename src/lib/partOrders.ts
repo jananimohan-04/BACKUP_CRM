@@ -137,7 +137,7 @@ const RUN_OPEN = (w: any) => !['Completed', 'Dispatched', 'Cancelled'].includes(
  * An actual run is recorded against a production order, but the person only picks the product and part.
  * This reuses the open order for that part (or whole product) and starts one when there is none.
  */
-export async function ensureRunWorkOrder(choice: PartChoice, allWos: any[]): Promise<any> {
+export async function ensureRunWorkOrder(choice: PartChoice, allWos: any[], status = 'In Progress'): Promise<any> {
   const open = workOrdersForPart(choice, allWos).find(RUN_OPEN);
   if (open) return open;
   const d = new Date();
@@ -149,7 +149,7 @@ export async function ensureRunWorkOrder(choice: PartChoice, allWos: any[]): Pro
   const fresh: any = {
     id: crypto.randomUUID(), wo_no: woNo, sales_order: choice.so?.order_no ?? '', customer: choice.customer,
     part_name: isPart ? choice.part : choice.productName, part_no: choice.partNumber || 'N/A',
-    quantity: choice.ordered, completed: 0, rejected: 0, status: 'In Progress', priority: 'Medium',
+    quantity: choice.ordered, completed: 0, rejected: 0, status, priority: 'Medium',
   };
   if (isPart) { fresh.product_name = choice.productName; fresh.is_part_order = true; }
   const { error } = await supabase.from('cnc_work_orders').insert([fresh]);
@@ -160,4 +160,18 @@ export async function ensureRunWorkOrder(choice: PartChoice, allWos: any[]): Pro
     throw new Error(`Could not record the production for ${choice.part}: ${error.message}`);
   }
   return fresh;
+}
+
+/**
+ * Parts offered when recording an actual run: each with how many were ordered and how many are still remaining
+ * (ordered less what runs have already finished).
+ */
+export function buildRunPartChoices(salesOrders: any[], inwards: any[], workOrders: any[]): PartChoice[] {
+  const products = buildProductChoices(salesOrders, inwards);
+  const productLabel = new Map(products.map((p) => [p.key, p.label]));
+  return buildPartChoices(products, inwards, workOrders).map((p) => {
+    const done = workOrdersForPart(p, workOrders).reduce((n, w) => n + num(w.completed), 0);
+    const remaining = Math.max(0, p.ordered - done);
+    return { ...p, remaining, label: `${p.whole ? 'Whole product' : p.part} – ${productLabel.get(p.productKey) ?? p.productName}  ·  Ordered ${p.ordered} · Remaining ${remaining}` };
+  });
 }

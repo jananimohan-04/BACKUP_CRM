@@ -9,6 +9,7 @@ import { AdminAssistant } from './components/AdminAssistant';
 import { VoiceControl } from './components/VoiceControl';
 import { SavedProductsDatalist } from './lib/savedProducts';
 import { Time24Normalizer } from './components/Time24Normalizer';
+import { DatalistOpenAll } from './components/DatalistOpenAll';
 import { Sidebar } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
 import { TopNav } from './components/layout/TopNav';
@@ -330,6 +331,7 @@ function MainLayout() {
       <VoiceControl />
       <SavedProductsDatalist />
       <Time24Normalizer />
+      <DatalistOpenAll />
     </div>
     </HeaderKpiProvider>
   );

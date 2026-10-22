@@ -3,8 +3,7 @@ import { Search, Download, Calendar, Clock, Play, CheckCircle2, AlertCircle, Lay
 import { supabase } from '@/lib/supabase';
 import { exportCsv } from '@/lib/reportExport';
 import { todayISO } from '@/lib/format';
-import { ProductPartSelect } from '@/components/ProductPartSelect';
-import { ensureRunWorkOrder, type PartChoice } from '@/lib/partOrders';
+import { AddRunsModal, defaultActualSlot } from './AddRunsModal';
 import { fmtTime24, parseYmd, ymd } from '@/lib/operationPlans';
 import { generateJobNo } from '@/lib/jobCards';
 import { insertTolerant } from '@/lib/partRouting';
@@ -50,8 +49,8 @@ export function ActualListView() {
 
   // Add Run modal state
   const [showAdd, setShowAdd] = useState(false);
+  const [slot, setSlot] = useState(defaultActualSlot());
   const [savingAdd, setSavingAdd] = useState(false);
-  const [pickedPart, setPickedPart] = useState<PartChoice | null>(null);
   const [addForm, setAddForm] = useState({
     partKey: '',
     woId: '',
@@ -244,114 +243,7 @@ export function ActualListView() {
     exportCsv(`actual-runs_${todayISO()}`, rows);
   };
 
-  const openAddModal = () => {
-    setPickedPart(null);
-    setAddForm({
-      partKey: '',
-      woId: '',
-      workOrder: '',
-      customer: '',
-      partName: '',
-      operation: 'Machining',
-      machine: machines[0] || '',
-      operator: operators[0] || '',
-      date: todayISO(),
-      startTime: '08:00',
-      endTime: '16:00',
-      status: 'Completed',
-      qtyPlanned: '',
-      qtyCompleted: '',
-      qtyRejected: '0',
-    });
-    setShowAdd(true);
-  };
-
-  // Product -> part. The production order behind it is found (or started) when the run is saved.
-  const onPartPick = (c: PartChoice | null) => {
-    setPickedPart(c);
-    setAddForm((f) => ({
-      ...f,
-      partKey: c?.key ?? '',
-      partName: c ? (c.whole ? c.productName : c.part) : '',
-      customer: c?.customer ?? '',
-      qtyPlanned: c ? String(c.ordered) : '',
-      qtyCompleted: c ? String(c.remaining) : '',
-    }));
-  };
-
-  const saveAddRun = async () => {
-    if (!pickedPart) return alert('Please select the product and part.');
-    if (!addForm.machine.trim()) return alert('Please select or enter a Machine.');
-    if (!addForm.date) return alert('Please set the Date.');
-    if (!addForm.startTime) return alert('Please set Start Time.');
-
-    const start = new Date(`${addForm.date}T${addForm.startTime}:00`);
-    if (Number.isNaN(start.getTime())) return alert('Invalid start date / time.');
-
-    let endIso: string | null = null;
-    if (addForm.status === 'Completed') {
-      if (!addForm.endTime) return alert('Please specify an End Time for completed runs.');
-      const end = new Date(`${addForm.date}T${addForm.endTime}:00`);
-      if (Number.isNaN(end.getTime())) return alert('Invalid end time.');
-      if (end.getTime() <= start.getTime()) return alert('End time must be after start time.');
-      endIso = end.toISOString();
-    }
-
-    setSavingAdd(true);
-    try {
-      const good = Number(addForm.qtyCompleted) || 0;
-      const rej = Number(addForm.qtyRejected) || 0;
-      const planned = Number(addForm.qtyPlanned) || 0;
-      const jobNo = await generateJobNo();
-
-      // The production order stays in the background: reuse the open one for this part, or start one.
-      const selWo = await ensureRunWorkOrder(pickedPart, wos);
-
-      const row: any = {
-        id: crypto.randomUUID(),
-        job_no: jobNo,
-        work_order_id: selWo?.id || null,
-        work_order: selWo?.wo_no || '',
-        part_name: selWo?.part_name || addForm.partName.trim() || 'Part',
-        customer: selWo?.customer || addForm.customer.trim() || '',
-        operation: addForm.operation.trim() || 'Machining',
-        op_no: 10,
-        machine: addForm.machine.trim(),
-        operator: addForm.operator.trim() || null,
-        qty_planned: planned > 0 ? planned : (selWo?.quantity ?? null),
-        qty_completed: good,
-        qty_rejected: rej,
-        status: addForm.status,
-        actual_start: start.toISOString(),
-        actual_end: endIso,
-        completed_at: endIso,
-        created_at: start.toISOString(),
-      };
-
-      await insertTolerant('cnc_job_cards', [row]);
-
-      if (selWo && (good > 0 || rej > 0)) {
-        const newComp = (Number(selWo.completed) || 0) + good;
-        const newRej = (Number(selWo.rejected) || 0) + rej;
-        const target = Number(selWo.quantity) || 0;
-        await supabase
-          .from('cnc_work_orders')
-          .update({
-            completed: newComp,
-            rejected: newRej,
-            status: target > 0 && newComp >= target ? 'Completed' : (selWo.status || 'In Progress'),
-          })
-          .eq('id', selWo.id);
-      }
-
-      setShowAdd(false);
-      await load();
-    } catch (e: any) {
-      alert(`Could not record actual run: ${e?.message ?? e}`);
-    } finally {
-      setSavingAdd(false);
-    }
-  };
+  const openAddModal = () => { setSlot(defaultActualSlot()); setShowAdd(true); };
 
   return (
     <div className="space-y-4">
@@ -624,159 +516,7 @@ export function ActualListView() {
       </div>
 
       {/* Record Actual Run Modal */}
-      <Modal
-        open={showAdd}
-        onClose={() => setShowAdd(false)}
-        title="Record Actual Run"
-        size="lg"
-        footer={
-          <div className="flex items-center justify-end gap-2 w-full">
-            <Button variant="secondary" onClick={() => setShowAdd(false)} disabled={savingAdd}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              className="bg-brand-600 hover:bg-brand-700 text-white"
-              onClick={saveAddRun}
-              disabled={savingAdd}
-            >
-              {savingAdd ? 'Saving…' : 'Save Actual Run'}
-            </Button>
-          </div>
-        }
-      >
-        <div className="space-y-4">
-          <ProductPartSelect salesOrders={salesOrders} inwards={inwards} workOrders={wos} value={addForm.partKey} onChange={onPartPick} />
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormField label="Operation / Process" required>
-              <input
-                type="text"
-                className={inputClass}
-                value={addForm.operation}
-                placeholder="e.g. CNC Milling, Turning, Machining"
-                onChange={(e) => setAddForm((f) => ({ ...f, operation: e.target.value }))}
-              />
-            </FormField>
-
-            <FormField label="Run Status" required>
-              <select
-                className={inputClass}
-                value={addForm.status}
-                onChange={(e) => setAddForm((f) => ({ ...f, status: e.target.value as 'Completed' | 'Running' }))}
-              >
-                <option value="Completed">Completed Run</option>
-                <option value="Running">Currently Running (In Shop)</option>
-              </select>
-            </FormField>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <FormField label="Date" required>
-              <input
-                type="date"
-                className={inputClass}
-                value={addForm.date}
-                onChange={(e) => setAddForm((f) => ({ ...f, date: e.target.value }))}
-              />
-            </FormField>
-
-            <FormField label="Start Time (24h)" required>
-              <input
-                type="time"
-                className={inputClass}
-                value={addForm.startTime}
-                onChange={(e) => setAddForm((f) => ({ ...f, startTime: e.target.value }))}
-              />
-            </FormField>
-
-            {addForm.status === 'Completed' ? (
-              <FormField label="End Time (24h)" required>
-                <input
-                  type="time"
-                  className={inputClass}
-                  value={addForm.endTime}
-                  onChange={(e) => setAddForm((f) => ({ ...f, endTime: e.target.value }))}
-                />
-              </FormField>
-            ) : (
-              <div className="flex flex-col justify-center">
-                <span className="text-xs font-semibold text-slate-500 mb-1">End Time</span>
-                <span className="text-xs text-emerald-600 font-bold bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-2">
-                  ● Running Now
-                </span>
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormField label="Machine" required>
-              <input
-                className={inputClass}
-                list="actual-machines-list"
-                value={addForm.machine}
-                placeholder="Select or enter machine"
-                onChange={(e) => setAddForm((f) => ({ ...f, machine: e.target.value }))}
-              />
-              <datalist id="actual-machines-list">
-                {machines.map((m) => (
-                  <option key={m} value={m} />
-                ))}
-              </datalist>
-            </FormField>
-
-            <FormField label="Operator (Man)">
-              <input
-                className={inputClass}
-                list="actual-operators-list"
-                value={addForm.operator}
-                placeholder="Select or enter operator"
-                onChange={(e) => setAddForm((f) => ({ ...f, operator: e.target.value }))}
-              />
-              <datalist id="actual-operators-list">
-                {operators.map((o) => (
-                  <option key={o} value={o} />
-                ))}
-              </datalist>
-            </FormField>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <FormField label="Planned Qty">
-              <input
-                type="number"
-                min="0"
-                className={inputClass}
-                value={addForm.qtyPlanned}
-                placeholder="Target pieces"
-                onChange={(e) => setAddForm((f) => ({ ...f, qtyPlanned: e.target.value }))}
-              />
-            </FormField>
-
-            <FormField label="Completed (Good)">
-              <input
-                type="number"
-                min="0"
-                className={inputClass}
-                value={addForm.qtyCompleted}
-                placeholder="Good pieces"
-                onChange={(e) => setAddForm((f) => ({ ...f, qtyCompleted: e.target.value }))}
-              />
-            </FormField>
-
-            <FormField label="Rejected (Defects)">
-              <input
-                type="number"
-                min="0"
-                className={inputClass}
-                value={addForm.qtyRejected}
-                placeholder="Defects"
-                onChange={(e) => setAddForm((f) => ({ ...f, qtyRejected: e.target.value }))}
-              />
-            </FormField>
-          </div>
-        </div>
-      </Modal>
+      <AddRunsModal open={showAdd} onClose={() => setShowAdd(false)} initial={slot} mode="actual" onSaved={() => { void load(); }} />
     </div>
   );
 }

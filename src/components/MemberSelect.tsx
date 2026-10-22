@@ -1,28 +1,37 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 
-// Every member name known to the company: users, plus anyone already used on a petty cash inward.
-// A name typed once through MemberSelect is saved with its entry and so shows up here from then on.
+// The members: people who were ADDED as members (typed through "+ Add new member…"), plus the signed-in user. A name is a member once
+// it is used as "Paid by" on a petty cash inward, or as the member on a "Payable to Members" entry. User accounts, companies and
+// vendors are not members, so they are not listed.
 export function useMemberNames(companyId?: string | null, extra: string[] = []): string[] {
+  const { profile } = useAuth();
   const [names, setNames] = useState<string[]>([]);
   useEffect(() => {
     let off = false;
     (async () => {
-      const [u, p] = await Promise.all([
-        supabase.from('company_users').select('full_name,email'),
+      const [p, tx] = await Promise.all([
         supabase.from('cnc_inwards').select('paid_by').eq('petty_cash', true),
+        supabase.from('cnc_bank_transactions').select('party_name,contra_account_id,status').eq('source_type', 'petty_cash').not('party_name', 'is', null),
       ]);
       if (off) return;
+      // Bank entries only count when they are on the Payable to Members ledger (an entry "paid to" a vendor is not a member).
+      let memberLedgerId = '';
+      try {
+        const c = await supabase.from('chart_of_accounts').select('id').eq('system_key', 'MEMBER_PAYABLE').maybeSingle();
+        memberLedgerId = String((c.data as { id?: string } | null)?.id ?? '');
+      } catch { /* ledger not created yet */ }
       const all = [
-        ...(u.error ? [] : (u.data ?? []).map((x: any) => String(x.full_name || x.email || ''))),
         ...(p.error ? [] : (p.data ?? []).map((x: any) => String(x.paid_by || ''))),
+        ...(tx.error || !memberLedgerId ? [] : (tx.data ?? []).filter((x: any) => String(x.contra_account_id) === memberLedgerId && x.status !== 'Cancelled').map((x: any) => String(x.party_name || ''))),
       ];
       setNames(all.map((n) => n.trim()).filter(Boolean));
     })();
     return () => { off = true; };
   }, [companyId]);
   const seen = new Set<string>();
-  return [...names, ...extra].map((n) => n.trim()).filter((n) => n && !seen.has(n.toLowerCase()) && !!seen.add(n.toLowerCase()))
+  return [...names, String(profile?.full_name ?? ''), ...extra].map((n) => n.trim()).filter((n) => n && !seen.has(n.toLowerCase()) && !!seen.add(n.toLowerCase()))
     .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 }
 

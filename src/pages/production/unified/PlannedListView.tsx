@@ -6,6 +6,7 @@ import { todayISO } from '@/lib/format';
 import { formatWorkOrderOption } from '@/lib/workOrderFormat';
 import { fmtTime24, parseYmd, toMinutes, ymd } from '@/lib/operationPlans';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
+import { AddRunsModal, defaultPlanSlot } from './AddRunsModal';
 import { Button } from '@/components/ui/Card';
 
 interface PlanRow {
@@ -54,6 +55,7 @@ export function PlannedListView() {
 
   // Add Plan modal state
   const [showAdd, setShowAdd] = useState(false);
+  const [slot, setSlot] = useState(defaultPlanSlot());
   const [savingAdd, setSavingAdd] = useState(false);
   const [addForm, setAddForm] = useState({
     woId: '',
@@ -301,25 +303,7 @@ export function PlannedListView() {
     }
   };
 
-  const openAddModal = () => {
-    const defaultWo = wos[0];
-    const defaultWoOps = defaultWo
-      ? operations.filter((o) => String(o.work_order_id) === String(defaultWo.id)).sort((a, b) => (a.operation_sequence ?? 0) - (b.operation_sequence ?? 0))
-      : [];
-    const firstOp = defaultWoOps[0];
-    setAddForm({
-      woId: defaultWo ? String(defaultWo.id) : '',
-      operationSeq: firstOp ? String(firstOp.operation_sequence) : '1',
-      processName: firstOp ? (firstOp.process_name || firstOp.process_code || 'Machining') : 'Machining',
-      machine: firstOp?.machine || machines[0] || '',
-      operator: firstOp?.operator || '',
-      planDate: todayISO(),
-      startTime: '08:00',
-      endTime: '10:00',
-      qty: defaultWo?.quantity != null ? String(defaultWo.quantity) : '',
-    });
-    setShowAdd(true);
-  };
+  const openAddModal = () => { setSlot(defaultPlanSlot()); setShowAdd(true); };
 
   const onAddWoChange = (woId: string) => {
     const selWo = wos.find((w) => String(w.id) === String(woId));
@@ -782,147 +766,7 @@ export function PlannedListView() {
       </Modal>
 
       {/* Add Plan Modal */}
-      <Modal
-        open={showAdd}
-        onClose={() => setShowAdd(false)}
-        title="Add Planned Operation Slot"
-        size="lg"
-        footer={
-          <div className="flex items-center justify-end gap-2 w-full">
-            <Button variant="secondary" onClick={() => setShowAdd(false)} disabled={savingAdd}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              className="bg-brand-600 hover:bg-brand-700 text-white"
-              onClick={saveAddPlan}
-              disabled={savingAdd}
-            >
-              {savingAdd ? 'Saving…' : 'Add Planned Slot'}
-            </Button>
-          </div>
-        }
-      >
-        <div className="space-y-4">
-          <FormField label="Work Order" required>
-            <select
-              className={inputClass}
-              value={addForm.woId}
-              onChange={(e) => onAddWoChange(e.target.value)}
-            >
-              <option value="">-- Select Work Order --</option>
-              {wos.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {formatWorkOrderOption(w)}
-                </option>
-              ))}
-            </select>
-          </FormField>
-
-          {addForm.woId && operations.filter((o) => String(o.work_order_id) === String(addForm.woId)).length > 0 && (
-            <FormField label="Operation Sequence & Process" required>
-              <select
-                className={inputClass}
-                value={addForm.operationSeq}
-                onChange={(e) => onAddOpChange(e.target.value)}
-              >
-                {operations
-                  .filter((o) => String(o.work_order_id) === String(addForm.woId))
-                  .sort((a, b) => (a.operation_sequence ?? 0) - (b.operation_sequence ?? 0))
-                  .map((o) => (
-                    <option key={o.id} value={o.operation_sequence}>
-                      Op #{o.operation_sequence} — {o.process_name || o.process_code || 'Machining'}
-                    </option>
-                  ))}
-              </select>
-            </FormField>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormField label="Process Name" required>
-              <input
-                type="text"
-                className={inputClass}
-                value={addForm.processName}
-                placeholder="e.g. CNC Milling, Turning, Drilling"
-                onChange={(e) => setAddForm((f) => ({ ...f, processName: e.target.value }))}
-              />
-            </FormField>
-
-            <FormField label="Planned Quantity (pcs)">
-              <input
-                type="number"
-                min="0"
-                className={inputClass}
-                value={addForm.qty}
-                placeholder="Leave blank for entire batch"
-                onChange={(e) => setAddForm((f) => ({ ...f, qty: e.target.value }))}
-              />
-            </FormField>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <FormField label="Plan Date" required>
-              <input
-                type="date"
-                className={inputClass}
-                value={addForm.planDate}
-                onChange={(e) => setAddForm((f) => ({ ...f, planDate: e.target.value }))}
-              />
-            </FormField>
-
-            <FormField label="Start Time (24h)" required>
-              <input
-                type="time"
-                className={inputClass}
-                value={addForm.startTime}
-                onChange={(e) => setAddForm((f) => ({ ...f, startTime: e.target.value }))}
-              />
-            </FormField>
-
-            <FormField label="End Time (24h)" required>
-              <input
-                type="time"
-                className={inputClass}
-                value={addForm.endTime}
-                onChange={(e) => setAddForm((f) => ({ ...f, endTime: e.target.value }))}
-              />
-            </FormField>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormField label="Machine" required>
-              <input
-                className={inputClass}
-                list="add-machines-list"
-                value={addForm.machine}
-                placeholder="Select or enter machine"
-                onChange={(e) => setAddForm((f) => ({ ...f, machine: e.target.value }))}
-              />
-              <datalist id="add-machines-list">
-                {machines.map((m) => (
-                  <option key={m} value={m} />
-                ))}
-              </datalist>
-            </FormField>
-
-            <FormField label="Operator (Man)">
-              <input
-                className={inputClass}
-                list="add-operators-list"
-                value={addForm.operator}
-                placeholder="Select or enter operator"
-                onChange={(e) => setAddForm((f) => ({ ...f, operator: e.target.value }))}
-              />
-              <datalist id="add-operators-list">
-                {operators.map((o) => (
-                  <option key={o} value={o} />
-                ))}
-              </datalist>
-            </FormField>
-          </div>
-        </div>
-      </Modal>
+      <AddRunsModal open={showAdd} onClose={() => setShowAdd(false)} initial={slot} mode="plan" onSaved={() => { void load(); }} />
     </div>
   );
 }

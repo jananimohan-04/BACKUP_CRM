@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Wallet, Save, Eraser, Trash2, FileSpreadsheet, Inbox, AlertTriangle, CheckCircle2, Upload } from 'lucide-react';
+import { MemberSelect, useMemberNames } from '@/components/MemberSelect';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { intersectRange } from '@/lib/globalDate';
@@ -22,7 +23,7 @@ const money = (n: number) => (n ? formatINR(n, { decimals: 'always', symbol: fal
 const dmy = (iso: string) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '');
 const stamp = (iso: string) => {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' });
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' });
 };
 
 function toISODate(d: unknown): string {
@@ -96,12 +97,16 @@ interface PettyRow {
   id: string; txn_no: string; txn_date: string; direction: 'IN' | 'OUT'; account_id: string; contra_account_id: string | null;
   amount: number; description: string | null; status: string; created_at: string; created_by: string | null;
   source?: 'bank' | 'inward'; bank_name?: string; ledger_name?: string; ledger_type?: string;
+  /** The company / vendor the money was paid to (shown in its own column, not inside the description). */
+  company?: string;
+  /** The member who paid out of pocket (own column). */
+  paid_by?: string;
 }
 
 type Note = { kind: 'ok' | 'err'; text: string } | null;
 
-export function PettyCashPage() {
-  const { setHeader } = useHeaderKpis();
+export function PettyCashPage({ prefill }: { prefill?: { member: string; amount: number; nonce: number } | null } = {}) {
+  const { setHeader, setTabActions } = useHeaderKpis();
   const { company } = useAuth();
   const cid = company?.id ?? null;
 
@@ -124,6 +129,7 @@ export function PettyCashPage() {
   const [credit, setCredit] = useState('');
   const [bankId, setBankId] = useState('');
   const [ledgerText, setLedgerText] = useState('');
+  const [paidTo, setPaidTo] = useState('');
 
   // filters
   const [fFrom, setFFrom] = useState('');
@@ -148,7 +154,7 @@ export function PettyCashPage() {
     try {
       const [bankRes, inwRes] = await Promise.all([
         supabase.from('cnc_bank_transactions')
-          .select('id,txn_no,txn_date,direction,account_id,contra_account_id,amount,description,status,created_at,created_by')
+          .select('id,txn_no,txn_date,direction,account_id,contra_account_id,amount,description,status,created_at,created_by,party_name')
           .eq('source_type', SOURCE).order('created_at', { ascending: false }).limit(1000),
         supabase.from('cnc_inwards')
           .select('id,inward_no,inward_date,petty_cash,paid_by,petty_amount,petty_date,category,party_name,part_name,product_name,project_name,sales_order_ref,total_amount,quantity,price,discount_percent,gst_percent,status,created_at')
@@ -161,7 +167,7 @@ export function PettyCashPage() {
         id: String(x.id), txn_no: String(x.txn_no ?? ''), txn_date: toISODate(x.txn_date) || todayISO(), direction: x.direction === 'IN' ? 'IN' : 'OUT',
         account_id: String(x.account_id ?? ''), contra_account_id: x.contra_account_id ? String(x.contra_account_id) : null,
         amount: Number(x.amount) || 0, description: (x.description as string) ?? '', status: String(x.status ?? ''),
-        created_at: String(x.created_at ?? ''), created_by: (x.created_by as string) ?? null, source: 'bank',
+        created_at: String(x.created_at ?? ''), created_by: (x.created_by as string) ?? null, source: 'bank', company: String(x.party_name ?? '').trim(),
       }));
 
       const inwData = inwRes.error ? [] : ((inwRes.data ?? []) as Record<string, unknown>[]);
@@ -192,10 +198,8 @@ export function PettyCashPage() {
         const descParts: string[] = [];
         if (pName) descParts.push(pName);
         else if (category) descParts.push(category);
-        if (vendor) descParts.push(vendor);
-        let desc = descParts.join(' · ');
-        if (paidBy) desc += ` (Paid by ${paidBy})`;
-        if (!desc) desc = category || 'Expense';
+        const desc0 = descParts.join(' · ');
+        const desc = desc0 || category || 'Expense';
 
         const vDate = toISODate(x.petty_date) || toISODate(x.inward_date) || toISODate(x.created_at) || todayISO();
 
@@ -208,6 +212,8 @@ export function PettyCashPage() {
           contra_account_id: null,
           amount: amt,
           description: desc,
+          company: vendor,
+          paid_by: paidBy,
           status: String(x.status ?? 'Pending'),
           created_at: String(x.created_at ?? ''),
           created_by: paidBy || null,
@@ -242,13 +248,39 @@ export function PettyCashPage() {
     return () => { off = true; };
   }, [cid, load]);
 
-  const clearForm = () => { setDate(todayISO()); setDesc(''); setDebit(''); setCredit(''); setLedgerText(''); setNote(null); };
+  // Money given to / returned by a member: pick the "Payable to Members" ledger and name the member. The member name is what
+  // puts the entry on that member's balance (Members Petty Cash tab).
+  const memberLedger = chart.find(a => a.system_key === 'MEMBER_PAYABLE');
+  const isMemberLedger = !!ledger && !!memberLedger && ledger.id === memberLedger.id;
+  // Who the money was paid to: a member (dropdown with "+ Add new member…", like the members list).
+  const paidToOptions = useMemberNames(cid);
+
+  // "Pay" from the Members tab: fill the form (debit = money out to the member).
+  const usedPrefill = useRef(0);
+  useEffect(() => {
+    if (!prefill || usedPrefill.current === prefill.nonce || !memberLedger) return;
+    usedPrefill.current = prefill.nonce;
+    setLedgerText(label(memberLedger));
+    setPaidTo(prefill.member);
+    setDebit(String(Math.round(prefill.amount * 100) / 100));
+    setCredit('');
+    setDesc(`Petty cash paid to ${prefill.member}`);
+    setDate(todayISO());
+    setNote(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill, memberLedger?.id]);
+
+  const clearForm = () => { setDate(todayISO()); setDesc(''); setDebit(''); setCredit(''); setLedgerText(''); setPaidTo(''); setNote(null); };
 
   const save = async () => {
     setNote(null);
     const d = Number(debit.replace(/,/g, '')) || 0, c = Number(credit.replace(/,/g, '')) || 0;
     if (!date) return setNote({ kind: 'err', text: 'Choose the value date.' });
-    if (!desc.trim()) return setNote({ kind: 'err', text: 'Enter a description.' });
+    const who = paidTo.trim();
+    if (isMemberLedger && !who) return setNote({ kind: 'err', text: 'Choose who this money is paid to (the member).' });
+    // A member entry describes itself when no description is typed.
+    const text = desc.trim() || (isMemberLedger ? (c > 0 ? `Petty cash returned by ${who}` : `Petty cash given to ${who}`) : '');
+    if (!text) return setNote({ kind: 'err', text: 'Enter a description.' });
     if (!bankId) return setNote({ kind: 'err', text: 'Select the bank / cash account.' });
     if (!ledger) return setNote({ kind: 'err', text: 'Choose a ledger from the list.' });
     if (d > 0 && c > 0) return setNote({ kind: 'err', text: 'Enter either a debit or a credit, not both.' });
@@ -257,10 +289,11 @@ export function PettyCashPage() {
     try {
       await financeApi.addBankEntry({
         direction: c > 0 ? 'IN' : 'OUT', account_id: bankId, contra_account_id: ledger.id, amount: String(c > 0 ? c : d), txn_date: date,
-        mode: 'Petty cash', description: desc.trim(), status: 'Cleared', source_type: SOURCE,
+        mode: 'Petty cash', description: text, status: 'Cleared', source_type: SOURCE,
+        ...(isMemberLedger ? { party_type: 'Other', party_name: who } : who ? { party_type: 'Other', party_name: who } : {}),
       });
       setNote({ kind: 'ok', text: 'Entry saved and posted to the ledger.' });
-      setDesc(''); setDebit(''); setCredit(''); setLedgerText('');
+      setDesc(''); setDebit(''); setCredit(''); setLedgerText(''); setPaidTo('');
       await load();
     } catch (e) { setNote({ kind: 'err', text: e instanceof Error ? e.message : 'Could not save the entry.' }); }
     finally { setSaving(false); }
@@ -286,7 +319,34 @@ export function PettyCashPage() {
   // Global Topbar range intersects this page's own From/To (either may be empty).
   const { from: globalFrom, to: globalTo } = useGlobalDateFilter();
   const { from: effFrom, to: effTo } = intersectRange(fFrom, fTo, globalFrom, globalTo);
+  // What each row shows in its filterable columns (same rules as the cells below).
+  const cellVals = (r: PettyRow) => {
+    const la = r.contra_account_id ? accName.get(r.contra_account_id) : (r.ledger_name ? chart.find(a => a.name.toLowerCase() === r.ledger_name?.toLowerCase()) : null);
+    return {
+      company: r.company ?? '',
+      paidBy: r.paid_by ?? '',
+      bank: (accName.get(r.account_id) || (r.source === 'inward' ? defaultCashAccount : null))?.name || r.bank_name || 'Cash in Hand',
+      ledger: la?.name || r.ledger_name || 'Company Expenses',
+      type: la ? ledgerTypeOf(la) : (r.ledger_type || 'Expense'),
+    };
+  };
+  type HeaderFilterKey = 'company' | 'paidBy' | 'bank' | 'ledger' | 'type';
+  const [hf, setHf] = useState<Record<HeaderFilterKey, string>>({ company: '', paidBy: '', bank: '', ledger: '', type: '' });
+  const hfOptions = useMemo(() => {
+    const out: Record<HeaderFilterKey, string[]> = { company: [], paidBy: [], bank: [], ledger: [], type: [] };
+    (Object.keys(out) as HeaderFilterKey[]).forEach(k => {
+      out[k] = [...new Set(rows.map(r => cellVals(r)[k]).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, accName, chart, defaultCashAccount]);
   const view = useMemo(() => rows.filter(r => {
+    const cv = cellVals(r);
+    if (hf.company && cv.company !== hf.company) return false;
+    if (hf.paidBy && cv.paidBy !== hf.paidBy) return false;
+    if (hf.bank && cv.bank !== hf.bank) return false;
+    if (hf.ledger && cv.ledger !== hf.ledger) return false;
+    if (hf.type && cv.type !== hf.type) return false;
     const rowDate = r.txn_date;
     if (effFrom && rowDate < effFrom) return false;
     if (effTo && rowDate > effTo) return false;
@@ -297,17 +357,43 @@ export function PettyCashPage() {
     const effType = r.contra_account_id ? ledgerTypeOf(accName.get(r.contra_account_id)) : (r.ledger_type || 'Expense');
     if (fType && effType !== fType) return false;
     return true;
-  }), [rows, effFrom, effTo, fBank, fLedger, fType, defaultCashAccount, chart, accName]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [rows, effFrom, effTo, fBank, fLedger, fType, defaultCashAccount, chart, accName, hf]);
 
   const live = view.filter(r => r.status !== 'Cancelled' && r.status !== 'Deleted');
   const totalDebit = live.filter(r => r.direction === 'OUT').reduce((n, r) => n + r.amount, 0);
   const totalCredit = live.filter(r => r.direction === 'IN').reduce((n, r) => n + r.amount, 0);
-  const filtersOn = !!(fFrom || fTo || fBank || fLedger || fType);
-  const clearFilters = () => { setFFrom(''); setFTo(''); setFBank(''); setFLedger(''); setFType(''); };
+
+  // Money in / out and the net, in the top bar just before the Download Desktop App button:
+  // green with "+" when the net is in, red with "−" when it is out. Follows the filters and date range below.
+  useEffect(() => {
+    const net = Math.round((totalCredit - totalDebit) * 100) / 100;
+    const fmt = (n: number) => formatINR(Math.abs(n), { decimals: 'always', symbol: false });
+    const pos = net >= 0;
+    setTabActions(
+      <div className="flex items-center gap-3 whitespace-nowrap" data-testid="pc-topbar-total" title={`Money in ${fmt(totalCredit)} · Money out ${fmt(totalDebit)}`}>
+        <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-1.5">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">Money In</span>
+          <span className="text-base font-extrabold tabular-nums text-emerald-700">+ ₹{fmt(totalCredit)}</span>
+        </div>
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3.5 py-1.5">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-red-600">Money Out</span>
+          <span className="text-base font-extrabold tabular-nums text-red-600">− ₹{fmt(totalDebit)}</span>
+        </div>
+        <div className={`flex items-center gap-2 rounded-lg border-2 px-4 py-1.5 ${pos ? 'border-emerald-400 bg-emerald-100' : 'border-red-400 bg-red-100'}`}>
+          <span className={`text-[11px] font-bold uppercase tracking-wider ${pos ? 'text-emerald-800' : 'text-red-700'}`}>Total Balance</span>
+          <span className={`text-lg font-black tabular-nums ${pos ? 'text-emerald-700' : 'text-red-600'}`}>{pos ? '+' : '−'} ₹{fmt(net)}</span>
+        </div>
+      </div>
+    );
+    return () => setTabActions(null);
+  }, [totalCredit, totalDebit, setTabActions]);
+  const filtersOn = !!(fFrom || fTo || fBank || fLedger || fType || Object.values(hf).some(Boolean));
+  const clearFilters = () => { setFFrom(''); setFTo(''); setFBank(''); setFLedger(''); setFType(''); setHf({ company: '', paidBy: '', bank: '', ledger: '', type: '' }); };
 
   const exportRows = () => {
     if (!view.length) return;
-    exportCsv(`petty-cash-${todayISO()}`, [['Entry No', 'Timestamp', 'Value Date', 'Description', 'Debit', 'Credit', 'Bank Name', 'Ledger Name', 'Ledger Type', 'Status'],
+    exportCsv(`petty-cash-${todayISO()}`, [['Entry No', 'Timestamp', 'Value Date', 'Description', 'Paid To', 'Paid By', 'Debit', 'Credit', 'Bank Name', 'Ledger Name', 'Ledger Type', 'Status'],
       ...view.map(r => {
         const bankName = (accName.get(r.account_id) || (r.source === 'inward' ? defaultCashAccount : null))?.name || r.bank_name || 'Cash in Hand';
         const la = r.contra_account_id ? accName.get(r.contra_account_id) : (r.ledger_name ? chart.find(a => a.name.toLowerCase() === r.ledger_name?.toLowerCase()) : null);
@@ -318,6 +404,8 @@ export function PettyCashPage() {
           stamp(r.created_at),
           dmy(r.txn_date),
           r.description ?? '',
+          r.company ?? '',
+          r.paid_by ?? '',
           r.direction === 'OUT' ? r.amount : '',
           r.direction === 'IN' ? r.amount : '',
           bankName,
@@ -332,7 +420,7 @@ export function PettyCashPage() {
 
   return (
     <div className="p-2 sm:p-4 lg:px-6 lg:pt-2 lg:pb-6 bg-grid min-h-full">
-      <div className="max-w-[1500px] mx-auto flex flex-col gap-2.5">
+      <div className="w-full flex flex-col gap-2">
         <div className="lg:hidden flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 text-white flex items-center justify-center shadow-lg shadow-orange-500/25"><Wallet size={22} /></div>
           <div>
@@ -351,6 +439,10 @@ export function PettyCashPage() {
               <div className="min-w-[140px] flex-1">
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" htmlFor="pc-desc">Description <span className="text-red-500">*</span></label>
                 <input id="pc-desc" placeholder="Description" className="w-full h-8 px-2 text-xs text-slate-800 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-orange-400" value={desc} onChange={e => setDesc(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void save(); }} />
+              </div>
+              <div className="w-[200px] shrink-0">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Paid to{isMemberLedger && <span className="text-red-500"> *</span>}</label>
+                <MemberSelect className="w-full h-8 px-2 text-xs text-slate-800 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-orange-400" placeholder="Select member" options={paidToOptions} value={paidTo} onChange={setPaidTo} />
               </div>
               <div className="w-[85px] shrink-0">
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" htmlFor="pc-debit">Debit <span className="font-normal text-slate-400">(out)</span></label>
@@ -396,15 +488,36 @@ export function PettyCashPage() {
 
         {/* ---------- details ---------- */}
         <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/70 flex flex-wrap items-center justify-between gap-2">
+          <div className="px-4 py-2 border-b border-slate-100 bg-slate-50/70 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Petty cash details <span className="ml-2 text-xs font-medium normal-case text-slate-500" data-testid="pc-count">{view.length} entr{view.length === 1 ? 'y' : 'ies'}</span></h2>
             <button type="button" className={`${btn} !h-9 text-slate-700 bg-white border border-slate-200 hover:bg-slate-50`} onClick={exportRows} disabled={!view.length}><Upload size={14} />Export CSV</button>
           </div>
           {loadErr && <div role="alert" className="m-4 flex items-start gap-2 text-sm rounded-xl border border-red-200 bg-red-50 text-red-800 px-3.5 py-2.5"><AlertTriangle size={16} className="mt-0.5 shrink-0" /><span>{loadErr}</span></div>}
-          <div className="overflow-auto max-h-[520px]">
-            <table className="w-full text-[13px] min-w-[1000px]">
+          <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-290px)]">
+            <table className="w-full text-[12px]">
               <thead className="bg-slate-100/90 sticky top-0 z-10 shadow-[0_1px_0_#e2e8f0]"><tr className="text-left">
-                {['Timestamp', 'Value Date', 'Description', 'Debit', 'Credit', 'Bank Name', 'Ledger Name', 'Ledger Type', 'Actions'].map((h, i) => <th key={h} className={`px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-slate-600 ${i === 3 || i === 4 ? 'text-right' : ''}`}>{h}</th>)}
+                {([
+                  { label: 'Timestamp' }, { label: 'Value Date' }, { label: 'Description' },
+                  { label: 'Paid To', fk: 'company' }, { label: 'Paid By', fk: 'paidBy' },
+                  { label: 'Debit', right: true }, { label: 'Credit', right: true },
+                  { label: 'Bank Name', fk: 'bank' }, { label: 'Ledger Name', fk: 'ledger' }, { label: 'Ledger Type', fk: 'type' },
+                  { label: 'Actions' },
+                ] as { label: string; fk?: HeaderFilterKey; right?: boolean }[]).map(h => (
+                  <th key={h.label} className={`px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 whitespace-nowrap ${h.right ? 'text-right' : ''}`}>
+                    {h.label}
+                    {h.fk && hfOptions[h.fk].length > 0 && (
+                      <select
+                        value={hf[h.fk]}
+                        onChange={e => { const k = h.fk as HeaderFilterKey; const v = e.target.value; setHf(f => ({ ...f, [k]: v })); }}
+                        aria-label={`Filter ${h.label}`}
+                        className={`ml-1 h-5 max-w-[84px] rounded border bg-white px-0.5 text-[10px] font-semibold normal-case tracking-normal text-slate-800 focus:outline-none ${hf[h.fk] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`}
+                      >
+                        <option value="">All</option>
+                        {hfOptions[h.fk].map(v => <option key={v} value={v}>{v}</option>)}
+                      </select>
+                    )}
+                  </th>
+                ))}
               </tr></thead>
               <tbody>
                 {view.map(r => {
@@ -417,21 +530,23 @@ export function PettyCashPage() {
                   const ledgerTypeDisplay = la ? ledgerTypeOf(la) : (r.ledger_type || 'Expense');
                   return (
                     <tr key={`${r.source || 'bank'}-${r.id}`} data-testid="pc-row" className={`border-t border-slate-100 ${cancelled ? 'opacity-50 line-through' : 'hover:bg-slate-50'}`}>
-                      <td className="px-3 py-2 whitespace-nowrap text-slate-500">{stamp(r.created_at)}</td>
-                      <td className="px-3 py-2 whitespace-nowrap font-medium">{dmy(r.txn_date)}</td>
-                      <td className="px-3 py-2 max-w-[320px] truncate" title={r.description ?? ''}>
+                      <td className="px-2 py-1 whitespace-nowrap text-slate-500">{stamp(r.created_at)}</td>
+                      <td className="px-2 py-1 whitespace-nowrap font-medium">{dmy(r.txn_date)}</td>
+                      <td className="px-2 py-1 max-w-[230px] truncate" title={r.description ?? ''}>
                         <span>{r.description}</span>
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-red-600">{r.direction === 'OUT' ? money(r.amount) : ''}</td>
-                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-emerald-600">{r.direction === 'IN' ? money(r.amount) : ''}</td>
-                      <td className="px-3 py-2">{bankDisplayName}</td>
-                      <td className="px-3 py-2">{ledgerDisplayName}</td>
-                      <td className="px-3 py-2">
+                      <td className="px-2 py-1 max-w-[190px] truncate font-medium text-slate-800" title={r.company ?? ''}>{r.company || ''}</td>
+                      <td className="px-2 py-1 max-w-[160px] truncate text-slate-700" title={r.paid_by ?? ''}>{r.paid_by || ''}</td>
+                      <td className="px-2 py-1 text-right tabular-nums font-semibold text-red-600">{r.direction === 'OUT' ? money(r.amount) : ''}</td>
+                      <td className="px-2 py-1 text-right tabular-nums font-semibold text-emerald-600">{r.direction === 'IN' ? money(r.amount) : ''}</td>
+                      <td className="px-2 py-1">{bankDisplayName}</td>
+                      <td className="px-2 py-1">{ledgerDisplayName}</td>
+                      <td className="px-2 py-1">
                         <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold border bg-slate-50 text-slate-600 border-slate-200">
                           {ledgerTypeDisplay}
                         </span>
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-2 py-1">
                         {!cancelled && canManage && (
                           <button
                             type="button"
@@ -449,17 +564,17 @@ export function PettyCashPage() {
                   );
                 })}
                 {!loading && view.length === 0 && (
-                  <tr><td colSpan={9} className="px-3 py-8 text-center"><Inbox size={28} className="mx-auto text-slate-300 mb-2" />
+                  <tr><td colSpan={11} className="px-3 py-8 text-center"><Inbox size={28} className="mx-auto text-slate-300 mb-2" />
                     <p className="text-sm font-semibold text-slate-600">{filtersOn ? 'No entries match these filters' : 'No petty cash entries yet'}</p></td></tr>
                 )}
-                {loading && view.length === 0 && <tr><td colSpan={9} className="px-3 py-10 text-center text-sm text-slate-400">Loading…</td></tr>}
+                {loading && view.length === 0 && <tr><td colSpan={11} className="px-3 py-10 text-center text-sm text-slate-400">Loading…</td></tr>}
               </tbody>
               {view.length > 0 && (
                 <tfoot className="sticky bottom-0 bg-slate-100 border-t border-slate-300 font-bold">
-                  <tr><td colSpan={3} className="px-3 py-2 text-right text-slate-600">Total</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-red-600" data-testid="pc-debit">{money(totalDebit) || '0.00'}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-emerald-600" data-testid="pc-credit">{money(totalCredit) || '0.00'}</td>
-                    <td colSpan={4} className="px-3 py-2 text-slate-500 font-medium">Deleted entries are not counted</td></tr>
+                  <tr><td colSpan={5} className="px-2 py-1 text-right text-slate-600">Total</td>
+                    <td className="px-2 py-1 text-right tabular-nums text-red-600" data-testid="pc-debit">{money(totalDebit) || '0.00'}</td>
+                    <td className="px-2 py-1 text-right tabular-nums text-emerald-600" data-testid="pc-credit">{money(totalCredit) || '0.00'}</td>
+                    <td colSpan={4} className="px-2 py-1 text-slate-500 font-medium">Deleted entries are not counted</td></tr>
                 </tfoot>
               )}
             </table>
