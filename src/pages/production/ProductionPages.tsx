@@ -194,7 +194,6 @@ export function OldProductionPlanningPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100">
-                <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase">WO No</th>
                 <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase">Part</th>
                 <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase">Company</th>
                 <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500 uppercase">Qty</th>
@@ -207,7 +206,6 @@ export function OldProductionPlanningPage() {
             <tbody>
               {woData.filter((w) => w.status === 'Planning' || w.status === 'In Progress').map((w) => (
                 <tr key={w.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
-                  <td className="px-4 py-3 font-mono text-xs text-slate-700">{w.woNo}</td>
                   <td className="px-4 py-3"><p className="text-sm text-slate-700">{w.partName}</p></td>
                   <td className="px-4 py-3 text-sm text-slate-600">{w.customer}</td>
                   <td className="px-4 py-3 text-right text-sm font-medium text-slate-700">{w.quantity}</td>
@@ -261,7 +259,7 @@ function WorkOrderDetailModal({ wo, onClose }: { wo: WorkOrder, onClose: () => v
   }, [wo.woNo]);
 
   return (
-    <Modal open={true} onClose={onClose} title={`Work Order Details`} subtitle={wo.woNo} size="xl">
+    <Modal open={true} onClose={onClose} title={`Work Order Details`} subtitle={wo.partName} size="xl">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
         <div className="space-y-4">
           <div><p className="text-xs text-slate-500 uppercase tracking-wider">Part</p><p className="font-semibold text-slate-800">{wo.partName}</p></div>
@@ -499,7 +497,6 @@ export function WorkOrdersPage() {
   };
 
   const columns: Column<WorkOrder & { id: string }>[] = [
-    { key: 'woNo', label: 'WO Number', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-700 font-semibold">{r.woNo}</span> },
     { key: 'partName', label: 'Part', sortable: true, render: (r) => <div><p className="text-sm font-medium text-slate-800">{r.partName}</p></div> },
     { key: 'customer', label: 'Company', sortable: true, render: (r) => <span className="text-sm text-slate-600">{r.customer}</span> },
     { key: 'quantity', label: 'Planned', align: 'right', sortable: true, render: (r) => <span className="font-medium text-slate-700">{r.quantity}</span> },
@@ -674,7 +671,7 @@ function JobCardModal({ job, onClose }: { job: JobCardRow, onClose: () => void }
   const material = wo?.material || '—';
 
   return (
-    <Modal open={true} onClose={onClose} title={`Job Card`} subtitle={job.jobNo} size="xl">
+    <Modal open={true} onClose={onClose} title={`Job Card`} subtitle={job.partName} size="xl">
       <div className="border-2 border-slate-800 p-6 bg-white relative">
         <div className="absolute top-4 right-4 text-slate-300 pointer-events-none">
           <svg className="w-16 h-16" fill="currentColor" viewBox="0 0 24 24"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>
@@ -682,7 +679,7 @@ function JobCardModal({ job, onClose }: { job: JobCardRow, onClose: () => void }
         
         <div className="text-center border-b-2 border-slate-800 pb-4 mb-4">
           <h2 className="text-2xl font-black text-slate-800 uppercase tracking-widest">Manufacturing Job Card</h2>
-          <p className="text-sm font-bold text-slate-600 mt-1">{job.jobNo}</p>
+          <p className="text-sm font-bold text-slate-600 mt-1">{job.partName}</p>
         </div>
 
         <div className="grid grid-cols-2 gap-x-8 gap-y-4 mb-6 text-sm">
@@ -869,7 +866,7 @@ export function JobCardsPage() {
   };
 
   const columns: Column<JobCardRow>[] = [
-    { key: 'jobNo', label: 'Job Card No', sortable: true, render: (r) => <span className="font-mono text-xs font-semibold text-brand-700">{r.jobNo}</span> },
+    { key: 'partName', label: 'Product / Part', sortable: true },
     { key: 'workOrder', label: 'WO Ref', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-500">{r.workOrder}</span> },
     { key: 'partName', label: 'Part', sortable: true, render: (r) => <span className="font-medium text-slate-800">{r.partName}</span> },
     { key: 'opNo', label: 'Op', align: 'center', sortable: true, render: (r) => r.opNo ? <Badge variant="neutral">Op {r.opNo}</Badge> : <span className="text-slate-400">—</span> },
@@ -1222,8 +1219,8 @@ export function CNCOperationsPage() {
           <Card key={j.id} className="p-5 hover:border-brand-300 transition-colors cursor-pointer border border-slate-200">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-sm font-semibold text-slate-800">{j.jobNo}</h3>
-                <p className="text-xs text-slate-500">{j.partName} • {formatOp(j.opNo, j.operation)}</p>
+                <h3 className="text-sm font-semibold text-slate-800">{j.partName}</h3>
+                <p className="text-xs text-slate-500">{formatOp(j.opNo, j.operation)}</p>
               </div>
               <Badge variant="success" dot>Running</Badge>
             </div>
@@ -1544,7 +1541,6 @@ export function ProductionTrackingPage() {
               <div key={w.id} className="px-4 py-2.5 hover:bg-slate-50/50 transition-colors">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-3">
-                    <span className="font-mono text-xs text-slate-700">{w.woNo}</span>
                     <span className="text-sm text-slate-600">{w.partName}</span>
                     <Badge variant={priorityToVariant(w.priority)}>{w.priority}</Badge>
                   </div>
@@ -1614,7 +1610,6 @@ export function FinishedGoodsPage() {
         <StatCard label="Awaiting QC" value="0" icon={<Package size={20} />} accent="warning" />
       </div>
       <DataTable data={finishedGoods} columns={[
-        { key: 'woNo', label: 'WO No', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-700">{r.woNo}</span> },
         { key: 'partName', label: 'Part', sortable: true, render: (r) => <div><p className="text-sm text-slate-700">{r.partName}</p></div> },
         { key: 'customer', label: 'Company', sortable: true },
         { key: 'quantity', label: 'Order Qty', align: 'right', sortable: true },

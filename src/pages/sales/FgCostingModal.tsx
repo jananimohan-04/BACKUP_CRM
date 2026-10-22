@@ -325,7 +325,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
         let woRows: any[] = [];
         if (soRow?.order_no) {
           const r = await supabase.from('cnc_work_orders').select('*').eq('sales_order', soRow.order_no).order('created_at');
-          if (!r.error) woRows = r.data ?? [];
+          if (!r.error) woRows = (r.data ?? []).filter((w: any) => w.is_part_order !== true);
         }
         if (cancelled) return;
         setWos(woRows);
@@ -781,8 +781,8 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
           const lc = (v: unknown) => String(v ?? '').trim().toLowerCase();
           const ref = lc(inward.sales_order_ref);
           const names = new Set((chk.data ?? []).flatMap((r: any) => [lc(r.part_name), lc(r.product_name)]).filter(Boolean));
-          const fg = await supabase.from('cnc_work_orders').select('id,sales_order,customer,part_name,completed').gt('completed', 0);
-          const stillThere = !fg.error && (fg.data ?? []).some((w: any) =>
+          const fg = await supabase.from('cnc_work_orders').select('*').gt('completed', 0);
+          const stillThere = !fg.error && (fg.data ?? []).filter((w: any) => w.is_part_order !== true).some((w: any) =>
             ref ? lc(w.sales_order) === ref : (lc(w.customer) === lc(card.customer) && names.has(lc(w.part_name))));
           if (fg.error || stillThere) {
             alert('This inward was already moved to Finished Goods. Refresh the board.');

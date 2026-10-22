@@ -3,7 +3,8 @@ import { Search, Download, Calendar, Clock, Play, CheckCircle2, AlertCircle, Lay
 import { supabase } from '@/lib/supabase';
 import { exportCsv } from '@/lib/reportExport';
 import { todayISO } from '@/lib/format';
-import { formatWorkOrderOption } from '@/lib/workOrderFormat';
+import { ProductPartSelect } from '@/components/ProductPartSelect';
+import { ensureRunWorkOrder, type PartChoice } from '@/lib/partOrders';
 import { fmtTime24, parseYmd, ymd } from '@/lib/operationPlans';
 import { generateJobNo } from '@/lib/jobCards';
 import { insertTolerant } from '@/lib/partRouting';
@@ -16,6 +17,7 @@ interface JobCard {
   job_no: string;
   work_order: string;
   operation: string;
+  part_name?: string;
   op_no?: number;
   machine: string;
   operator?: string;
@@ -32,6 +34,8 @@ interface JobCard {
 export function ActualListView() {
   const [jobs, setJobs] = useState<JobCard[]>([]);
   const [wos, setWos] = useState<any[]>([]);
+  const [salesOrders, setSalesOrders] = useState<any[]>([]);
+  const [inwards, setInwards] = useState<any[]>([]);
   const [machines, setMachines] = useState<string[]>([]);
   const [operators, setOperators] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,7 +51,9 @@ export function ActualListView() {
   // Add Run modal state
   const [showAdd, setShowAdd] = useState(false);
   const [savingAdd, setSavingAdd] = useState(false);
+  const [pickedPart, setPickedPart] = useState<PartChoice | null>(null);
   const [addForm, setAddForm] = useState({
+    partKey: '',
     woId: '',
     workOrder: '',
     customer: '',
@@ -69,11 +75,15 @@ export function ActualListView() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [j, w, m] = await Promise.all([
+      const [j, w, m, so, inw] = await Promise.all([
         supabase.from('cnc_job_cards').select('*').order('created_at', { ascending: false }).limit(2000),
-        supabase.from('cnc_work_orders').select('id,wo_no,part_name,customer,status,quantity,completed,created_at'),
+        supabase.from('cnc_work_orders').select('*'),
         supabase.from('cnc_machines').select('code'),
+        supabase.from('cnc_sales_orders').select('*'),
+        supabase.from('cnc_inwards').select('*').neq('status', 'Deleted'),
       ]);
+      setSalesOrders(so.error ? [] : (so.data ?? []));
+      setInwards(inw.error ? [] : (inw.data ?? []));
 
       const jobList = j.error ? [] : ((j.data ?? []) as JobCard[]).filter((x) => String(x.status ?? '') !== 'Cancelled');
       setJobs(jobList);
@@ -209,15 +219,13 @@ export function ActualListView() {
   const handleExport = () => {
     if (!filteredJobs.length) return;
     const rows = [
-      ['#', 'Job No', 'Work Order', 'Product / Part', 'Customer', 'Operation', 'Machine', 'Operator', 'Start Time', 'End Time', 'Duration', 'Qty Completed', 'Qty Planned', 'Qty Rejected', 'Status'],
+      ['#', 'Product / Part', 'Customer', 'Operation', 'Machine', 'Operator', 'Start Time', 'End Time', 'Duration', 'Qty Completed', 'Qty Planned', 'Qty Rejected', 'Status'],
       ...filteredJobs.map((j, i) => {
         const wo = woMap.get(String(j.work_order ?? '').trim().toLowerCase());
         const span = jobSpan(j, now);
         const durationStr = span ? dur((span.end.getTime() - span.start.getTime()) / 60000) : '—';
         return [
           i + 1,
-          j.job_no || '',
-          j.work_order || '',
           wo?.part_name || '',
           wo?.customer || '',
           j.operation || '',
@@ -237,12 +245,13 @@ export function ActualListView() {
   };
 
   const openAddModal = () => {
-    const defaultWo = wos[0];
+    setPickedPart(null);
     setAddForm({
-      woId: defaultWo ? String(defaultWo.id) : '',
-      workOrder: defaultWo ? defaultWo.wo_no : '',
-      customer: defaultWo ? defaultWo.customer || '' : '',
-      partName: defaultWo ? defaultWo.part_name || '' : '',
+      partKey: '',
+      woId: '',
+      workOrder: '',
+      customer: '',
+      partName: '',
       operation: 'Machining',
       machine: machines[0] || '',
       operator: operators[0] || '',
@@ -250,28 +259,28 @@ export function ActualListView() {
       startTime: '08:00',
       endTime: '16:00',
       status: 'Completed',
-      qtyPlanned: defaultWo?.quantity != null ? String(defaultWo.quantity) : '',
-      qtyCompleted: defaultWo?.quantity != null ? String(defaultWo.quantity) : '',
+      qtyPlanned: '',
+      qtyCompleted: '',
       qtyRejected: '0',
     });
     setShowAdd(true);
   };
 
-  const onWoChange = (woNoOrId: string) => {
-    const selWo = wos.find((w) => String(w.id) === String(woNoOrId) || String(w.wo_no) === String(woNoOrId));
+  // Product -> part. The production order behind it is found (or started) when the run is saved.
+  const onPartPick = (c: PartChoice | null) => {
+    setPickedPart(c);
     setAddForm((f) => ({
       ...f,
-      woId: selWo ? String(selWo.id) : '',
-      workOrder: selWo ? selWo.wo_no : woNoOrId,
-      customer: selWo?.customer || f.customer,
-      partName: selWo?.part_name || f.partName,
-      qtyPlanned: selWo?.quantity != null ? String(selWo.quantity) : f.qtyPlanned,
-      qtyCompleted: selWo?.quantity != null ? String(selWo.quantity) : f.qtyCompleted,
+      partKey: c?.key ?? '',
+      partName: c ? (c.whole ? c.productName : c.part) : '',
+      customer: c?.customer ?? '',
+      qtyPlanned: c ? String(c.ordered) : '',
+      qtyCompleted: c ? String(c.remaining) : '',
     }));
   };
 
   const saveAddRun = async () => {
-    if (!addForm.workOrder.trim() && !addForm.woId) return alert('Please select or specify a Work Order.');
+    if (!pickedPart) return alert('Please select the product and part.');
     if (!addForm.machine.trim()) return alert('Please select or enter a Machine.');
     if (!addForm.date) return alert('Please set the Date.');
     if (!addForm.startTime) return alert('Please set Start Time.');
@@ -295,13 +304,14 @@ export function ActualListView() {
       const planned = Number(addForm.qtyPlanned) || 0;
       const jobNo = await generateJobNo();
 
-      const selWo = wos.find((w) => String(w.id) === String(addForm.woId) || String(w.wo_no) === String(addForm.workOrder));
+      // The production order stays in the background: reuse the open one for this part, or start one.
+      const selWo = await ensureRunWorkOrder(pickedPart, wos);
 
       const row: any = {
         id: crypto.randomUUID(),
         job_no: jobNo,
         work_order_id: selWo?.id || null,
-        work_order: selWo?.wo_no || addForm.workOrder.trim(),
+        work_order: selWo?.wo_no || '',
         part_name: selWo?.part_name || addForm.partName.trim() || 'Part',
         customer: selWo?.customer || addForm.customer.trim() || '',
         operation: addForm.operation.trim() || 'Machining',
@@ -507,8 +517,7 @@ export function ActualListView() {
             <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider text-[11px] sticky top-0 z-10 shadow-xs border-b border-slate-200">
               <tr className="text-left">
                 <th className="py-2.5 px-3 w-12 text-center">#</th>
-                <th className="py-2.5 px-3">Job Card No</th>
-                <th className="py-2.5 px-3">Work Order & Customer</th>
+                <th className="py-2.5 px-3">Product / Part & Customer</th>
                 <th className="py-2.5 px-3">Operation / Process</th>
                 <th className="py-2.5 px-3">Machine</th>
                 <th className="py-2.5 px-3">Operator</th>
@@ -530,13 +539,11 @@ export function ActualListView() {
                   <tr key={j.id} className="hover:bg-slate-50/70 transition">
                     <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">{idx + 1}</td>
                     <td className="py-2.5 px-3">
-                      <div className="font-mono font-bold text-brand-700">{j.job_no || '—'}</div>
-                      <div className="text-[10px] text-slate-400">Created: {new Date(j.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</div>
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <div className="font-mono font-semibold text-slate-900">{j.work_order || wo?.wo_no || '—'}</div>
-                      <div className="text-[11px] text-slate-500 truncate max-w-[220px]" title={wo?.part_name}>
-                        {wo?.part_name || '—'} {wo?.customer ? `(${wo.customer})` : ''}
+                      <div className="font-semibold text-slate-900 truncate max-w-[260px]" title={wo?.part_name || j.part_name}>
+                        {wo?.part_name || j.part_name || '—'}
+                      </div>
+                      <div className="text-[11px] text-slate-500 truncate max-w-[260px]">
+                        {wo?.is_part_order === true && wo?.product_name ? `Part of ${wo.product_name}` : ''}{wo?.customer ? `${wo?.is_part_order === true && wo?.product_name ? ' · ' : ''}${wo.customer}` : ''}
                       </div>
                     </td>
                     <td className="py-2.5 px-3">
@@ -599,7 +606,7 @@ export function ActualListView() {
 
               {!loading && filteredJobs.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-400">
+                  <td colSpan={10} className="py-12 text-center text-slate-400">
                     <Calendar size={32} className="mx-auto mb-2 text-slate-300" />
                     <p className="text-sm font-semibold text-slate-600">No actual run records match these filters</p>
                     <p className="text-xs text-slate-400 mt-0.5">Start job cards in Production or log runs in the Actual Timeline</p>
@@ -608,7 +615,7 @@ export function ActualListView() {
               )}
               {loading && filteredJobs.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-400 text-xs">Loading actual run records…</td>
+                  <td colSpan={10} className="py-12 text-center text-slate-400 text-xs">Loading actual run records…</td>
                 </tr>
               )}
             </tbody>
@@ -639,42 +646,7 @@ export function ActualListView() {
         }
       >
         <div className="space-y-4">
-          <FormField label="Work Order" required>
-            <select
-              className={inputClass}
-              value={addForm.woId || addForm.workOrder}
-              onChange={(e) => onWoChange(e.target.value)}
-            >
-              <option value="">-- Select Work Order --</option>
-              {wos.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {formatWorkOrderOption(w)}
-                </option>
-              ))}
-            </select>
-          </FormField>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormField label="Product / Part Name">
-              <input
-                type="text"
-                className={inputClass}
-                value={addForm.partName}
-                placeholder="Part name"
-                onChange={(e) => setAddForm((f) => ({ ...f, partName: e.target.value }))}
-              />
-            </FormField>
-
-            <FormField label="Customer">
-              <input
-                type="text"
-                className={inputClass}
-                value={addForm.customer}
-                placeholder="Customer name"
-                onChange={(e) => setAddForm((f) => ({ ...f, customer: e.target.value }))}
-              />
-            </FormField>
-          </div>
+          <ProductPartSelect salesOrders={salesOrders} inwards={inwards} workOrders={wos} value={addForm.partKey} onChange={onPartPick} />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormField label="Operation / Process" required>

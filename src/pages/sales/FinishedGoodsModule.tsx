@@ -27,7 +27,7 @@ export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, o
       .or('status.eq.Completed,completed.gt.0')
       .order('created_at', { ascending: false });
     if (error) console.error('Error fetching finished goods:', error);
-    if (data) setRecords(data);
+    if (data) setRecords(data.filter((w: any) => w.is_part_order !== true));
     setLoading(false);
   };
 
@@ -121,7 +121,6 @@ export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, o
           <table className="erp-table erp-table-teal w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
-                <th className="p-3 font-semibold">Work Order</th>
                 <th className="p-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <span className="whitespace-nowrap">Company</span>
@@ -164,7 +163,6 @@ export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, o
             <tbody>
               {pager.pageItems.map(record => (
                 <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                  <td className="p-3 text-sm font-mono font-medium text-slate-800">{record.wo_no || '-'}</td>
                   <td className="p-3 text-sm font-semibold text-brand-700">{record.customer || '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{record.part_name || '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{record.completed ?? '-'}</td>
@@ -184,7 +182,7 @@ export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, o
       <PagerFooter pager={pager} />
       </div>
 
-      <Modal open={!!selectedRecord} onClose={() => setSelectedRecord(null)} title={'Finished Goods Details: ' + (selectedRecord?.wo_no || 'Pending')} size="xl" footer={
+      <Modal open={!!selectedRecord} onClose={() => setSelectedRecord(null)} title={'Finished Goods Details: ' + (selectedRecord?.part_name || 'Pending')} size="xl" footer={
         <div className="flex justify-between w-full">
           <div>
              <Button onClick={() => alert('Development Note: Conversion logic will go here.')} className="bg-emerald-600 hover:bg-emerald-700 text-white">Create DC</Button>
@@ -196,7 +194,6 @@ export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, o
           <div className="flex gap-6">
             <div className="flex-1 space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <FormField label="Work Order"><input className={inputClass} value={selectedRecord.wo_no || ''} disabled /></FormField>
                 <FormField label="Company"><input className={inputClass} value={selectedRecord.customer || ''} disabled /></FormField>
                 <FormField label="Product Name"><input className={inputClass} value={selectedRecord.part_name || ''} disabled /></FormField>
                 <FormField label="Completed Qty"><input className={inputClass} value={selectedRecord.completed ?? ''} disabled /></FormField>
@@ -214,8 +211,8 @@ export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, o
                 <FlowStep active={false} title="QUOTATION" subtitle="Linked" />
                 <FlowStep active={false} title="SALES ORDER" subtitle={selectedRecord.sales_order || 'Linked'} />
                 <FlowStep active={false} title="INWARD" subtitle="Linked" />
-                <FlowStep active={false} title="PRODUCTION" subtitle={selectedRecord.wo_no || 'Linked'} />
-                <FlowStep active highlight title="FINISHED GOODS" subtitle={selectedRecord.wo_no} />
+                <FlowStep active={false} title="PRODUCTION" subtitle={selectedRecord.part_name || 'Linked'} />
+                <FlowStep active highlight title="FINISHED GOODS" subtitle={selectedRecord.part_name} />
                 <FlowStep active={false} title="DELIVERY CHALLAN" subtitle="Linked" />
                 <FlowStep active={false} title="INVOICE" subtitle="Linked" />
               </div>

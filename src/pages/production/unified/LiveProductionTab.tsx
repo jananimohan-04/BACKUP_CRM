@@ -19,8 +19,8 @@ export function LiveProductionTab({ workOrders }: { workOrders: any[] }) {
             <Card key={order.id} className="p-4 flex flex-col gap-3">
               <div className="flex justify-between items-start">
                 <div>
-                  <h4 className="font-mono text-sm text-slate-800 font-bold">{order.wo_no}</h4>
-                  <p className="text-xs text-slate-500">{order.part_name}</p>
+                  <h4 className="text-sm text-slate-800 font-bold">{order.part_name}</h4>
+                  <p className="text-xs text-slate-500">{order.customer}</p>
                 </div>
                 <Badge variant="brand" dot>Live</Badge>
               </div>

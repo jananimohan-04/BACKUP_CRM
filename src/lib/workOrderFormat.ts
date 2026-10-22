@@ -76,10 +76,29 @@ export function formatWorkOrderOption(wo: any): string {
   if (!wo) return '';
   const { basePart, customer, dateTime, qty, woNo } = parseWorkOrderDetails(wo);
 
-  const prefix = woNo ? `${woNo} — ` : '';
+  // A part order reads "Part – Product", with how many were ordered and how many are still remaining:
+  //   WO-2026-3762 — Gear Housing – Pressure Ring (MUKIL) — 15-10-2026 11:28 AM · Qty: 157 · Remaining: 57
+  if (wo.is_part_order === true) {
+    const product = String(wo.product_name ?? '').trim();
+    const total = Number(wo.quantity) || 0;
+    const left = Math.max(0, total - (Number(wo.completed) || 0));
+    const head = `${basePart}${product ? ` – ${product}` : ''}`;
+    return `${head}${customer ? ` (${customer})` : ''}${dateTime ? ` — ${dateTime}` : ''} · Qty: ${total} · Remaining: ${left}`;
+  }
+
+  const prefix = ''; // the work order number is not shown; the product / part says which order it is
   const custPart = customer ? ` (${customer})` : '';
   const dtPart = dateTime ? ` — ${dateTime}` : '';
   const qtyPart = qty ? ` · Qty: ${qty}` : '';
 
   return `${prefix}${basePart}${custPart}${dtPart}${qtyPart}`;
+}
+
+/** What to call a production order on screen (its number is not shown): the part – product, or the product. */
+export function workOrderTitle(wo: any): string {
+  if (!wo) return '';
+  const name = String(wo.part_name ?? wo.partName ?? '').trim();
+  const product = String(wo.product_name ?? '').trim();
+  if (wo.is_part_order === true && product) return `${name} – ${product}`;
+  return name || 'Production order';
 }

@@ -922,7 +922,7 @@ export function ProjectCostingPage() {
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {jobs.map((w) => (
                       <Badge key={w.id} variant={statusToVariant(w.status)}>
-                        {w.wo_no} · {w.status}
+                        {w.part_name || 'Production order'} · {w.status}
                       </Badge>
                     ))}
                   </div>
@@ -990,7 +990,7 @@ export function ProjectCostingPage() {
                               <th className="p-2 text-right">Qty / Hours</th>
                               <th className="p-2 text-right">Rate</th>
                               <th className="p-2 text-right">Cost</th>
-                              <th className="p-2 text-left">Job / Date</th>
+                              <th className="p-2 text-left">Date</th>
                               <th className="p-2 text-left">Status</th>
                             </tr>
                           </thead>
@@ -1023,7 +1023,7 @@ export function ProjectCostingPage() {
                                 <td className="p-2 text-right">{x.hours} h</td>
                                 <td className="p-2 text-right">{x.matched ? money(x.rate) : '—'}</td>
                                 <td className="p-2 text-right font-semibold text-slate-900">{x.matched ? money(x.cost) : '—'}</td>
-                                <td className="p-2 font-mono text-[11px]">{x.job_no}</td>
+                                <td className="p-2">—</td>
                                 <td className="p-2">{x.status || '—'}</td>
                               </tr>
                             ))}

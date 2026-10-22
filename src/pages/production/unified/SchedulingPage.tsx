@@ -1,3 +1,4 @@
+import { workOrderTitle } from '@/lib/workOrderFormat';
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
@@ -12,6 +13,7 @@ import { ActualTimeline } from './ActualPage';
 import { ActualListView } from './ActualListView';
 import { PlannedListView } from './PlannedListView';
 import { formatWorkOrderOption } from '@/lib/workOrderFormat';
+import { buildPartChoices, buildProductChoices, workOrdersForPart } from '@/lib/partOrders';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 
 function ActualScheduling() {
@@ -35,6 +37,12 @@ function ActualScheduling() {
   const [showAddJob, setShowAddJob] = useState(false);
   const [saving, setSaving] = useState(false);
   const [workOrders, setWorkOrders] = useState<any[]>([]);
+  // Product -> part picking (same lists as Production Orders): products from sales orders + inwards, parts from the inwards.
+  const [soRows, setSoRows] = useState<any[]>([]);
+  const [inwardRows, setInwardRows] = useState<any[]>([]);
+  const [allWoRows, setAllWoRows] = useState<any[]>([]);
+  const [schedProductKey, setSchedProductKey] = useState('');
+  const [schedPartKey, setSchedPartKey] = useState('');
   const [operations, setOperations] = useState<any[]>([]);
   const [opsMissing, setOpsMissing] = useState(false);
   // Work-order customer lookup across ALL orders (scheduling list is filtered).
@@ -184,6 +192,7 @@ function ActualScheduling() {
     setEditingJob(null);
     setViewOnly(false);
     const d = currentDate.toISOString().split('T')[0];
+    setSchedProductKey(''); setSchedPartKey('');
     setNewJobForm(withEnd({
       workOrder: '', operationId: '', operationSeq: '', processName: '',
       partName: '', partNo: '', customer: '', qty: '',
@@ -245,11 +254,40 @@ function ActualScheduling() {
   // An order with no operations at all can still be scheduled: the job takes a machine (and optionally a process) directly.
   const woHasNoOps = (wo: any) => !!wo && !operations.some(op => String(op.work_order_id) === String(wo.id));
 
-  const schedulableWOs = workOrders.filter(
+  const allSchedulableWOs = workOrders.filter(
     wo => SCHEDULABLE_WO_STATUSES.includes(wo.status)
   );
 
+  // Parts offered here are the ones that have an order ready to schedule; ordered / remaining come from all orders.
+  const schedProducts = useMemo(() => buildProductChoices(soRows, inwardRows), [soRows, inwardRows]);
+  const schedParts = useMemo(() => buildPartChoices(schedProducts, inwardRows, allWoRows), [schedProducts, inwardRows, allWoRows]);
+  const schedPartOptions = schedParts.filter(
+    p => (!schedProductKey || p.productKey === schedProductKey) && workOrdersForPart(p, allSchedulableWOs).length > 0
+  );
+  const schedProductOptions = schedProducts.filter(p => schedParts.some(c => c.productKey === p.key && workOrdersForPart(c, allSchedulableWOs).length > 0));
+  const schedSelectedPart = schedParts.find(p => p.key === schedPartKey) ?? null;
+  // Once a part is chosen only its orders are listed; otherwise every schedulable order (as before).
+  const schedulableWOs = schedSelectedPart ? workOrdersForPart(schedSelectedPart, allSchedulableWOs) : allSchedulableWOs;
+
+  const handleSchedPartSelect = (key: string) => {
+    setSchedPartKey(key);
+    const part = schedParts.find(p => p.key === key);
+    if (!part) return;
+    setSchedProductKey(part.productKey);
+    const wos = workOrdersForPart(part, allSchedulableWOs);
+    if (wos.length === 1) handleWorkOrderSelect(wos[0].wo_no); // a single order: select it straight away
+    else handleWorkOrderSelect('');
+  };
+
+  const handleSchedProductSelect = (key: string) => {
+    setSchedProductKey(key);
+    setSchedPartKey('');
+    const parts = schedParts.filter(p => p.productKey === key && workOrdersForPart(p, allSchedulableWOs).length > 0);
+    if (parts.length === 1) handleSchedPartSelect(parts[0].key);
+  };
+
   const closeScheduleModal = () => {
+    setSchedProductKey(''); setSchedPartKey('');
     setShowAddJob(false);
     setEditingJob(null);
     setViewOnly(false);
@@ -408,6 +446,14 @@ function ActualScheduling() {
       const woRes = await supabase.from('cnc_work_orders').select('*').not('status', 'in', '("Completed","Dispatched","Cancelled")');
       if (woRes.error) console.error('Failed to load work orders:', woRes.error);
       if (woRes.data) setWorkOrders(woRes.data);
+      try {
+        const [so, inw, all] = await Promise.all([
+          supabase.from('cnc_sales_orders').select('*'),
+          supabase.from('cnc_inwards').select('*').neq('status', 'Deleted'),
+          supabase.from('cnc_work_orders').select('*'),
+        ]);
+        setSoRows(so.data ?? []); setInwardRows(inw.data ?? []); setAllWoRows(all.data ?? []);
+      } catch (e) { console.error('Failed to load products / parts:', e); }
 
       // Customer names for Job Details (includes completed orders).
       try {
@@ -659,8 +705,8 @@ function ActualScheduling() {
         className={`absolute top-1 bottom-1 z-10 ${getStatusColor(job.status)} border rounded p-1.5 text-[10px] sm:text-xs leading-tight overflow-hidden cursor-move shadow-sm hover:shadow-md transition-shadow`}
         style={{ left: `${leftPct}%`, width: view === 'Month' ? 'calc(100% - 4px)' : `calc(${(pctWidth / activeSlots.length)}% - 4px)`, minWidth: view === 'Month' ? 'auto' : '80px' }}
       >
-        <div className="font-bold truncate text-[10px] sm:text-xs">{job.work_order || job.job_no}</div>
-        {view !== 'Month' && <div className="truncate opacity-90">{job.part_name}</div>}
+        <div className="font-bold truncate text-[10px] sm:text-xs">{job.part_name || job.operation || 'Job'}</div>
+        {view !== 'Month' && <div className="truncate opacity-90">{job.operation || ''}</div>}
         {view !== 'Month' && <div className="truncate opacity-80 mt-0.5">{formatTime(job.created_at)} - {Math.round(dur)}h</div>}
       </div>
     );
@@ -887,7 +933,7 @@ function ActualScheduling() {
                     className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm cursor-move hover:border-blue-400 hover:shadow-md transition-all group"
                   >
                     <div className="flex justify-between items-start mb-1">
-                      <span className="font-bold text-slate-800 text-sm">{job.work_order || job.job_no}</span>
+                      <span className="font-bold text-slate-800 text-sm">{job.part_name || job.operation || 'Job'}</span>
                       <GripVertical size={14} className="text-slate-300 group-hover:text-slate-500" />
                     </div>
                     <div className="text-slate-600 text-sm mb-2 font-medium">{job.part_name}</div>
@@ -911,8 +957,8 @@ function ActualScheduling() {
                 <div className="space-y-4">
                   <div className="flex justify-between items-start">
                     <div>
-                      <h3 className="font-bold text-slate-800 text-lg">{selectedJob.work_order || selectedJob.job_no}</h3>
-                      <p className="text-slate-600 font-medium">{selectedJob.part_name}</p>
+                      <h3 className="font-bold text-slate-800 text-lg">{selectedJob.part_name || selectedJob.operation || 'Job'}</h3>
+                      <p className="text-slate-600 font-medium">{selectedJob.operation || ''}</p>
                     </div>
                     <Badge variant={selectedJob.status === 'In Progress' ? 'success' : 'neutral'}>{selectedJob.status}</Badge>
                   </div>
@@ -990,6 +1036,22 @@ function ActualScheduling() {
               Work order operations are not provisioned yet — apply the work-order-operations migration to schedule specific operations.
             </p>
           )}
+          {!editingJob && !viewOnly && (
+            <div className="grid grid-cols-1 gap-4">
+              <FormField label="Product">
+                <select className={inputClass} value={schedProductKey} onChange={e => handleSchedProductSelect(e.target.value)}>
+                  <option value="">Select product…</option>
+                  {schedProductOptions.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Part">
+                <select className={inputClass} value={schedPartKey} onChange={e => handleSchedPartSelect(e.target.value)}>
+                  <option value="">Select part…</option>
+                  {schedPartOptions.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+                </select>
+              </FormField>
+            </div>
+          )}
           <FormField label="Select Production Order" required>
             <select className={inputClass} value={newJobForm.workOrder} onChange={e => handleWorkOrderSelect(e.target.value)}>
               <option value="">-- Select Order --</option>
@@ -1010,7 +1072,7 @@ function ActualScheduling() {
             if (!done) return null;
             return (
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                Every operation of {selectedWOForForm.wo_no} is already scheduled for its full quantity. Edit or remove an existing job to change it.
+                Every operation of {workOrderTitle(selectedWOForForm)} is already scheduled for its full quantity. Edit or remove an existing job to change it.
               </p>
             );
           })()}

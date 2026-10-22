@@ -1,3 +1,4 @@
+import { workOrderTitle } from '@/lib/workOrderFormat';
 import { Card, Button } from '@/components/ui/Card';
 import { Play, Edit, Printer, CheckCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -58,7 +59,7 @@ export function ProductionOrderDetails({ order, refresh }: { order: any, onClose
 
   // Target vs Actual from the work order's real quantities (no daily production log exists)
   const targetVsActual = [
-    { label: order.wo_no || 'This Order', target: qty, actual: comp, rejected: rej },
+    { label: workOrderTitle(order) || 'This Order', target: qty, actual: comp, rejected: rej },
   ];
 
     const handleStart = async () => {
@@ -97,7 +98,7 @@ export function ProductionOrderDetails({ order, refresh }: { order: any, onClose
   };
 
     const handleEdit = async () => {
-    const newQty = window.prompt(`Edit Target Quantity for ${order.wo_no}:`, order.quantity);
+    const newQty = window.prompt(`Edit Target Quantity for ${workOrderTitle(order)}:`, order.quantity);
     if (newQty && !isNaN(Number(newQty))) {
       const { error } = await supabase.from('cnc_work_orders').update({ quantity: Number(newQty) }).eq('id', order.id);
       if (error) {

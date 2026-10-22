@@ -60,8 +60,8 @@ export function FinishedGoodsPage() {
     if (partsError) console.error('Failed to load parts:', partsError);
 
     if (woData) {
-      // Map and enrich with stock
-      const enriched = await Promise.all(woData.map(async (wo: any) => {
+      // Map and enrich with stock (part orders are not finished product)
+      const enriched = await Promise.all(woData.filter((w: any) => w.is_part_order !== true).map(async (wo: any) => {
         // A failing IndexedDB image lookup must not block the whole page from loading
         const mockImg = await getMockImage(wo.part_name).catch(() => null);
         const part = partsData?.find(p => p.part_no === wo.part_no);
@@ -514,7 +514,7 @@ export function FinishedGoodsPage() {
       </Modal>
 
       {/* Detail View Modal */}
-      <Modal open={!!showViewModal} onClose={() => setShowViewModal(null)} title={`Finished Goods: ${showViewModal?.wo_no}`} size="2xl">
+      <Modal open={!!showViewModal} onClose={() => setShowViewModal(null)} title={`Finished Goods: ${showViewModal?.part_name ?? ''}`} size="2xl">
         {showViewModal && (
           <div className="space-y-3">
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -563,7 +563,7 @@ export function FinishedGoodsPage() {
                  <div className="h-px bg-slate-200 flex-1 mx-2" />
                  <div className="flex flex-col items-center gap-1 opacity-50">
                     <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center"><CheckCircle size={14}/></div>
-                    <span>Production<br/><span className="text-[10px] font-mono">{showViewModal.wo_no}</span></span>
+                    <span>Production</span>
                  </div>
                  <div className="h-px bg-slate-200 flex-1 mx-2" />
                  <div className="flex flex-col items-center gap-1">
@@ -596,7 +596,6 @@ export function FinishedGoodsPage() {
         {showEditModal && (
           <div className="space-y-4">
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-100 text-sm text-slate-600 space-y-2">
-              <div className="flex justify-between"><span>Production Order:</span> <span className="font-medium text-slate-800">{showEditModal.wo_no}</span></div>
               <div className="flex justify-between"><span>Part:</span> <span className="font-medium text-slate-800">{showEditModal.part_name}</span></div>
               <div className="flex justify-between"><span>Target Qty:</span> <span className="font-medium text-slate-800">{showEditModal.orderedQty}</span></div>
             </div>

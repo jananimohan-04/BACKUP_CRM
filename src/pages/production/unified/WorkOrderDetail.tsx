@@ -1,3 +1,4 @@
+import { workOrderTitle } from '@/lib/workOrderFormat';
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { formatDate } from '@/lib/format';
@@ -208,7 +209,7 @@ export function WorkOrderDetail({
       <Modal
         open
         onClose={onClose}
-        title={`Work Order ${wo.wo_no}`}
+        title={workOrderTitle(wo)}
         subtitle={`${wo.customer ?? ''} · ${wo.part_name ?? ''}`}
         size="3xl"
         footer={
@@ -232,7 +233,6 @@ export function WorkOrderDetail({
         {/* header */}
         <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Work Order No.</p><p className="font-mono font-bold text-slate-800">{wo.wo_no}</p></div>
             <div><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Sales Order</p><p className="font-mono font-semibold text-slate-700">{wo.sales_order || '—'}</p></div>
             <div><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Company</p><p className="font-semibold text-slate-800">{wo.customer || '—'}</p></div>
             <div><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Product</p><p className="font-semibold text-slate-800">{wo.part_name || '—'}</p></div>
@@ -347,7 +347,7 @@ export function WorkOrderDetail({
         onClose={() => setConfirmCancel(false)}
         onConfirm={() => updateWO({ status: 'Cancelled' })}
         title="Cancel Work Order"
-        message={`Cancel Work Order ${wo.wo_no}? Scheduled job cards stay as-is; this cannot be undone.`}
+        message={`Cancel ${workOrderTitle(wo)}? Scheduled job cards stay as-is; this cannot be undone.`}
         confirmLabel="Cancel Order"
         danger
       />
@@ -356,7 +356,7 @@ export function WorkOrderDetail({
         onClose={() => setConfirmComplete(false)}
         onConfirm={() => updateWO({ status: 'Completed', completed: qty })}
         title="Complete Work Order"
-        message={`Mark ${wo.wo_no} as Completed with quantity ${qty}? It will become eligible for Finished Goods entry.`}
+        message={`Mark ${workOrderTitle(wo)} as Completed with quantity ${qty}? It will become eligible for Finished Goods entry.`}
         confirmLabel="Mark Completed"
       />
     </>

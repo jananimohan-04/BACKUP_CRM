@@ -27,7 +27,7 @@ const orderDelivered = (records: Delivery[], orderId: string | null) => orderId
   : 0;
 /** Good produced for an order from live work-order rows (rejected excluded). */
 const woGoodFor = (wos: any[], orderNo: string | null) => {
-  const rows = orderNo ? wos.filter(w => String(w.sales_order || '') === String(orderNo)) : [];
+  const rows = orderNo ? wos.filter(w => w.is_part_order !== true && String(w.sales_order || '') === String(orderNo)) : [];
   return { hasRows: rows.length > 0, good: rows.reduce((n, w) => n + Number(w.completed || 0), 0) };
 };
 const statusFor = (d: Delivery, records: Delivery[] = [], order?: SalesOrder) => {
@@ -69,7 +69,7 @@ export function DeliveriesPage() {
       const [d, inv, wo] = await Promise.all([
         supabase.from('cnc_deliveries').select('*').order('delivery_date', { ascending: false }).order('created_at', { ascending: false }).limit(2000),
         supabase.from('cnc_invoices').select('id,invoice_no,delivery_id,dc_no').limit(2000),
-        supabase.from('cnc_work_orders').select('sales_order,completed,rejected').limit(5000),
+        supabase.from('cnc_work_orders').select('*').limit(5000),
       ]);
       // lead_no is newer than some databases: retry without it rather than failing the page.
       let so = await supabase.from('cnc_sales_orders').select('id,order_no,lead_no,customer,customer_id,part_name,part_no,quantity,delivered,delivery_date').order('created_at', { ascending: false }).limit(2000);

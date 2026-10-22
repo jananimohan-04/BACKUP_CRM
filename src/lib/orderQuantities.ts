@@ -93,6 +93,7 @@ export function summarizeSalesOrder(
   allInvoices: any[] = [],
   allBatches: any[] = [],
 ): OrderQtySummary {
+  allWos = allWos.filter((w) => w?.is_part_order !== true); // part orders are not finished product
   const soNo = String(so?.order_no ?? '');
   const soId = so?.id != null ? String(so.id) : null;
 

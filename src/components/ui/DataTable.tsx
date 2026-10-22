@@ -10,7 +10,16 @@ export interface Column<T> {
   sortable?: boolean;
   width?: string;
   align?: 'left' | 'right' | 'center';
+  /** An "All" dropdown next to the column title (shown when the column has a short list of values). Set false to hide it. */
+  filterable?: boolean;
 }
+
+/** What a cell shows, as text, for filtering. */
+const cellText = (row: any, key: string): string => {
+  const v = getPath(row, key);
+  if (v == null || typeof v === 'object') return '';
+  return String(v).trim();
+};
 
 function getPath(row: any, key: string): any {
   if (row == null) return undefined;
@@ -72,6 +81,8 @@ export function DataTable<T extends Record<string, any>>({
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
     const [filterValue, setFilterValue] = useState('all');
+  // Dropdown next to each column title: the value picked (absent = All).
+  const [colFilters, setColFilters] = useState<Record<string, string>>({});
 
   const filtered = useMemo(() => {
     let result = [...(data ?? [])];
@@ -84,6 +95,9 @@ export function DataTable<T extends Record<string, any>>({
         String(row['status'] || row['Status'] || '').toLowerCase() === filterValue.toLowerCase()
       );
     }
+    for (const [key, picked] of Object.entries(colFilters)) {
+      result = result.filter((row) => cellText(row, key) === picked);
+    }
     if (sortKey) {
       result.sort((a, b) => {
         const av = getPath(a, sortKey);
@@ -95,9 +109,25 @@ export function DataTable<T extends Record<string, any>>({
       });
     }
     return result;
-  }, [data, search, sortKey, sortDir, filterValue, filterOptions, searchKeys]);
+  }, [data, search, sortKey, sortDir, filterValue, filterOptions, searchKeys, colFilters]);
 
-  const pager = usePager(filtered, `${search}|${filterValue}`);
+  // The values each column can be filtered by (taken from all rows, not just this page).
+  const columnValues = useMemo(() => {
+    const out: Record<string, string[]> = {};
+    for (const col of columns) {
+      if (col.filterable === false || col.key === 'actions' || col.key === 'progress') continue;
+      const set = new Set<string>();
+      for (const row of data ?? []) set.add(cellText(row, col.key));
+      // A column with no text of its own (rendered from several fields) has nothing to filter on.
+      set.delete('');
+      // Only columns with a short list of values get a dropdown (names, companies, statuses...), not free-text or numbers.
+      if (set.size < 2 || set.size > 60) continue;
+      out[col.key] = [...set].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+    }
+    return out;
+  }, [columns, data]);
+
+  const pager = usePager(filtered, `${search}|${filterValue}|${Object.entries(colFilters).map(([k, v]) => `${k}:${v}`).join(',')}`);
   const paginated = pager.pageItems;
 
   const handleSort = (key: string) => {
@@ -213,6 +243,18 @@ export function DataTable<T extends Record<string, any>>({
                     </button>
                   ) : (
                     col.label
+                  )}
+                  {columnValues[col.key] && (
+                    <select
+                      value={colFilters[col.key] ?? ''}
+                      onChange={(e) => setColFilters((f) => { const c = { ...f }; if (e.target.value) c[col.key] = e.target.value; else delete c[col.key]; return c; })}
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label={`Filter ${col.label}`}
+                      className={`ml-2 h-6 max-w-[140px] rounded border bg-white px-1 text-[11px] font-semibold normal-case tracking-normal text-slate-800 focus:outline-none ${colFilters[col.key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`}
+                    >
+                      <option value="">All</option>
+                      {columnValues[col.key].map((v) => <option key={v} value={v}>{v}</option>)}
+                    </select>
                   )}
                 </th>
               ))}
