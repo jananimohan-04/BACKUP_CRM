@@ -628,12 +628,6 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
 
   // ---------- table ----------
   const columns: Column<any>[] = [
-    {
-      key: 'sales_order',
-      label: 'Sales Order No.',
-      sortable: true,
-      render: (r) => <span className="font-mono text-xs text-slate-500">{r.sales_order || '—'}</span>,
-    },
     { key: 'customer', label: 'Company', sortable: true },
     {
       key: 'part_name',
