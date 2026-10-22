@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Search, Download, Trash2, Edit2, Calendar, Clock, Layers, Users, Cpu, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Search, Download, Trash2, Edit2, Calendar, Clock, Layers, Users, Cpu, CheckCircle2, AlertCircle, Plus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { exportCsv } from '@/lib/reportExport';
 import { todayISO } from '@/lib/format';
@@ -25,6 +25,7 @@ const hh = (t: unknown) => String(t ?? '').slice(0, 5);
 export function PlannedListView() {
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [wos, setWos] = useState<any[]>([]);
+  const [operations, setOperations] = useState<any[]>([]);
   const [machines, setMachines] = useState<string[]>([]);
   const [operators, setOperators] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,20 +51,37 @@ export function PlannedListView() {
     applyToAll: false,
   });
 
+  // Add Plan modal state
+  const [showAdd, setShowAdd] = useState(false);
+  const [savingAdd, setSavingAdd] = useState(false);
+  const [addForm, setAddForm] = useState({
+    woId: '',
+    operationSeq: '1',
+    processName: 'Machining',
+    machine: '',
+    operator: '',
+    planDate: todayISO(),
+    startTime: '08:00',
+    endTime: '10:00',
+    qty: '',
+  });
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, w, m, pr, jc] = await Promise.all([
+      const [p, w, m, pr, jc, opRes] = await Promise.all([
         supabase.from('cnc_operation_plans').select('*').order('plan_date', { ascending: false }).order('start_time', { ascending: true }),
         supabase.from('cnc_work_orders').select('id,wo_no,part_name,customer,status,quantity,completed'),
         supabase.from('cnc_machines').select('code'),
         supabase.from('cnc_processes').select('machine_type'),
         supabase.from('cnc_job_cards').select('operator'),
+        supabase.from('cnc_work_order_operations').select('id,work_order_id,operation_sequence,process_name,process_code,machine,operator'),
       ]);
 
       const planList = p.error ? [] : ((p.data ?? []) as PlanRow[]);
       setPlans(planList);
       setWos(w.data ?? []);
+      setOperations(opRes.error ? [] : (opRes.data ?? []));
 
       const machineSet = new Set<string>();
       [...(m.data ?? []).map((x: any) => x.code), ...(pr.data ?? []).map((x: any) => x.machine_type)].forEach((v) => {
@@ -283,53 +301,137 @@ export function PlannedListView() {
     }
   };
 
+  const openAddModal = () => {
+    const defaultWo = wos[0];
+    const defaultWoOps = defaultWo
+      ? operations.filter((o) => String(o.work_order_id) === String(defaultWo.id)).sort((a, b) => (a.operation_sequence ?? 0) - (b.operation_sequence ?? 0))
+      : [];
+    const firstOp = defaultWoOps[0];
+    setAddForm({
+      woId: defaultWo ? String(defaultWo.id) : '',
+      operationSeq: firstOp ? String(firstOp.operation_sequence) : '1',
+      processName: firstOp ? (firstOp.process_name || firstOp.process_code || 'Machining') : 'Machining',
+      machine: firstOp?.machine || machines[0] || '',
+      operator: firstOp?.operator || '',
+      planDate: todayISO(),
+      startTime: '08:00',
+      endTime: '10:00',
+      qty: defaultWo?.quantity != null ? String(defaultWo.quantity) : '',
+    });
+    setShowAdd(true);
+  };
+
+  const onAddWoChange = (woId: string) => {
+    const selWo = wos.find((w) => String(w.id) === String(woId));
+    const woOps = operations.filter((o) => String(o.work_order_id) === String(woId)).sort((a, b) => (a.operation_sequence ?? 0) - (b.operation_sequence ?? 0));
+    const firstOp = woOps[0];
+    setAddForm((f) => ({
+      ...f,
+      woId,
+      operationSeq: firstOp ? String(firstOp.operation_sequence) : '1',
+      processName: firstOp ? (firstOp.process_name || firstOp.process_code || 'Machining') : 'Machining',
+      machine: firstOp?.machine || f.machine || machines[0] || '',
+      operator: firstOp?.operator || f.operator,
+      qty: selWo?.quantity != null ? String(selWo.quantity) : f.qty,
+    }));
+  };
+
+  const onAddOpChange = (seq: string) => {
+    const op = operations.find((o) => String(o.work_order_id) === String(addForm.woId) && String(o.operation_sequence) === seq);
+    setAddForm((f) => ({
+      ...f,
+      operationSeq: seq,
+      processName: op ? (op.process_name || op.process_code || f.processName) : f.processName,
+      machine: op?.machine || f.machine,
+      operator: op?.operator || f.operator,
+    }));
+  };
+
+  const saveAddPlan = async () => {
+    if (!addForm.woId) return alert('Please select a Work Order.');
+    if (!addForm.machine.trim()) return alert('Please specify a Machine.');
+    if (!addForm.planDate) return alert('Please specify a Plan Date.');
+    if (!addForm.startTime || !addForm.endTime) return alert('Please specify Start and End times.');
+
+    setSavingAdd(true);
+    try {
+      const qtyNum = addForm.qty.trim() === '' ? null : Number(addForm.qty) || 0;
+      const opSeq = Number(addForm.operationSeq) || 1;
+      const newRow = {
+        id: crypto.randomUUID(),
+        work_order_id: addForm.woId,
+        operation_sequence: opSeq,
+        process_name: addForm.processName.trim() || 'Machining',
+        machine: addForm.machine.trim(),
+        operator: addForm.operator.trim(),
+        plan_date: addForm.planDate,
+        start_time: addForm.startTime,
+        end_time: addForm.endTime,
+        quantity: qtyNum,
+      };
+
+      let res = await supabase.from('cnc_operation_plans').insert([newRow]);
+      if (res.error && /'quantity' column/.test(String(res.error.message))) {
+        const { quantity: _q, ...rest } = newRow;
+        res = await supabase.from('cnc_operation_plans').insert([rest]);
+      }
+      if (res.error && /'operator' column/.test(String(res.error.message))) {
+        const { operator: _o, ...rest } = newRow;
+        res = await supabase.from('cnc_operation_plans').insert([rest]);
+      }
+      if (res.error) throw res.error;
+
+      setShowAdd(false);
+      await load();
+    } catch (e: any) {
+      alert(`Could not save plan: ${e?.message ?? e}`);
+    } finally {
+      setSavingAdd(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Planned</span>
-            <span className="p-1.5 rounded-lg bg-blue-50 text-blue-600"><Layers size={16} /></span>
+      {/* Compact KPI Boxes */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+        <div className="bg-white rounded-lg border border-slate-200 px-3 py-2 shadow-xs flex items-center justify-between gap-2 hover:border-slate-300 transition-colors">
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block truncate">Total Planned</span>
+            <span className="text-base font-bold tabular-nums text-slate-900 leading-tight">{filteredPlans.length}</span>
           </div>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">{filteredPlans.length}</p>
-          <span className="text-[11px] text-slate-400">operation slots</span>
+          <span className="p-1.5 rounded-md bg-blue-50 text-blue-600 shrink-0"><Layers size={15} /></span>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Planned Hours</span>
-            <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600"><Clock size={16} /></span>
+        <div className="bg-white rounded-lg border border-slate-200 px-3 py-2 shadow-xs flex items-center justify-between gap-2 hover:border-slate-300 transition-colors">
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block truncate">Planned Hours</span>
+            <span className="text-base font-bold tabular-nums text-indigo-700 leading-tight">{totalPlannedHours} h</span>
           </div>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-indigo-700">{totalPlannedHours} h</p>
-          <span className="text-[11px] text-slate-400">total scheduled time</span>
+          <span className="p-1.5 rounded-md bg-indigo-50 text-indigo-600 shrink-0"><Clock size={15} /></span>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Today's Plans</span>
-            <span className="p-1.5 rounded-lg bg-amber-50 text-amber-600"><Calendar size={16} /></span>
+        <div className="bg-white rounded-lg border border-slate-200 px-3 py-2 shadow-xs flex items-center justify-between gap-2 hover:border-slate-300 transition-colors">
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block truncate">Today's Plans</span>
+            <span className="text-base font-bold tabular-nums text-amber-600 leading-tight">{todayCount}</span>
           </div>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-amber-600">{todayCount}</p>
-          <span className="text-[11px] text-slate-400">scheduled for today</span>
+          <span className="p-1.5 rounded-md bg-amber-50 text-amber-600 shrink-0"><Calendar size={15} /></span>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Upcoming</span>
-            <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600"><CheckCircle2 size={16} /></span>
+        <div className="bg-white rounded-lg border border-slate-200 px-3 py-2 shadow-xs flex items-center justify-between gap-2 hover:border-slate-300 transition-colors">
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block truncate">Upcoming</span>
+            <span className="text-base font-bold tabular-nums text-emerald-600 leading-tight">{upcomingCount}</span>
           </div>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-600">{upcomingCount}</p>
-          <span className="text-[11px] text-slate-400">future dates</span>
+          <span className="p-1.5 rounded-md bg-emerald-50 text-emerald-600 shrink-0"><CheckCircle2 size={15} /></span>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Machines Planned</span>
-            <span className="p-1.5 rounded-lg bg-purple-50 text-purple-600"><Cpu size={16} /></span>
+        <div className="bg-white rounded-lg border border-slate-200 px-3 py-2 shadow-xs flex items-center justify-between gap-2 hover:border-slate-300 transition-colors">
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block truncate">Active Machines</span>
+            <span className="text-base font-bold tabular-nums text-purple-700 leading-tight">{activeMachinesCount}</span>
           </div>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-purple-700">{activeMachinesCount}</p>
-          <span className="text-[11px] text-slate-400">distinct machines</span>
+          <span className="p-1.5 rounded-md bg-purple-50 text-purple-600 shrink-0"><Cpu size={15} /></span>
         </div>
       </div>
 
@@ -431,6 +533,16 @@ export function PlannedListView() {
           >
             <Download size={13} />
             <span>Export CSV</span>
+          </button>
+
+          {/* Add Plan */}
+          <button
+            type="button"
+            onClick={openAddModal}
+            className="h-9 px-3.5 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-xs flex items-center gap-1.5 shrink-0 transition cursor-pointer"
+          >
+            <Plus size={14} />
+            <span>Add Plan</span>
           </button>
         </div>
       </div>
@@ -667,6 +779,149 @@ export function PlannedListView() {
             </label>
           </div>
         )}
+      </Modal>
+
+      {/* Add Plan Modal */}
+      <Modal
+        open={showAdd}
+        onClose={() => setShowAdd(false)}
+        title="Add Planned Operation Slot"
+        size="lg"
+        footer={
+          <div className="flex items-center justify-end gap-2 w-full">
+            <Button variant="secondary" onClick={() => setShowAdd(false)} disabled={savingAdd}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              className="bg-brand-600 hover:bg-brand-700 text-white"
+              onClick={saveAddPlan}
+              disabled={savingAdd}
+            >
+              {savingAdd ? 'Saving…' : 'Add Planned Slot'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <FormField label="Work Order" required>
+            <select
+              className={inputClass}
+              value={addForm.woId}
+              onChange={(e) => onAddWoChange(e.target.value)}
+            >
+              <option value="">-- Select Work Order --</option>
+              {wos.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.wo_no} — {w.part_name} ({w.customer || 'No customer'}) · Qty: {w.quantity ?? '—'}
+                </option>
+              ))}
+            </select>
+          </FormField>
+
+          {addForm.woId && operations.filter((o) => String(o.work_order_id) === String(addForm.woId)).length > 0 && (
+            <FormField label="Operation Sequence & Process" required>
+              <select
+                className={inputClass}
+                value={addForm.operationSeq}
+                onChange={(e) => onAddOpChange(e.target.value)}
+              >
+                {operations
+                  .filter((o) => String(o.work_order_id) === String(addForm.woId))
+                  .sort((a, b) => (a.operation_sequence ?? 0) - (b.operation_sequence ?? 0))
+                  .map((o) => (
+                    <option key={o.id} value={o.operation_sequence}>
+                      Op #{o.operation_sequence} — {o.process_name || o.process_code || 'Machining'}
+                    </option>
+                  ))}
+              </select>
+            </FormField>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <FormField label="Process Name" required>
+              <input
+                type="text"
+                className={inputClass}
+                value={addForm.processName}
+                placeholder="e.g. CNC Milling, Turning, Drilling"
+                onChange={(e) => setAddForm((f) => ({ ...f, processName: e.target.value }))}
+              />
+            </FormField>
+
+            <FormField label="Planned Quantity (pcs)">
+              <input
+                type="number"
+                min="0"
+                className={inputClass}
+                value={addForm.qty}
+                placeholder="Leave blank for entire batch"
+                onChange={(e) => setAddForm((f) => ({ ...f, qty: e.target.value }))}
+              />
+            </FormField>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <FormField label="Plan Date" required>
+              <input
+                type="date"
+                className={inputClass}
+                value={addForm.planDate}
+                onChange={(e) => setAddForm((f) => ({ ...f, planDate: e.target.value }))}
+              />
+            </FormField>
+
+            <FormField label="Start Time (24h)" required>
+              <input
+                type="time"
+                className={inputClass}
+                value={addForm.startTime}
+                onChange={(e) => setAddForm((f) => ({ ...f, startTime: e.target.value }))}
+              />
+            </FormField>
+
+            <FormField label="End Time (24h)" required>
+              <input
+                type="time"
+                className={inputClass}
+                value={addForm.endTime}
+                onChange={(e) => setAddForm((f) => ({ ...f, endTime: e.target.value }))}
+              />
+            </FormField>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <FormField label="Machine" required>
+              <input
+                className={inputClass}
+                list="add-machines-list"
+                value={addForm.machine}
+                placeholder="Select or enter machine"
+                onChange={(e) => setAddForm((f) => ({ ...f, machine: e.target.value }))}
+              />
+              <datalist id="add-machines-list">
+                {machines.map((m) => (
+                  <option key={m} value={m} />
+                ))}
+              </datalist>
+            </FormField>
+
+            <FormField label="Operator (Man)">
+              <input
+                className={inputClass}
+                list="add-operators-list"
+                value={addForm.operator}
+                placeholder="Select or enter operator"
+                onChange={(e) => setAddForm((f) => ({ ...f, operator: e.target.value }))}
+              />
+              <datalist id="add-operators-list">
+                {operators.map((o) => (
+                  <option key={o} value={o} />
+                ))}
+              </datalist>
+            </FormField>
+          </div>
+        </div>
       </Modal>
     </div>
   );

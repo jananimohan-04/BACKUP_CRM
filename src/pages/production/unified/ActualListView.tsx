@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Search, Download, Calendar, Clock, Play, CheckCircle2, AlertCircle, Layers, Cpu, Users, Eye } from 'lucide-react';
+import { Search, Download, Calendar, Clock, Play, CheckCircle2, AlertCircle, Layers, Cpu, Users, Eye, Plus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { exportCsv } from '@/lib/reportExport';
 import { todayISO } from '@/lib/format';
 import { fmtTime24, parseYmd, ymd } from '@/lib/operationPlans';
+import { generateJobNo } from '@/lib/jobCards';
+import { insertTolerant } from '@/lib/partRouting';
+import { Modal, FormField, inputClass } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Card';
 import { dt, dur, jobSpan } from './ComparisonPage';
 
 interface JobCard {
@@ -38,6 +42,26 @@ export function ActualListView() {
   const [fMachine, setFMachine] = useState('All');
   const [fOperator, setFOperator] = useState('All');
   const [fStatus, setFStatus] = useState('All');
+
+  // Add Run modal state
+  const [showAdd, setShowAdd] = useState(false);
+  const [savingAdd, setSavingAdd] = useState(false);
+  const [addForm, setAddForm] = useState({
+    woId: '',
+    workOrder: '',
+    customer: '',
+    partName: '',
+    operation: 'Machining',
+    machine: '',
+    operator: '',
+    date: todayISO(),
+    startTime: '08:00',
+    endTime: '16:00',
+    status: 'Completed' as 'Completed' | 'Running',
+    qtyPlanned: '',
+    qtyCompleted: '',
+    qtyRejected: '0',
+  });
 
   const today = todayISO();
 
@@ -211,53 +235,155 @@ export function ActualListView() {
     exportCsv(`actual-runs_${todayISO()}`, rows);
   };
 
+  const openAddModal = () => {
+    const defaultWo = wos[0];
+    setAddForm({
+      woId: defaultWo ? String(defaultWo.id) : '',
+      workOrder: defaultWo ? defaultWo.wo_no : '',
+      customer: defaultWo ? defaultWo.customer || '' : '',
+      partName: defaultWo ? defaultWo.part_name || '' : '',
+      operation: 'Machining',
+      machine: machines[0] || '',
+      operator: operators[0] || '',
+      date: todayISO(),
+      startTime: '08:00',
+      endTime: '16:00',
+      status: 'Completed',
+      qtyPlanned: defaultWo?.quantity != null ? String(defaultWo.quantity) : '',
+      qtyCompleted: defaultWo?.quantity != null ? String(defaultWo.quantity) : '',
+      qtyRejected: '0',
+    });
+    setShowAdd(true);
+  };
+
+  const onWoChange = (woNoOrId: string) => {
+    const selWo = wos.find((w) => String(w.id) === String(woNoOrId) || String(w.wo_no) === String(woNoOrId));
+    setAddForm((f) => ({
+      ...f,
+      woId: selWo ? String(selWo.id) : '',
+      workOrder: selWo ? selWo.wo_no : woNoOrId,
+      customer: selWo?.customer || f.customer,
+      partName: selWo?.part_name || f.partName,
+      qtyPlanned: selWo?.quantity != null ? String(selWo.quantity) : f.qtyPlanned,
+      qtyCompleted: selWo?.quantity != null ? String(selWo.quantity) : f.qtyCompleted,
+    }));
+  };
+
+  const saveAddRun = async () => {
+    if (!addForm.workOrder.trim() && !addForm.woId) return alert('Please select or specify a Work Order.');
+    if (!addForm.machine.trim()) return alert('Please select or enter a Machine.');
+    if (!addForm.date) return alert('Please set the Date.');
+    if (!addForm.startTime) return alert('Please set Start Time.');
+
+    const start = new Date(`${addForm.date}T${addForm.startTime}:00`);
+    if (Number.isNaN(start.getTime())) return alert('Invalid start date / time.');
+
+    let endIso: string | null = null;
+    if (addForm.status === 'Completed') {
+      if (!addForm.endTime) return alert('Please specify an End Time for completed runs.');
+      const end = new Date(`${addForm.date}T${addForm.endTime}:00`);
+      if (Number.isNaN(end.getTime())) return alert('Invalid end time.');
+      if (end.getTime() <= start.getTime()) return alert('End time must be after start time.');
+      endIso = end.toISOString();
+    }
+
+    setSavingAdd(true);
+    try {
+      const good = Number(addForm.qtyCompleted) || 0;
+      const rej = Number(addForm.qtyRejected) || 0;
+      const planned = Number(addForm.qtyPlanned) || 0;
+      const jobNo = await generateJobNo();
+
+      const selWo = wos.find((w) => String(w.id) === String(addForm.woId) || String(w.wo_no) === String(addForm.workOrder));
+
+      const row: any = {
+        id: crypto.randomUUID(),
+        job_no: jobNo,
+        work_order_id: selWo?.id || null,
+        work_order: selWo?.wo_no || addForm.workOrder.trim(),
+        part_name: selWo?.part_name || addForm.partName.trim() || 'Part',
+        customer: selWo?.customer || addForm.customer.trim() || '',
+        operation: addForm.operation.trim() || 'Machining',
+        op_no: 10,
+        machine: addForm.machine.trim(),
+        operator: addForm.operator.trim() || null,
+        qty_planned: planned > 0 ? planned : (selWo?.quantity ?? null),
+        qty_completed: good,
+        qty_rejected: rej,
+        status: addForm.status,
+        actual_start: start.toISOString(),
+        actual_end: endIso,
+        completed_at: endIso,
+        created_at: start.toISOString(),
+      };
+
+      await insertTolerant('cnc_job_cards', [row]);
+
+      if (selWo && (good > 0 || rej > 0)) {
+        const newComp = (Number(selWo.completed) || 0) + good;
+        const newRej = (Number(selWo.rejected) || 0) + rej;
+        const target = Number(selWo.quantity) || 0;
+        await supabase
+          .from('cnc_work_orders')
+          .update({
+            completed: newComp,
+            rejected: newRej,
+            status: target > 0 && newComp >= target ? 'Completed' : (selWo.status || 'In Progress'),
+          })
+          .eq('id', selWo.id);
+      }
+
+      setShowAdd(false);
+      await load();
+    } catch (e: any) {
+      alert(`Could not record actual run: ${e?.message ?? e}`);
+    } finally {
+      setSavingAdd(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Actual Runs</span>
-            <span className="p-1.5 rounded-lg bg-blue-50 text-blue-600"><Layers size={16} /></span>
+      {/* Compact KPI Boxes */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+        <div className="bg-white rounded-lg border border-slate-200 px-3 py-2 shadow-xs flex items-center justify-between gap-2 hover:border-slate-300 transition-colors">
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block truncate">Total Actual Runs</span>
+            <span className="text-base font-bold tabular-nums text-slate-900 leading-tight">{filteredJobs.length}</span>
           </div>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">{filteredJobs.length}</p>
-          <span className="text-[11px] text-slate-400">job executions</span>
+          <span className="p-1.5 rounded-md bg-blue-50 text-blue-600 shrink-0"><Layers size={15} /></span>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Actual Hours Run</span>
-            <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600"><Clock size={16} /></span>
+        <div className="bg-white rounded-lg border border-slate-200 px-3 py-2 shadow-xs flex items-center justify-between gap-2 hover:border-slate-300 transition-colors">
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block truncate">Actual Hours Run</span>
+            <span className="text-base font-bold tabular-nums text-indigo-700 leading-tight">{totalActualHours} h</span>
           </div>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-indigo-700">{totalActualHours} h</p>
-          <span className="text-[11px] text-slate-400">total machine time logged</span>
+          <span className="p-1.5 rounded-md bg-indigo-50 text-indigo-600 shrink-0"><Clock size={15} /></span>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Running Now</span>
-            <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 animate-pulse"><Play size={16} /></span>
+        <div className="bg-white rounded-lg border border-slate-200 px-3 py-2 shadow-xs flex items-center justify-between gap-2 hover:border-slate-300 transition-colors">
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block truncate">Running Now</span>
+            <span className="text-base font-bold tabular-nums text-emerald-600 leading-tight">{runningCount}</span>
           </div>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-600">{runningCount}</p>
-          <span className="text-[11px] text-slate-400">active jobs in shop</span>
+          <span className="p-1.5 rounded-md bg-emerald-50 text-emerald-600 shrink-0 animate-pulse"><Play size={15} /></span>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Completed Runs</span>
-            <span className="p-1.5 rounded-lg bg-amber-50 text-amber-600"><CheckCircle2 size={16} /></span>
+        <div className="bg-white rounded-lg border border-slate-200 px-3 py-2 shadow-xs flex items-center justify-between gap-2 hover:border-slate-300 transition-colors">
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block truncate">Completed Runs</span>
+            <span className="text-base font-bold tabular-nums text-emerald-700 leading-tight">{completedCount}</span>
           </div>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-amber-600">{completedCount}</p>
-          <span className="text-[11px] text-slate-400">finished runs</span>
+          <span className="p-1.5 rounded-md bg-emerald-50 text-emerald-700 shrink-0"><CheckCircle2 size={15} /></span>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Parts Produced</span>
-            <span className="p-1.5 rounded-lg bg-purple-50 text-purple-600"><Cpu size={16} /></span>
+        <div className="bg-white rounded-lg border border-slate-200 px-3 py-2 shadow-xs flex items-center justify-between gap-2 hover:border-slate-300 transition-colors">
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block truncate">Parts Produced</span>
+            <span className="text-base font-bold tabular-nums text-purple-700 leading-tight">{totalPartsProduced.toLocaleString()}</span>
           </div>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-purple-700">{totalPartsProduced.toLocaleString()}</p>
-          <span className="text-[11px] text-slate-400">completed pieces</span>
+          <span className="p-1.5 rounded-md bg-purple-50 text-purple-600 shrink-0"><Cpu size={15} /></span>
         </div>
       </div>
 
@@ -359,6 +485,16 @@ export function ActualListView() {
           >
             <Download size={13} />
             <span>Export CSV</span>
+          </button>
+
+          {/* Record Run */}
+          <button
+            type="button"
+            onClick={openAddModal}
+            className="h-9 px-3.5 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-xs flex items-center gap-1.5 shrink-0 transition cursor-pointer"
+          >
+            <Plus size={14} />
+            <span>Record Run</span>
           </button>
         </div>
       </div>
@@ -478,6 +614,196 @@ export function ActualListView() {
           </table>
         </div>
       </div>
+
+      {/* Record Actual Run Modal */}
+      <Modal
+        open={showAdd}
+        onClose={() => setShowAdd(false)}
+        title="Record Actual Run"
+        size="lg"
+        footer={
+          <div className="flex items-center justify-end gap-2 w-full">
+            <Button variant="secondary" onClick={() => setShowAdd(false)} disabled={savingAdd}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              className="bg-brand-600 hover:bg-brand-700 text-white"
+              onClick={saveAddRun}
+              disabled={savingAdd}
+            >
+              {savingAdd ? 'Saving…' : 'Save Actual Run'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <FormField label="Work Order" required>
+            <select
+              className={inputClass}
+              value={addForm.woId || addForm.workOrder}
+              onChange={(e) => onWoChange(e.target.value)}
+            >
+              <option value="">-- Select Work Order --</option>
+              {wos.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.wo_no} — {w.part_name} ({w.customer || 'No customer'}) · Qty: {w.quantity ?? '—'}
+                </option>
+              ))}
+            </select>
+          </FormField>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <FormField label="Product / Part Name">
+              <input
+                type="text"
+                className={inputClass}
+                value={addForm.partName}
+                placeholder="Part name"
+                onChange={(e) => setAddForm((f) => ({ ...f, partName: e.target.value }))}
+              />
+            </FormField>
+
+            <FormField label="Customer">
+              <input
+                type="text"
+                className={inputClass}
+                value={addForm.customer}
+                placeholder="Customer name"
+                onChange={(e) => setAddForm((f) => ({ ...f, customer: e.target.value }))}
+              />
+            </FormField>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <FormField label="Operation / Process" required>
+              <input
+                type="text"
+                className={inputClass}
+                value={addForm.operation}
+                placeholder="e.g. CNC Milling, Turning, Machining"
+                onChange={(e) => setAddForm((f) => ({ ...f, operation: e.target.value }))}
+              />
+            </FormField>
+
+            <FormField label="Run Status" required>
+              <select
+                className={inputClass}
+                value={addForm.status}
+                onChange={(e) => setAddForm((f) => ({ ...f, status: e.target.value as 'Completed' | 'Running' }))}
+              >
+                <option value="Completed">Completed Run</option>
+                <option value="Running">Currently Running (In Shop)</option>
+              </select>
+            </FormField>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <FormField label="Date" required>
+              <input
+                type="date"
+                className={inputClass}
+                value={addForm.date}
+                onChange={(e) => setAddForm((f) => ({ ...f, date: e.target.value }))}
+              />
+            </FormField>
+
+            <FormField label="Start Time (24h)" required>
+              <input
+                type="time"
+                className={inputClass}
+                value={addForm.startTime}
+                onChange={(e) => setAddForm((f) => ({ ...f, startTime: e.target.value }))}
+              />
+            </FormField>
+
+            {addForm.status === 'Completed' ? (
+              <FormField label="End Time (24h)" required>
+                <input
+                  type="time"
+                  className={inputClass}
+                  value={addForm.endTime}
+                  onChange={(e) => setAddForm((f) => ({ ...f, endTime: e.target.value }))}
+                />
+              </FormField>
+            ) : (
+              <div className="flex flex-col justify-center">
+                <span className="text-xs font-semibold text-slate-500 mb-1">End Time</span>
+                <span className="text-xs text-emerald-600 font-bold bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-2">
+                  ● Running Now
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <FormField label="Machine" required>
+              <input
+                className={inputClass}
+                list="actual-machines-list"
+                value={addForm.machine}
+                placeholder="Select or enter machine"
+                onChange={(e) => setAddForm((f) => ({ ...f, machine: e.target.value }))}
+              />
+              <datalist id="actual-machines-list">
+                {machines.map((m) => (
+                  <option key={m} value={m} />
+                ))}
+              </datalist>
+            </FormField>
+
+            <FormField label="Operator (Man)">
+              <input
+                className={inputClass}
+                list="actual-operators-list"
+                value={addForm.operator}
+                placeholder="Select or enter operator"
+                onChange={(e) => setAddForm((f) => ({ ...f, operator: e.target.value }))}
+              />
+              <datalist id="actual-operators-list">
+                {operators.map((o) => (
+                  <option key={o} value={o} />
+                ))}
+              </datalist>
+            </FormField>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <FormField label="Planned Qty">
+              <input
+                type="number"
+                min="0"
+                className={inputClass}
+                value={addForm.qtyPlanned}
+                placeholder="Target pieces"
+                onChange={(e) => setAddForm((f) => ({ ...f, qtyPlanned: e.target.value }))}
+              />
+            </FormField>
+
+            <FormField label="Completed (Good)">
+              <input
+                type="number"
+                min="0"
+                className={inputClass}
+                value={addForm.qtyCompleted}
+                placeholder="Good pieces"
+                onChange={(e) => setAddForm((f) => ({ ...f, qtyCompleted: e.target.value }))}
+              />
+            </FormField>
+
+            <FormField label="Rejected (Defects)">
+              <input
+                type="number"
+                min="0"
+                className={inputClass}
+                value={addForm.qtyRejected}
+                placeholder="Defects"
+                onChange={(e) => setAddForm((f) => ({ ...f, qtyRejected: e.target.value }))}
+              />
+            </FormField>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
