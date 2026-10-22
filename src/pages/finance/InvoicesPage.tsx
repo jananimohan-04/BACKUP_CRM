@@ -615,7 +615,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
               <span className={invLbl}>Reference:</span>
               <input
                 autoComplete="off"
-                className={`${invInput} flex-1 min-w-[13rem] sm:min-w-[16rem]`}
+                className={`${invInput} flex-1 min-w-[24rem] sm:min-w-[30rem]`}
                 list="inv-product-list"
                 placeholder="Product - Company - Date/Time - Qty"
                 title={line.reference || "Full Reference (Product - Company - Date/Time - Qty)"}
@@ -736,7 +736,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
               <span className={invLbl}>Original:</span>
               <input
                 autoComplete="off"
-                className={`${invInput} w-[8.5rem] sm:w-[9.5rem]`}
+                className={`${invInput} w-[16rem] sm:w-[18rem] min-w-[15rem]`}
                 placeholder="Original Product"
                 title={line.originalName ?? (splitProductAndRef(line.description || '', allCompanies, form.customer_name).original || line.description || '')}
                 value={line.originalName ?? (splitProductAndRef(line.description || '', allCompanies, form.customer_name).original || line.description || '')}
@@ -772,15 +772,15 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
           const dt = s.dateTime || (d.delivery_date ? formatDate(d.delivery_date) : '');
           const qty = d.dispatch_qty ?? d.quantity;
           const disp = formatFullReference(s.original, d.customer_name, dt || d.delivery_no, qty);
-          return <option key={`dlv-${d.id}`} value={disp} label={disp} />;
+          return <option key={`dlv-${d.id}`} value={disp}>{disp}</option>;
         })}
         {salesOrdersList.map((so: any) => {
           const s = splitProductAndRef(so.part_name || '', allCompanies, so.customer);
           const disp = formatFullReference(s.original, so.customer, s.dateTime || so.order_no, so.quantity);
-          return <option key={`so-${so.id}`} value={disp} label={disp} />;
+          return <option key={`so-${so.id}`} value={disp}>{disp}</option>;
         })}
         {partsList.map((p: any) => (
-          <option key={`prt-${p.id}`} value={p.part_name} label={[p.part_name, p.part_code].filter(Boolean).join(' • ')} />
+          <option key={`prt-${p.id}`} value={p.part_name}>{p.part_name}</option>
         ))}
       </datalist>
 

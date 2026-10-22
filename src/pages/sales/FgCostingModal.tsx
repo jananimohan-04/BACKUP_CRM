@@ -955,7 +955,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                 <input
                   ref={pickInputRef}
                   autoComplete="off"
-                  className={`${compactInput} w-[18rem] max-w-[45vw] pr-6`}
+                  className={`${compactInput} w-[28rem] sm:w-[34rem] max-w-[70vw] pr-6`}
                   placeholder="Product - Company - Date/Time - Qty"
                   title={pickReference || pickText || splitProductAndRef(pickProduct, [], pickCompany).reference || ''}
                   value={pickReference || pickText || splitProductAndRef(pickProduct, [], pickCompany).reference || ''}
@@ -984,14 +984,14 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                   // Drawn on the page itself (not inside the form) so no panel can clip or hide it.
                   <div
                     data-fg-dropdown
-                    style={{ position: 'fixed', left: Math.max(8, Math.min(box.left, window.innerWidth - 8 - Math.max(box.width, 420))), top: box.bottom + 4, width: Math.max(box.width, 420), maxWidth: 'calc(100vw - 16px)', maxHeight: Math.max(160, Math.min(320, window.innerHeight - box.bottom - 16)), zIndex: 100 }}
+                    style={{ position: 'fixed', left: Math.max(8, Math.min(box.left, window.innerWidth - 8 - Math.max(box.width, 720))), top: box.bottom + 4, width: Math.max(box.width, 720), maxWidth: 'calc(100vw - 16px)', maxHeight: Math.max(160, Math.min(320, window.innerHeight - box.bottom - 16)), zIndex: 100 }}
                     className="overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-xl"
                   >
                     {rows.length > 0 ? rows.map((r) => (
                       <div
                         key={r.key}
                         title={r.label}
-                        className="cursor-pointer px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-brand-50 hover:text-brand-800"
+                        className="cursor-pointer px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-brand-50 hover:text-brand-800 whitespace-normal break-words leading-relaxed"
                         onMouseDown={(e) => {
                           e.preventDefault();
                           const s = splitProductAndRef(r.product, [], r.company);
@@ -1017,7 +1017,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
               <span className={inlineLbl}>Original</span>
               <input
                 autoComplete="off"
-                className={`${compactInput} w-[9.5rem]`}
+                className={`${compactInput} w-[16rem] sm:w-[18rem]`}
                 placeholder="Original Product"
                 title={pickOriginal || splitProductAndRef(pickProduct, [], pickCompany).original || ''}
                 value={pickOriginal || splitProductAndRef(pickProduct, [], pickCompany).original || ''}
