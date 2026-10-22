@@ -7232,19 +7232,49 @@ export function SalesPipelinePage() {
                       )}
                     </div>
                     <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} flex-[1_1_0%] min-w-0 font-medium`} placeholder={(group.category || 'GOODS PURCHASE') === 'EXPENSES' ? 'Part Name' : 'Part Name *'} title="Part Name" list="saved-products" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} />
-                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-0.5'}><span className={inlineLbl}>Qty *</span>
-                      <input type="number" min="0" className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[3.5rem]`} placeholder="Qty" value={item.quantity || ''} onChange={e=>setItem(ii, { quantity: e.target.value })} /></div>
-                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-0.5'}><span className={inlineLbl}>Price *</span>
-                      <input type="number" min="0" className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[4.25rem]`} placeholder="Price" value={item.price || ''} onChange={e=>setItem(ii, { price: e.target.value })} /></div>
-                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-0.5'}><span className={inlineLbl}>Disc %</span>
-                      <input type="number" min="0" className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[2.75rem] px-1 text-center`} placeholder="%" value={item.discount || ''} onChange={e=>setItem(ii, { discount: e.target.value })} /></div>
-                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-0.5'}><span className={inlineLbl}>GST %</span>
-                      <input type="number" min="0" className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[2.75rem] px-1 text-center`} placeholder="%" value={item.gst || ''} onChange={e=>setItem(ii, { gst: e.target.value })} /></div>
-                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-0.5'}><span className={inlineLbl}>Total</span>
-                      <input className={opts?.popup ? `${compactInput} w-full min-w-0 bg-white font-bold` : `${compactInput} w-[4.5rem] bg-white font-bold`} value={lineTotal(item) || 0} title="Total" disabled /></div>
+                    {opts?.popup ? (
+                      <div className="flex min-w-0 items-center gap-1">
+                        <span className={inlineLbl}>Qty *</span>
+                        <input type="number" min="0" className={`${compactInput} w-full min-w-0`} placeholder="Qty" value={item.quantity || ''} onChange={e=>setItem(ii, { quantity: e.target.value })} />
+                      </div>
+                    ) : (
+                      <input type="number" min="0" className={`${compactInput} w-[3.5rem] shrink-0 text-center`} placeholder="Qty *" title="Quantity *" value={item.quantity || ''} onChange={e=>setItem(ii, { quantity: e.target.value })} />
+                    )}
+                    {opts?.popup ? (
+                      <div className="flex min-w-0 items-center gap-1">
+                        <span className={inlineLbl}>Price *</span>
+                        <input type="number" min="0" className={`${compactInput} w-full min-w-0`} placeholder="Price" value={item.price || ''} onChange={e=>setItem(ii, { price: e.target.value })} />
+                      </div>
+                    ) : (
+                      <input type="number" min="0" className={`${compactInput} w-[4rem] shrink-0`} placeholder="Price *" title="Price *" value={item.price || ''} onChange={e=>setItem(ii, { price: e.target.value })} />
+                    )}
+                    {opts?.popup ? (
+                      <div className="flex min-w-0 items-center gap-1">
+                        <span className={inlineLbl}>Disc %</span>
+                        <input type="number" min="0" className={`${compactInput} w-full min-w-0`} placeholder="%" value={item.discount || ''} onChange={e=>setItem(ii, { discount: e.target.value })} />
+                      </div>
+                    ) : (
+                      <input type="number" min="0" className={`${compactInput} w-[3rem] shrink-0 px-1 text-center`} placeholder="Disc %" title="Discount %" value={item.discount || ''} onChange={e=>setItem(ii, { discount: e.target.value })} />
+                    )}
+                    {opts?.popup ? (
+                      <div className="flex min-w-0 items-center gap-1">
+                        <span className={inlineLbl}>GST %</span>
+                        <input type="number" min="0" className={`${compactInput} w-full min-w-0`} placeholder="%" value={item.gst || ''} onChange={e=>setItem(ii, { gst: e.target.value })} />
+                      </div>
+                    ) : (
+                      <input type="number" min="0" className={`${compactInput} w-[3rem] shrink-0 px-1 text-center`} placeholder="GST %" title="GST %" value={item.gst || ''} onChange={e=>setItem(ii, { gst: e.target.value })} />
+                    )}
+                    {opts?.popup ? (
+                      <div className="flex min-w-0 items-center gap-1">
+                        <span className={inlineLbl}>Total</span>
+                        <input className={`${compactInput} w-full min-w-0 bg-white font-bold`} value={lineTotal(item) || 0} title="Total" disabled />
+                      </div>
+                    ) : (
+                      <input className={`${compactInput} w-[4.25rem] shrink-0 bg-white font-bold text-right`} value={lineTotal(item) || 0} placeholder="Total" title="Total" disabled />
+                    )}
                     <div className={opts?.popup ? 'flex min-w-0 items-center gap-1 col-span-2' : 'flex shrink-0 items-center gap-1'}>
                       <label className="inline-flex h-7 cursor-pointer items-center gap-1 whitespace-nowrap rounded-md border border-dashed border-slate-300 bg-white px-1.5 text-[10px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach drawing or spec for this product">
-                        <UploadCloud size={13} />{(item.files || []).length ? `${item.files.length} file${item.files.length === 1 ? '' : 's'}` : 'Attach Drawing'}
+                        <UploadCloud size={12} />{(item.files || []).length ? `${item.files.length} file${item.files.length === 1 ? '' : 's'}` : 'Drawing'}
                         <input type="file" multiple accept="*/*" className="hidden" onChange={e => {
                           const picked = Array.from(e.target.files || []);
                           e.currentTarget.value = '';
@@ -7257,7 +7287,7 @@ export function SalesPipelinePage() {
                         <div className="flex items-center gap-1">
                           {((item.files || []) as File[]).map((f: File, fi: number) => (
                             <span key={`item-f-${f.name}-${fi}`} className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-700 shadow-xs">
-                              <span className="max-w-[70px] truncate font-medium">{f.name}</span>
+                              <span className="max-w-[60px] truncate font-medium">{f.name}</span>
                               <button
                                 type="button"
                                 className="ml-0.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-slate-400 hover:bg-rose-100 hover:text-rose-600 transition-colors cursor-pointer text-xs font-bold leading-none"
@@ -7277,7 +7307,7 @@ export function SalesPipelinePage() {
                         </div>
                       )}
                     </div>
-                    <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} flex-[1_1_0%] min-w-0`} placeholder="Remarks..." title="Remarks" value={item.remarks ?? ''} onChange={e=>setItem(ii, { remarks: e.target.value })} />
+                    <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[6.5rem] sm:w-[7.5rem] shrink-0`} placeholder="Remarks..." title="Remarks" value={item.remarks ?? ''} onChange={e=>setItem(ii, { remarks: e.target.value })} />
                     {(group.items || []).length > 1 ? (
                       <button type="button" className="shrink-0 rounded p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 ml-auto" title="Remove line" onClick={() => setGroup({ items: (group.items || []).filter((_: any, j: number) => j !== ii) })}>
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
