@@ -61,6 +61,33 @@ jobs:
         working-directory: src-tauri
         run: cargo check
 
+      # Windows code signing (optional, but needed so SmartScreen / Smart App Control / company
+      # antivirus stop blocking the installer). Runs only when the certificate secrets exist:
+      #   WINDOWS_CERTIFICATE           base64 of the .pfx code-signing certificate
+      #   WINDOWS_CERTIFICATE_PASSWORD  its password
+      # The certificate's thumbprint is written into tauri.conf.json for this build only.
+      - name: Import code-signing certificate (if configured)
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrEmpty($env:WINDOWS_CERTIFICATE)) {
+            Write-Host "No WINDOWS_CERTIFICATE secret: building an UNSIGNED installer (Windows will warn)."
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $pass = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $pass
+          Remove-Item $pfx
+          $conf = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $conf.bundle.windows | Add-Member -NotePropertyName certificateThumbprint -NotePropertyValue $cert.Thumbprint -Force
+          $conf.bundle.windows | Add-Member -NotePropertyName digestAlgorithm -NotePropertyValue "sha256" -Force
+          $conf.bundle.windows | Add-Member -NotePropertyName timestampUrl -NotePropertyValue "http://timestamp.digicert.com" -Force
+          $conf | ConvertTo-Json -Depth 20 | Set-Content src-tauri/tauri.conf.json -Encoding utf8
+          Write-Host "Signing with certificate $($cert.Subject)"
+
       # Build the NSIS installer, sign the updater artifact with the private key,
       # generate latest.json, and upload everything to a draft release for the tag.
       - name: Tauri build & publish draft release

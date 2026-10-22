@@ -1,4 +1,4 @@
-// Configuration for the web app's "Download Desktop App" button — the SINGLE
+// Configuration for the web app's "Download Desktop App" button â€” the SINGLE
 // SOURCE OF TRUTH for the public installer URL and the version it advertises.
 //
 // Releasing a new desktop version (see docs/desktop/RELEASING.md):
@@ -15,10 +15,10 @@
 // the release asset instead (e.g.
 // https://github.com/jananimohan-04/with_cnc/releases/download/vX.Y.Z/...),
 // which removes the need to commit the binary. The .sig file is NOT needed
-// here — signatures are only consumed by the in-app auto-updater.
+// here â€” signatures are only consumed by the in-app auto-updater.
 
 /** Version shown to users; keep in sync with the desktop release version. */
-export const DESKTOP_APP_VERSION = '1.0.0';
+export const DESKTOP_APP_VERSION = '1.0.2';
 
 /** Public, same-origin URL of the Windows installer (served from public/). */
 export const DESKTOP_DOWNLOAD_URL = '/downloads/cncforge-erp-setup.exe';
@@ -30,7 +30,7 @@ export const DESKTOP_DOWNLOAD_FILENAME = `CNCFORGE-ERP-Setup-${DESKTOP_APP_VERSI
 const MIN_EXPECTED_SIZE = 1_000_000;
 
 /**
- * Checks that DESKTOP_DOWNLOAD_URL actually serves the installer — guarding
+ * Checks that DESKTOP_DOWNLOAD_URL actually serves the installer â€” guarding
  * against the SPA fallback returning index.html (or a 404 page) for a missing
  * file, which would otherwise download a useless HTML "installer".
  */
@@ -48,7 +48,7 @@ export async function verifyDesktopDownloadUrl(): Promise<void> {
 
   const contentType = (res.headers.get('content-type') ?? '').toLowerCase();
   if (contentType.includes('text/html')) {
-    throw new Error('The download link is not set up yet — the server returned the web page instead of the installer.');
+    throw new Error('The download link is not set up yet â€” the server returned the web page instead of the installer.');
   }
 
   const contentLength = Number(res.headers.get('content-length') ?? '0');

@@ -1,0 +1,14 @@
+{
+  "name": "ARGUS CNC ERP",
+  "short_name": "ARGUS CNC ERP",
+  "description": "ARGUS CNC ERP — install from the browser, no installer file needed.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#111c33",
+  "theme_color": "#111c33",
+  "icons": [
+    { "src": "/pwa-256.png", "sizes": "256x256", "type": "image/png", "purpose": "any" },
+    { "src": "/pwa-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

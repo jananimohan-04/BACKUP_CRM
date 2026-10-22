@@ -10,9 +10,14 @@ import { DESKTOP_APP_VERSION, downloadDesktopApp } from '@/lib/desktopDownload';
 
 type Status = 'idle' | 'busy' | 'error';
 
+/** Shown after the installer starts downloading: the installer is not yet signed with a Windows publisher certificate. */
+export const INSTALL_HELP =
+  'If Windows says "Windows protected your PC": click More info, then Run anyway. If it is blocked completely, right-click the downloaded file > Properties > tick Unblock > OK, or install from the browser instead (address bar > Install icon).';
+
 function useInstallerDownload() {
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState('');
+  const [hint, setHint] = useState(false);
 
   /** Returns true when the download was handed to the browser. */
   const start = async (): Promise<boolean> => {
@@ -21,6 +26,8 @@ function useInstallerDownload() {
     try {
       await downloadDesktopApp();
       setStatus('idle');
+      setHint(true);
+      window.setTimeout(() => setHint(false), 30000);
       return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'The download could not be started. Please try again.');
@@ -29,12 +36,12 @@ function useInstallerDownload() {
     }
   };
 
-  return { status, error, start };
+  return { status, error, hint, start };
 }
 
 /** Compact topbar trigger — icon on smaller screens, full label on wide ones. */
 export function DesktopDownloadButton() {
-  const { status, error, start } = useInstallerDownload();
+  const { status, error, hint, start } = useInstallerDownload();
   if (isTauri()) return null;
 
   return (
@@ -57,6 +64,11 @@ export function DesktopDownloadButton() {
         </span>
         <span className="hidden lg:inline text-[9px] font-extrabold text-slate-400 tabular-nums">v{DESKTOP_APP_VERSION}</span>
       </button>
+      {hint && status !== 'error' && (
+        <div role="status" className="absolute right-0 top-full mt-2 w-72 p-2.5 bg-sky-50 border border-sky-200 rounded-lg shadow-lg text-[11px] font-medium text-sky-800 z-50">
+          {INSTALL_HELP}
+        </div>
+      )}
       {status === 'error' && (
         <div role="alert" className="absolute right-0 top-full mt-2 w-60 p-2.5 bg-red-50 border border-red-200 rounded-lg shadow-lg text-[11px] font-medium text-red-700 z-50">
           {error}
@@ -69,7 +81,7 @@ export function DesktopDownloadButton() {
 
 /** Profile-menu row — full label + version, works at every screen size. */
 export function DesktopDownloadMenuItem({ onDone }: { onDone?: () => void }) {
-  const { status, error, start } = useInstallerDownload();
+  const { status, error, hint, start } = useInstallerDownload();
   if (isTauri()) return null;
 
   return (
@@ -85,6 +97,7 @@ export function DesktopDownloadMenuItem({ onDone }: { onDone?: () => void }) {
         Download Desktop App
         <span className="ml-auto text-[10px] font-bold text-slate-400 tabular-nums">v{DESKTOP_APP_VERSION}</span>
       </button>
+      {hint && status !== 'error' && <p role="status" className="px-3 pb-2 text-[11px] font-medium text-sky-800">{INSTALL_HELP}</p>}
       {status === 'error' && (
         <p role="alert" className="px-3 pb-2 text-[11px] font-medium text-red-600">
           {error} <span className="font-bold">Tap the item to retry.</span>
