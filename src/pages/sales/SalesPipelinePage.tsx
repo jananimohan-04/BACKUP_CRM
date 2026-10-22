@@ -1822,23 +1822,23 @@ function InwardGroupSection({
 
         {/* Part Items Table */}
         <div className="overflow-x-auto">
-          <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1.1fr)_minmax(0,1fr)_4.25rem_5.5rem_4rem_4rem_5.5rem_minmax(0,0.9fr)_1.75rem] gap-2 items-center mb-1.5 px-1 min-w-[840px]">
+          <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1.1fr)_4.25rem_5.5rem_4rem_4rem_5.5rem_minmax(0,0.9fr)_minmax(0,1fr)_1.75rem] gap-2 items-center mb-1.5 px-1 min-w-[840px]">
             <span className="text-[10px] font-bold text-slate-500 uppercase">Product</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Part Name</span>
-            <span className="text-[10px] font-bold text-slate-500 uppercase">Remarks</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Qty</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Price</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Disc %</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">GST %</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Total</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Drawing / Files</span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">Remarks</span>
             <span />
           </div>
 
           {g.map((row: any, ri: number) => {
             const rowAmt = inwardLineTotal(row.quantity, row.price, row.discount_percent, row.gst_percent);
             return (
-              <div key={row.id || ri} className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1.1fr)_minmax(0,1fr)_4.25rem_5.5rem_4rem_4rem_5.5rem_minmax(0,0.9fr)_1.75rem] gap-2 items-center min-w-[840px] bg-white rounded-lg border border-slate-200 p-2 mb-2 shadow-2xs">
+              <div key={row.id || ri} className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1.1fr)_4.25rem_5.5rem_4rem_4rem_5.5rem_minmax(0,0.9fr)_minmax(0,1fr)_1.75rem] gap-2 items-center min-w-[840px] bg-white rounded-lg border border-slate-200 p-2 mb-2 shadow-2xs">
                 {/* Product Dropdown */}
                 <div>
                   <select
@@ -1902,21 +1902,6 @@ function InwardGroupSection({
                     onBlur={(e) => {
                       if (e.target.value !== String(row.part_name || '')) {
                         void handleInlineEdit('Inward', row.id, { part_name: e.target.value });
-                      }
-                    }}
-                  />
-                </div>
-
-                {/* Remarks */}
-                <div>
-                  <input
-                    disabled={!viewEditMode}
-                    className="w-full text-xs font-medium text-slate-800 border border-slate-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:border-brand-500 disabled:bg-slate-50 disabled:text-slate-700"
-                    placeholder="Remarks..."
-                    defaultValue={row.remarks || ''}
-                    onBlur={(e) => {
-                      if (e.target.value !== String(row.remarks || '')) {
-                        void handleInlineEdit('Inward', row.id, { remarks: e.target.value });
                       }
                     }}
                   />
@@ -2055,6 +2040,21 @@ function InwardGroupSection({
                       />
                     </label>
                   )}
+                </div>
+
+                {/* Remarks */}
+                <div>
+                  <input
+                    disabled={!viewEditMode}
+                    className="w-full text-xs font-medium text-slate-800 border border-slate-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:border-brand-500 disabled:bg-slate-50 disabled:text-slate-700"
+                    placeholder="Remarks..."
+                    defaultValue={row.remarks || ''}
+                    onBlur={(e) => {
+                      if (e.target.value !== String(row.remarks || '')) {
+                        void handleInlineEdit('Inward', row.id, { remarks: e.target.value });
+                      }
+                    }}
+                  />
                 </div>
 
                 {/* Delete Line Button */}
@@ -7232,7 +7232,6 @@ export function SalesPipelinePage() {
                       )}
                     </div>
                     <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[16rem] sm:w-[18rem] min-w-[15rem] shrink-0 font-medium`} placeholder={(group.category || 'GOODS PURCHASE') === 'EXPENSES' ? 'Part Name' : 'Part Name *'} title="Part Name" list="saved-products" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} />
-                    <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[12rem] sm:w-[14rem] shrink-0`} placeholder="Remarks..." title="Remarks" value={item.remarks ?? ''} onChange={e=>setItem(ii, { remarks: e.target.value })} />
                     <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-1'}><span className={inlineLbl}>Qty *</span>
                       <input type="number" min="0" className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[4.25rem]`} placeholder="Qty" value={item.quantity || ''} onChange={e=>setItem(ii, { quantity: e.target.value })} /></div>
                     <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-1'}><span className={inlineLbl}>Price *</span>
@@ -7278,6 +7277,7 @@ export function SalesPipelinePage() {
                         </div>
                       )}
                     </div>
+                    <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[12rem] sm:w-[14rem] shrink-0`} placeholder="Remarks..." title="Remarks" value={item.remarks ?? ''} onChange={e=>setItem(ii, { remarks: e.target.value })} />
                     {(group.items || []).length > 1 ? (
                       <button type="button" className="shrink-0 rounded p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 ml-auto" title="Remove line" onClick={() => setGroup({ items: (group.items || []).filter((_: any, j: number) => j !== ii) })}>
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
