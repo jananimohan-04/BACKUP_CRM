@@ -923,18 +923,19 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
 
   if (card?.raw?.__pick) {
     const key = (v: string) => String(v || '').trim().toLowerCase();
-    // One row per product, written as "Company - Product - date time". Typing matches any part of that text,
-    // so the company name finds it too.
+    // One row per product, written as "Product - Company - Date/Time - Qty". Typing matches any part of that text,
+    // so the company name or product name finds it.
     const rowsAll = pickOptions
       .map((o) => {
         const s = splitProductAndRef(o.product);
-        const ref = s.reference;
-        const disp = [s.original, o.company, ref].filter(Boolean).join(' • ') + (o.qty ? ` - Qty ${o.qty}` : '');
+        const ref = formatFullReference(s.original, o.company, s.dateTime, o.qty);
         return {
           key: `${o.company}||${o.product}`,
           company: String(o.company || '').trim(),
           product: o.product,
-          label: disp,
+          label: ref,
+          original: s.original,
+          reference: ref,
         };
       })
       .sort((a, b) => a.label.localeCompare(b.label));
@@ -949,22 +950,23 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
           <div className="flex flex-wrap items-center gap-2">
             {titleSlot ?? <h3 className="text-[10px] font-bold uppercase tracking-widest text-brand-600">Section 1 — Transaction Details</h3>}
             <div className="flex items-center gap-1.5 relative" ref={prodRef}>
-              <span className={inlineLbl}>Original *</span>
+              <span className={inlineLbl}>Reference *</span>
               <div className="relative">
                 <input
                   ref={pickInputRef}
-                  className={`${compactInput} w-[9.5rem] pr-6`}
-                  placeholder="Product name"
-                  value={pickOriginal || splitProductAndRef(pickText, [], pickCompany).original || pickText}
+                  className={`${compactInput} w-[18rem] max-w-[45vw] pr-6`}
+                  placeholder="Product - Company - Date/Time - Qty"
+                  title={pickReference || pickText || splitProductAndRef(pickProduct, [], pickCompany).reference || ''}
+                  value={pickReference || pickText || splitProductAndRef(pickProduct, [], pickCompany).reference || ''}
                   onFocus={() => setProdDropdownOpen(true)}
                   onChange={(e) => {
                     const v = e.target.value;
                     const s = splitProductAndRef(v, [], pickCompany);
+                    setPickReference(v);
                     setPickOriginal(s.original);
-                    if (s.reference) setPickReference(s.reference);
                     setPickText(v);
-                    const hit = rowsAll.find((r) => key(r.label) === key(v));
-                    setPickProduct(hit ? hit.product : '');
+                    const hit = rowsAll.find((r) => key(r.label) === key(v) || key(r.reference) === key(v));
+                    setPickProduct(hit ? hit.product : v);
                     setPickCompany(hit ? hit.company : '');
                     setProdDropdownOpen(true);
                   }}
@@ -993,7 +995,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                           e.preventDefault();
                           const s = splitProductAndRef(r.product);
                           setPickOriginal(s.original);
-                          setPickReference(s.reference);
+                          setPickReference(r.label);
                           setPickText(r.label);
                           setPickProduct(r.product);
                           setPickCompany(r.company);
@@ -1011,16 +1013,16 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                   document.body,
                 )}
               </div>
-              <span className={inlineLbl}>Reference</span>
+              <span className={inlineLbl}>Original</span>
               <input
-                className={`${compactInput} w-[18rem] max-w-[45vw]`}
-                placeholder="Product - Company - Date/Time"
-                title={pickReference || splitProductAndRef(pickProduct, [], pickCompany).reference || ''}
-                value={pickReference || splitProductAndRef(pickProduct, [], pickCompany).reference || ''}
+                className={`${compactInput} w-[9.5rem]`}
+                placeholder="Original Product"
+                title={pickOriginal || splitProductAndRef(pickProduct, [], pickCompany).original || ''}
+                value={pickOriginal || splitProductAndRef(pickProduct, [], pickCompany).original || ''}
                 onChange={(e) => {
-                  const ref = e.target.value;
-                  setPickReference(ref);
-                  const orig = pickOriginal || splitProductAndRef(pickProduct).original || pickProduct;
+                  const orig = e.target.value;
+                  setPickOriginal(orig);
+                  const ref = pickReference || splitProductAndRef(pickProduct, [], pickCompany).reference || '';
                   const comb = combineProductAndRef(orig, ref);
                   setPickProduct(comb);
                 }}

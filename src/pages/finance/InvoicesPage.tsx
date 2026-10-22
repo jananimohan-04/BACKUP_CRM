@@ -612,15 +612,16 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
           const totalAmt = baseAmt * (1 + gst / 100);
           return (
             <div key={index} className="flex flex-wrap items-center gap-1.5 rounded border border-slate-200/90 bg-white/70 px-1.5 py-0.5">
-              <span className={invLbl}>Original:</span>
+              <span className={invLbl}>Reference:</span>
               <input
-                className={`${invInput} w-[8.5rem] sm:w-[9.5rem]`}
+                className={`${invInput} flex-1 min-w-[13rem] sm:min-w-[16rem]`}
                 list="inv-product-list"
-                placeholder="Product name"
-                value={line.originalName ?? (splitProductAndRef(line.description || '', allCompanies, form.customer_name).original || line.description || '')}
+                placeholder="Product - Company - Date/Time - Qty"
+                title={line.reference || "Full Reference (Product - Company - Date/Time - Qty)"}
+                value={line.reference ?? (splitProductAndRef(line.description || '', allCompanies, form.customer_name, line.quantity).reference || '')}
                 onChange={e => {
                   const val = e.target.value;
-                  const split = splitProductAndRef(val, allCompanies, form.customer_name);
+                  const split = splitProductAndRef(val, allCompanies, form.customer_name, line.quantity);
                   const orig = split.original;
                   const key = orig.trim().toLowerCase();
                   const compKey = (split.company || form.customer_name || '').trim().toLowerCase();
@@ -675,12 +676,13 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
                   const custMatch = customers.find(c => String(c.name || '').trim().toLowerCase() === targetCust.trim().toLowerCase());
 
                   const dtRef = split.dateTime || (dMatch?.delivery_date ? formatDate(dMatch.delivery_date) : '');
-                  const fullRef = split.reference || formatFullReference(orig, targetCust, dtRef);
+                  const fullRef = split.reference || formatFullReference(orig, targetCust, dtRef, split.qty || dMatch?.dispatch_qty || dMatch?.quantity || soMatch?.quantity);
                   const combined = combineProductAndRef(orig, fullRef);
 
                   // Resolve quantity
                   let resolvedQty = '';
-                  if (dMatch?.dispatch_qty != null && Number(dMatch.dispatch_qty) > 0) resolvedQty = String(dMatch.dispatch_qty);
+                  if (split.qty) resolvedQty = split.qty;
+                  else if (dMatch?.dispatch_qty != null && Number(dMatch.dispatch_qty) > 0) resolvedQty = String(dMatch.dispatch_qty);
                   else if (dMatch?.quantity != null && Number(dMatch.quantity) > 0) resolvedQty = String(dMatch.quantity);
                   else if (soMatch?.quantity != null && Number(soMatch.quantity) > 0) resolvedQty = String(soMatch.quantity);
                   else if (qMatch?.quantity != null && Number(qMatch.quantity) > 0) resolvedQty = String(qMatch.quantity);
@@ -730,17 +732,17 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
                   }));
                 }}
               />
-              <span className={invLbl}>Reference:</span>
+              <span className={invLbl}>Original:</span>
               <input
-                className={`${invInput} flex-1 min-w-[13rem] sm:min-w-[16rem]`}
-                placeholder="Product - Company - Date/Time"
-                title={line.reference || "Full Reference"}
-                value={line.reference ?? (splitProductAndRef(line.description || '', allCompanies, form.customer_name).reference || '')}
+                className={`${invInput} w-[8.5rem] sm:w-[9.5rem]`}
+                placeholder="Original Product"
+                title={line.originalName ?? (splitProductAndRef(line.description || '', allCompanies, form.customer_name).original || line.description || '')}
+                value={line.originalName ?? (splitProductAndRef(line.description || '', allCompanies, form.customer_name).original || line.description || '')}
                 onChange={e => {
-                  const ref = e.target.value;
-                  const orig = line.originalName ?? (splitProductAndRef(line.description || '').original || line.description || '');
+                  const orig = e.target.value;
+                  const ref = line.reference || (splitProductAndRef(line.description || '', allCompanies, form.customer_name, line.quantity).reference || '');
                   const combined = combineProductAndRef(orig, ref);
-                  setLines(lines.map((x, i) => i === index ? { ...x, reference: ref, description: combined } : x));
+                  setLines(lines.map((x, i) => i === index ? { ...x, originalName: orig, description: combined } : x));
                 }}
               />
               <span className={invLbl}>Qty:</span>
@@ -766,12 +768,13 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
         {deliveries.map((d: any) => {
           const s = splitProductAndRef(d.part_name || '', allCompanies, d.customer_name);
           const dt = s.dateTime || (d.delivery_date ? formatDate(d.delivery_date) : '');
-          const disp = formatFullReference(s.original, d.customer_name, dt || d.delivery_no);
+          const qty = d.dispatch_qty ?? d.quantity;
+          const disp = formatFullReference(s.original, d.customer_name, dt || d.delivery_no, qty);
           return <option key={`dlv-${d.id}`} value={disp} label={disp} />;
         })}
         {salesOrdersList.map((so: any) => {
           const s = splitProductAndRef(so.part_name || '', allCompanies, so.customer);
-          const disp = formatFullReference(s.original, so.customer, s.dateTime || so.order_no);
+          const disp = formatFullReference(s.original, so.customer, s.dateTime || so.order_no, so.quantity);
           return <option key={`so-${so.id}`} value={disp} label={disp} />;
         })}
         {partsList.map((p: any) => (

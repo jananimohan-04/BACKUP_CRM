@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { sameProduct } from '@/lib/productMatch';
+import { splitProductAndRef } from '@/lib/productLabel';
 import { supabase } from '@/lib/supabase';
 import { financeApi } from '@/lib/finance';
 import { fetchOrderQty, type OrderQtySummary } from '@/lib/orderQuantities';
@@ -516,7 +517,17 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
                 <tbody>
                   {lines.map((l) => (
                     <tr key={l.key} className="border-b border-slate-100 last:border-0">
-                      <td className="py-2 font-medium">{l.itemName || '—'}</td>
+                      <td className="py-2">
+                        {(() => {
+                          const s = splitProductAndRef(l.itemName);
+                          return (
+                            <div className="flex flex-col">
+                              <span className="font-medium text-slate-800">{s.original || l.itemName || '—'}</span>
+                              {s.reference && <span className="text-[10px] text-slate-500 font-mono">{s.reference}</span>}
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td className="py-2 font-mono text-xs">{l.productCode || '—'}</td>
                       <td className="py-2 font-mono text-xs" data-testid="inv-hsn">{hsnOf(l) || '—'}</td>
                       <td className="py-2 text-right">

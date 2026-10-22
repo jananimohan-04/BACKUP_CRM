@@ -6723,7 +6723,7 @@ export function SalesPipelinePage() {
       const bestCategory = String(matchedOrder?.category || (m as any)?.category || (matchedCard?.raw as any)?.category || '').trim();
 
       // Update line item
-      const fullDcRef = split.reference || formatFullReference(split.original || rawNm, targetCust, split.dateTime);
+      const fullDcRef = split.reference || formatFullReference(split.original || rawNm, targetCust, split.dateTime, resolvedQty || split.qty);
       setDcItems((prev) => prev.map((x, i) => (i === idx ? {
         ...x,
         name: combineProductAndRef(split.original || rawNm, fullDcRef),
@@ -6881,33 +6881,40 @@ export function SalesPipelinePage() {
                     className="h-3.5 w-3.5 accent-brand-600 rounded"
                     aria-label={`Select ${it.name || 'product'}`}
                   />
-                  <span className={dcLbl}>Original:</span>
-                  <input
-                    className={`${dcInput} w-[8.5rem] sm:w-[9.5rem]`}
-                    list="dc-product-list"
-                    placeholder="Product name"
-                    value={it.originalName ?? (splitProductAndRef(it.name || '', allKnownCompanies.map((c: any) => c.company || c.name), dcForm.customer).original || it.name || '')}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      const split = splitProductAndRef(val, allKnownCompanies.map((c: any) => c.company || c.name), dcForm.customer);
-                      const orig = split.original;
-                      const ref = split.reference || formatFullReference(orig, dcForm.customer, split.dateTime);
-                      const combined = combineProductAndRef(orig, ref);
-                      setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, originalName: orig, reference: ref, name: combined } : x)));
-                      handleDcPartChange(val, idx);
-                    }}
-                  />
                   <span className={dcLbl}>Reference:</span>
                   <input
                     className={`${dcInput} flex-1 min-w-[13rem] sm:min-w-[16rem]`}
-                    placeholder="Product - Company - Date/Time"
-                    title={it.reference || (splitProductAndRef(it.name || '', allKnownCompanies.map((c: any) => c.company || c.name), dcForm.customer).reference || '')}
-                    value={it.reference ?? (splitProductAndRef(it.name || '', allKnownCompanies.map((c: any) => c.company || c.name), dcForm.customer).reference || '')}
+                    list="dc-product-list"
+                    placeholder="Product - Company - Date/Time - Qty"
+                    title={it.reference || (splitProductAndRef(it.name || '', allKnownCompanies.map((c: any) => c.company || c.name), dcForm.customer, it.qty).reference || '')}
+                    value={it.reference ?? (splitProductAndRef(it.name || '', allKnownCompanies.map((c: any) => c.company || c.name), dcForm.customer, it.qty).reference || '')}
                     onChange={(e) => {
-                      const ref = e.target.value;
-                      const orig = it.originalName ?? (splitProductAndRef(it.name || '').original || it.name || '');
+                      const val = e.target.value;
+                      const split = splitProductAndRef(val, allKnownCompanies.map((c: any) => c.company || c.name), dcForm.customer, it.qty);
+                      const orig = split.original;
+                      const ref = split.reference || formatFullReference(orig, dcForm.customer, split.dateTime, split.qty || it.qty);
                       const combined = combineProductAndRef(orig, ref);
-                      setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, reference: ref, name: combined } : x)));
+                      setDcItems((prev) => prev.map((x, i) => (i === idx ? {
+                        ...x,
+                        originalName: orig,
+                        reference: ref,
+                        name: combined,
+                        qty: (split.qty && (!x.qty || x.qty === '0')) ? split.qty : x.qty,
+                      } : x)));
+                      handleDcPartChange(val, idx);
+                    }}
+                  />
+                  <span className={dcLbl}>Original:</span>
+                  <input
+                    className={`${dcInput} w-[8.5rem] sm:w-[9.5rem]`}
+                    placeholder="Original Product"
+                    title={it.originalName ?? (splitProductAndRef(it.name || '', allKnownCompanies.map((c: any) => c.company || c.name), dcForm.customer).original || it.name || '')}
+                    value={it.originalName ?? (splitProductAndRef(it.name || '', allKnownCompanies.map((c: any) => c.company || c.name), dcForm.customer).original || it.name || '')}
+                    onChange={(e) => {
+                      const orig = e.target.value;
+                      const ref = it.reference || (splitProductAndRef(it.name || '', allKnownCompanies.map((c: any) => c.company || c.name), dcForm.customer, it.qty).reference || '');
+                      const combined = combineProductAndRef(orig, ref);
+                      setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, originalName: orig, name: combined } : x)));
                     }}
                   />
                   <span className={dcLbl}>HSN:</span>
@@ -6951,7 +6958,7 @@ export function SalesPipelinePage() {
               const so = enquiryProductOptions(rawLeadsList, undefined, salesOrdersList);
               const soOptions = so.map((o: any) => {
                 const s = splitProductAndRef(o.name);
-                const desc = [s.original, o.customer, s.reference || o.saleLabel].filter(Boolean).join(' · ');
+                const desc = formatFullReference(s.original, o.customer, s.dateTime || o.saleLabel, o.qty);
                 return <option key={o.key || o.name} value={desc} label={desc} />;
               });
               const partOptions = partsMaster.map((p: any) => (
@@ -7148,17 +7155,22 @@ export function SalesPipelinePage() {
                     <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 min-w-0 items-center gap-1'}>
                       {(group.category || 'GOODS PURCHASE') === 'EXPENSES' ? (
                         <>
-                          <input className={opts?.popup ? `${compactInput} flex-1 min-w-[7rem]` : `${compactInput} w-[8rem]`} list={`expense-products-${index}-${ii}`} placeholder="Original Product" title="Original Product" value={item.originalProduct ?? (splitProductAndRef(item.productName || '').original || item.productName || '')}
+                          <input className={opts?.popup ? `${compactInput} flex-1 min-w-[7.5rem]` : `${compactInput} w-[8.5rem]`} list={`expense-products-${index}-${ii}`} placeholder="Product - Date/Time - Qty" title="Reference (Product - Date/Time - Qty)" value={item.productRef ?? (splitProductAndRef(item.productName || '', [], '', item.quantity).reference || '')}
                             onChange={e => {
-                              const s = splitProductAndRef(e.target.value);
-                              setItem(ii, { originalProduct: s.original, productRef: s.reference || item.productRef || '', productName: e.target.value });
+                              const s = splitProductAndRef(e.target.value, [], '', item.quantity);
+                              setItem(ii, {
+                                originalProduct: s.original,
+                                productRef: s.reference || e.target.value,
+                                productName: e.target.value,
+                                ...(s.qty && !item.quantity ? { quantity: s.qty } : {})
+                              });
                               onInwardProductInput(index, ii, e.target.value, { allowFreeText: true });
                             }} />
-                          <input className={opts?.popup ? `${compactInput} w-[5.5rem]` : `${compactInput} w-[5.5rem]`} placeholder="Ref/Date" title="Reference" value={item.productRef ?? (splitProductAndRef(item.productName || '').reference || '')}
+                          <input className={opts?.popup ? `${compactInput} w-[6.5rem]` : `${compactInput} w-[6.5rem]`} placeholder="Original Product" title="Original Product" value={item.originalProduct ?? (splitProductAndRef(item.productName || '').original || item.productName || '')}
                             onChange={e => {
-                              const ref = e.target.value;
-                              const orig = item.originalProduct ?? (splitProductAndRef(item.productName || '').original || item.productName || '');
-                              setItem(ii, { productRef: ref, productName: combineProductAndRef(orig, ref) });
+                              const orig = e.target.value;
+                              const ref = item.productRef ?? (splitProductAndRef(item.productName || '').reference || '');
+                              setItem(ii, { originalProduct: orig, productName: combineProductAndRef(orig, ref) });
                             }} />
                           <datalist id={`expense-products-${index}-${ii}`}>
                             {eligibleCatalogue.map((m: any) => <option key={m.key} value={m.name}>{[m.code, m.unit ? `per ${m.unit}` : '', m.unitPrice ? `₹${m.unitPrice}` : ''].filter(Boolean).join(' · ')}</option>)}
@@ -7167,25 +7179,35 @@ export function SalesPipelinePage() {
                         </>
                       ) : (
                         <>
-                          <input className={opts?.popup ? `${compactInput} w-[8.5rem] sm:w-[9.5rem]` : `${compactInput} w-[8.5rem] shrink-0`} list={`inward-products-${index}-${ii}`} placeholder="Original Product" title="Original Product" value={item.originalProduct ?? (splitProductAndRef(item.productDisplay || item.productName || '', allKnownCompanies.map((c: any) => c.company || c.name), group.partyName).original || item.productName || '')}
+                          <input className={opts?.popup ? `${compactInput} flex-1 min-w-[12rem] sm:min-w-[15rem]` : `${compactInput} w-[14rem] sm:w-[16rem] shrink-0`} list={`inward-products-${index}-${ii}`} placeholder="Product - Company - Date/Time - Qty" title={item.productRef || "Full Reference (Product - Company - Date/Time - Qty)"} value={item.productRef ?? (splitProductAndRef(item.productDisplay || item.productName || '', allKnownCompanies.map((c: any) => c.company || c.name), group.partyName, item.quantity).reference || '')}
                             onChange={e => {
-                              const s = splitProductAndRef(e.target.value, allKnownCompanies.map((c: any) => c.company || c.name), group.partyName);
-                              setItem(ii, { originalProduct: s.original, productRef: s.reference || item.productRef || '', productName: e.target.value });
+                              const s = splitProductAndRef(e.target.value, allKnownCompanies.map((c: any) => c.company || c.name), group.partyName, item.quantity);
+                              const orig = s.original;
+                              const ref = s.reference || e.target.value;
+                              setItem(ii, {
+                                originalProduct: orig,
+                                productRef: ref,
+                                productName: combineProductAndRef(orig, ref),
+                                ...(s.qty && (!item.quantity || item.quantity === '0')) ? { quantity: s.qty } : {}
+                              });
                               onInwardProductInput(index, ii, e.target.value);
                             }} />
-                          <input className={opts?.popup ? `${compactInput} flex-1 min-w-[12rem] sm:min-w-[15rem]` : `${compactInput} w-[14rem] shrink-0`} placeholder="Product - Company - Date/Time" title={item.productRef || "Full Reference"} value={item.productRef ?? (splitProductAndRef(item.productDisplay || item.productName || '', allKnownCompanies.map((c: any) => c.company || c.name), group.partyName).reference || '')}
+                          <input className={opts?.popup ? `${compactInput} w-[8.5rem] sm:w-[9.5rem]` : `${compactInput} w-[8.5rem] shrink-0`} placeholder="Original Product" title="Original Product" value={item.originalProduct ?? (splitProductAndRef(item.productDisplay || item.productName || '', allKnownCompanies.map((c: any) => c.company || c.name), group.partyName).original || item.productName || '')}
                             onChange={e => {
-                              const ref = e.target.value;
-                              const orig = item.originalProduct ?? (splitProductAndRef(item.productDisplay || item.productName || '').original || item.productName || '');
-                              setItem(ii, { productRef: ref, productName: combineProductAndRef(orig, ref) });
+                              const orig = e.target.value;
+                              const ref = item.productRef ?? (splitProductAndRef(item.productDisplay || item.productName || '', allKnownCompanies.map((c: any) => c.company || c.name), group.partyName, item.quantity).reference || '');
+                              setItem(ii, {
+                                originalProduct: orig,
+                                productName: combineProductAndRef(orig, ref),
+                                partName: (!item.partName || item.partName === item.originalProduct) ? orig : item.partName
+                              });
                             }} />
                           <datalist id={`inward-products-${index}-${ii}`}>
                             {eligibleCatalogue.map((m: any) => <option key={m.key} value={m.name}>{[m.code, m.unit ? `per ${m.unit}` : '', m.unitPrice ? `₹${m.unitPrice}` : ''].filter(Boolean).join(' · ')}</option>)}
                             {productOptions.map((option: any) => {
                               const s = splitProductAndRef(option.name);
-                              const ref = s.reference || option.saleLabel || '';
-                              const optVal = [s.original, option.customer, ref].filter(Boolean).join(' • ');
-                              return <option key={option.key} value={optVal} label={optVal} />;
+                              const ref = formatFullReference(s.original, option.customer, s.dateTime || option.saleLabel, option.quantity ?? option.qty);
+                              return <option key={option.key} value={ref} label={ref} />;
                             })}
                           </datalist>
                         </>

@@ -54,12 +54,25 @@ export function registerKnownCompanies(companies: (string | null | undefined)[])
   }
 }
 
-/** Formats a full reference label showing: product name + company name + date and time. */
-export function formatFullReference(product: string, company?: string, dateTime?: string): string {
+/** Formats a full reference label showing: product name + company name + date/time + qty. */
+export function formatFullReference(
+  product: string,
+  company?: string,
+  dateTime?: string,
+  qty?: number | string | null
+): string {
   const p = String(product || '').trim();
   const c = String(company || '').trim();
   const dt = String(dateTime || '').trim();
-  return [p, c, dt].filter(Boolean).join(' - ');
+  const n = Number(qty);
+  let q = '';
+  if (Number.isFinite(n) && n > 0) {
+    q = `Qty ${n}`;
+  } else if (typeof qty === 'string' && qty.trim()) {
+    const cleanQ = qty.trim();
+    q = /^qty\b/i.test(cleanQ) ? cleanQ : `Qty ${cleanQ}`;
+  }
+  return [p, c, dt, q].filter(Boolean).join(' - ');
 }
 
 /**
@@ -69,18 +82,26 @@ export function formatFullReference(product: string, company?: string, dateTime?
  * - "p1 • ABC Industries • 30-09-2026 00:40"
  * - "p1 - ABC Industries - 30-09-2026 00:40 - Qty 5"
  * into:
- * { original: "p1", reference: "p1 - ABC Industries - 30-09-2026 00:40", company: "ABC Industries", dateTime: "30-09-2026 00:40" }
+ * { original: "p1", reference: "p1 - ABC Industries - 30-09-2026 00:40 - Qty 5", company: "ABC Industries", dateTime: "30-09-2026 00:40", qty: "5" }
  */
 export function splitProductAndRef(
   fullText: string,
   knownCompanies: string[] = [],
-  defaultCompany: string = ''
-): { original: string; reference: string; company?: string; dateTime?: string } {
+  defaultCompany: string = '',
+  defaultQty?: number | string | null
+): { original: string; reference: string; company?: string; dateTime?: string; qty?: string } {
   let str = String(fullText || '').trim();
-  if (!str) return { original: '', reference: '', company: '', dateTime: '' };
+  if (!str) return { original: '', reference: '', company: '', dateTime: '', qty: '' };
 
-  // Strip trailing quantity if present: " - Qty 10" or " • Qty 10"
-  str = str.replace(/\s*[-•·]\s*Qty\s*\d+\s*$/i, '').trim();
+  // Strip and capture trailing quantity if present: " - Qty 10" or " • Qty 10"
+  let qtyStr = '';
+  const qtyMatch = /\s*[-•·]\s*Qty\s*(\d+(?:\.\d+)?)\s*$/i.exec(str);
+  if (qtyMatch) {
+    qtyStr = qtyMatch[1];
+    str = str.slice(0, qtyMatch.index).trim();
+  } else if (defaultQty != null && defaultQty !== '') {
+    qtyStr = String(defaultQty).replace(/^qty\s*/i, '').trim();
+  }
 
   let dt = '';
   let company = '';
@@ -123,13 +144,16 @@ export function splitProductAndRef(
   }
 
   const effCompany = company || defaultCompany || '';
-  const fullRef = dt ? formatFullReference(orig, effCompany, dt) : (effCompany ? `${orig} - ${effCompany}` : '');
+  const fullRef = (dt || effCompany || qtyStr)
+    ? formatFullReference(orig, effCompany, dt, qtyStr)
+    : '';
 
   return {
     original: orig,
     reference: fullRef || dt,
     company: effCompany,
     dateTime: dt,
+    qty: qtyStr,
   };
 }
 
