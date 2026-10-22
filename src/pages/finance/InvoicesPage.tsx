@@ -614,6 +614,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
             <div key={index} className="flex flex-wrap items-center gap-1.5 rounded border border-slate-200/90 bg-white/70 px-1.5 py-0.5">
               <span className={invLbl}>Reference:</span>
               <input
+                autoComplete="off"
                 className={`${invInput} flex-1 min-w-[13rem] sm:min-w-[16rem]`}
                 list="inv-product-list"
                 placeholder="Product - Company - Date/Time - Qty"
@@ -734,6 +735,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
               />
               <span className={invLbl}>Original:</span>
               <input
+                autoComplete="off"
                 className={`${invInput} w-[8.5rem] sm:w-[9.5rem]`}
                 placeholder="Original Product"
                 title={line.originalName ?? (splitProductAndRef(line.description || '', allCompanies, form.customer_name).original || line.description || '')}

@@ -954,6 +954,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
               <div className="relative">
                 <input
                   ref={pickInputRef}
+                  autoComplete="off"
                   className={`${compactInput} w-[18rem] max-w-[45vw] pr-6`}
                   placeholder="Product - Company - Date/Time - Qty"
                   title={pickReference || pickText || splitProductAndRef(pickProduct, [], pickCompany).reference || ''}
@@ -993,8 +994,8 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                         className="cursor-pointer px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-brand-50 hover:text-brand-800"
                         onMouseDown={(e) => {
                           e.preventDefault();
-                          const s = splitProductAndRef(r.product);
-                          setPickOriginal(s.original);
+                          const s = splitProductAndRef(r.product, [], r.company);
+                          setPickOriginal(r.original || s.original);
                           setPickReference(r.label);
                           setPickText(r.label);
                           setPickProduct(r.product);
@@ -1015,6 +1016,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
               </div>
               <span className={inlineLbl}>Original</span>
               <input
+                autoComplete="off"
                 className={`${compactInput} w-[9.5rem]`}
                 placeholder="Original Product"
                 title={pickOriginal || splitProductAndRef(pickProduct, [], pickCompany).original || ''}

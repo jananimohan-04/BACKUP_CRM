@@ -6883,6 +6883,7 @@ export function SalesPipelinePage() {
                   />
                   <span className={dcLbl}>Reference:</span>
                   <input
+                    autoComplete="off"
                     className={`${dcInput} flex-1 min-w-[13rem] sm:min-w-[16rem]`}
                     list="dc-product-list"
                     placeholder="Product - Company - Date/Time - Qty"
@@ -6906,6 +6907,7 @@ export function SalesPipelinePage() {
                   />
                   <span className={dcLbl}>Original:</span>
                   <input
+                    autoComplete="off"
                     className={`${dcInput} w-[8.5rem] sm:w-[9.5rem]`}
                     placeholder="Original Product"
                     title={it.originalName ?? (splitProductAndRef(it.name || '', allKnownCompanies.map((c: any) => c.company || c.name), dcForm.customer).original || it.name || '')}
@@ -7155,7 +7157,7 @@ export function SalesPipelinePage() {
                     <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 min-w-0 items-center gap-1'}>
                       {(group.category || 'GOODS PURCHASE') === 'EXPENSES' ? (
                         <>
-                          <input className={opts?.popup ? `${compactInput} flex-1 min-w-[7.5rem]` : `${compactInput} w-[8.5rem]`} list={`expense-products-${index}-${ii}`} placeholder="Product - Date/Time - Qty" title="Reference (Product - Date/Time - Qty)" value={item.productRef ?? (splitProductAndRef(item.productName || '', [], '', item.quantity).reference || '')}
+                          <input autoComplete="off" className={opts?.popup ? `${compactInput} flex-1 min-w-[7.5rem]` : `${compactInput} w-[8.5rem]`} list={`expense-products-${index}-${ii}`} placeholder="Product - Date/Time - Qty" title="Reference (Product - Date/Time - Qty)" value={item.productRef ?? (splitProductAndRef(item.productName || '', [], '', item.quantity).reference || '')}
                             onChange={e => {
                               const s = splitProductAndRef(e.target.value, [], '', item.quantity);
                               setItem(ii, {
@@ -7166,7 +7168,7 @@ export function SalesPipelinePage() {
                               });
                               onInwardProductInput(index, ii, e.target.value, { allowFreeText: true });
                             }} />
-                          <input className={opts?.popup ? `${compactInput} w-[6.5rem]` : `${compactInput} w-[6.5rem]`} placeholder="Original Product" title="Original Product" value={item.originalProduct ?? (splitProductAndRef(item.productName || '').original || item.productName || '')}
+                          <input autoComplete="off" className={opts?.popup ? `${compactInput} w-[6.5rem]` : `${compactInput} w-[6.5rem]`} placeholder="Original Product" title="Original Product" value={item.originalProduct ?? (splitProductAndRef(item.productName || '').original || item.productName || '')}
                             onChange={e => {
                               const orig = e.target.value;
                               const ref = item.productRef ?? (splitProductAndRef(item.productName || '').reference || '');
@@ -7179,7 +7181,7 @@ export function SalesPipelinePage() {
                         </>
                       ) : (
                         <>
-                          <input className={opts?.popup ? `${compactInput} flex-1 min-w-[12rem] sm:min-w-[15rem]` : `${compactInput} w-[14rem] sm:w-[16rem] shrink-0`} list={`inward-products-${index}-${ii}`} placeholder="Product - Company - Date/Time - Qty" title={item.productRef || "Full Reference (Product - Company - Date/Time - Qty)"} value={item.productRef ?? (splitProductAndRef(item.productDisplay || item.productName || '', allKnownCompanies.map((c: any) => c.company || c.name), group.partyName, item.quantity).reference || '')}
+                          <input autoComplete="off" className={opts?.popup ? `${compactInput} flex-1 min-w-[12rem] sm:min-w-[15rem]` : `${compactInput} w-[14rem] sm:w-[16rem] shrink-0`} list={`inward-products-${index}-${ii}`} placeholder="Product - Company - Date/Time - Qty" title={item.productRef || "Full Reference (Product - Company - Date/Time - Qty)"} value={item.productRef ?? (splitProductAndRef(item.productDisplay || item.productName || '', allKnownCompanies.map((c: any) => c.company || c.name), group.partyName, item.quantity).reference || '')}
                             onChange={e => {
                               const s = splitProductAndRef(e.target.value, allKnownCompanies.map((c: any) => c.company || c.name), group.partyName, item.quantity);
                               const orig = s.original;
@@ -7192,7 +7194,7 @@ export function SalesPipelinePage() {
                               });
                               onInwardProductInput(index, ii, e.target.value);
                             }} />
-                          <input className={opts?.popup ? `${compactInput} w-[8.5rem] sm:w-[9.5rem]` : `${compactInput} w-[8.5rem] shrink-0`} placeholder="Original Product" title="Original Product" value={item.originalProduct ?? (splitProductAndRef(item.productDisplay || item.productName || '', allKnownCompanies.map((c: any) => c.company || c.name), group.partyName).original || item.productName || '')}
+                          <input autoComplete="off" className={opts?.popup ? `${compactInput} w-[8.5rem] sm:w-[9.5rem]` : `${compactInput} w-[8.5rem] shrink-0`} placeholder="Original Product" title="Original Product" value={item.originalProduct ?? (splitProductAndRef(item.productDisplay || item.productName || '', allKnownCompanies.map((c: any) => c.company || c.name), group.partyName).original || item.productName || '')}
                             onChange={e => {
                               const orig = e.target.value;
                               const ref = item.productRef ?? (splitProductAndRef(item.productDisplay || item.productName || '', allKnownCompanies.map((c: any) => c.company || c.name), group.partyName, item.quantity).reference || '');
