@@ -1,7 +1,7 @@
 // Finished goods in stock: what production has completed for an order and not yet sent out on a delivery challan.
 // Same rule as the pipeline's Finished Goods card: available = good completed - delivered (cancelled / returned challans do not count).
 
-export interface WoLike { id: string; wo_no?: string | null; sales_order?: string | null; part_name?: string | null; customer?: string | null; completed?: number | string | null; warehouse_id?: string | null }
+export interface WoLike { is_part_order?: boolean | null; id: string; wo_no?: string | null; sales_order?: string | null; part_name?: string | null; customer?: string | null; completed?: number | string | null; warehouse_id?: string | null }
 export interface DcLike { sales_order_no?: string | null; part_name?: string | null; dispatch_qty?: number | string | null; quantity?: number | string | null; status?: string | null }
 
 export interface FgStockRow {
@@ -29,6 +29,7 @@ export function finishedGoodsStock(wos: WoLike[], dcs: DcLike[]): FgStockRow[] {
   }
   const groups = new Map<string, FgStockRow>();
   for (const w of wos) {
+    if (w.is_part_order === true) continue; // a part's completed quantity is not finished product
     const good = num(w.completed);
     if (good <= 0) continue;
     const k = `${norm(w.sales_order)}|${norm(w.part_name)}`;

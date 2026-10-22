@@ -43,7 +43,7 @@ export function QuantityTrackingPage({ embedded = false }: { embedded?: boolean 
         let so = await soQ('id,order_no,lead_no,order_date,customer,part_name,part_no,quantity,status');
         if (so.error) so = await soQ('id,order_no,order_date,customer,part_name,part_no,quantity,status');
         const [wo, dc, inv, cu, bq] = await Promise.all([
-          supabase.from('cnc_work_orders').select('sales_order,completed,rejected').limit(5000),
+          supabase.from('cnc_work_orders').select('*').limit(5000),
           supabase.from('cnc_deliveries').select('id,delivery_no,delivery_date,sales_order_id,sales_order_no,dispatch_qty,quantity,status').limit(5000),
           supabase.from('cnc_invoices').select('id,invoice_no,invoice_type,invoice_date,sales_order_id,delivery_id,dc_no,quantity,cancelled').limit(5000),
           supabase.from('cnc_customers').select('id,name').order('name').limit(2000),
@@ -53,7 +53,7 @@ export function QuantityTrackingPage({ embedded = false }: { embedded?: boolean 
         const fail = [so, wo, dc, inv, cu].find((x) => x.error);
         if (fail) throw fail.error;
         setOrders(so.data || []);
-        setWos(wo.data || []);
+        setWos((wo.data || []).filter((w: any) => w.is_part_order !== true)); // part orders are not finished product
         setDeliveries(dc.data || []);
         setInvoices(inv.data || []);
         setCustomers(cu.data || []);

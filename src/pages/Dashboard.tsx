@@ -402,7 +402,6 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Work Order</th>
                   <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Part Reference</th>
                   <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Progress</th>
                   <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Status</th>
@@ -410,11 +409,10 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {!loading && stats.openWOs.length === 0 && (
-                  <tr><td colSpan={4} className="px-4 py-6 text-center text-sm text-slate-400">No open work orders.</td></tr>
+                  <tr><td colSpan={3} className="px-4 py-6 text-center text-sm text-slate-400">No open work orders.</td></tr>
                 )}
                 {stats.openWOs.slice(0, 6).map((wo) => (
                   <tr key={wo.id} className="hover:bg-slate-50/50 transition-colors group cursor-pointer" onClick={() => onNavigate('production/planning')}>
-                    <td className="px-4 py-2 font-mono text-xs font-bold text-brand-700">{wo.wo_no}</td>
                     <td className="px-4 py-2">
                       <p className="text-sm font-semibold text-slate-800 group-hover:text-brand-600 transition-colors">{wo.part_name}</p>
                     </td>

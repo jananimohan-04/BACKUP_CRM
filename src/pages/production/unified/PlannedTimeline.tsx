@@ -1,3 +1,4 @@
+import { workOrderTitle } from '@/lib/workOrderFormat';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -561,10 +562,10 @@ export function PlannedTimeline() {
                   const width = `calc(${(1 / lanes) * 100}% - 4px)`;
                   const left = `calc(${(lane / lanes) * 100}% + 2px)`;
                   return (
-                    <button key={r.id} type="button" data-testid="plan-block" onClick={() => setPicked(r)} title={`${wo?.wo_no ?? ''} · ${r.process_name} · Machine: ${r.machine} · Operator: ${r.operator || '—'} · ${fmtTime24(hh(r.start_time))}–${fmtTime24(hh(r.end_time))}`}
+                    <button key={r.id} type="button" data-testid="plan-block" onClick={() => setPicked(r)} title={`${wo ? workOrderTitle(wo) : ''} · ${r.process_name} · Machine: ${r.machine} · Operator: ${r.operator || '—'} · ${fmtTime24(hh(r.start_time))}–${fmtTime24(hh(r.end_time))}`}
                       className={`absolute overflow-hidden rounded-md border-l-[4px] px-2 py-1 text-left shadow-md transition-all z-10 ${colorForMachine(r.machine, machines)} ${clash.has(r.id) ? 'ring-2 ring-red-500' : ''}`}
                       style={{ top, height, left, width }}>
-                      <div className="font-bold text-xs truncate leading-snug">{wo?.wo_no ?? 'Work order'}{r.process_name ? ` · ${r.process_name}` : ''}</div>
+                      <div className="font-bold text-xs truncate leading-snug">{wo ? workOrderTitle(wo) : 'Order'}{r.process_name ? ` · ${r.process_name}` : ''}</div>
                       <div className="truncate text-[11px] font-semibold leading-snug opacity-95">
                         <span className="font-black uppercase bg-black/30 px-1 py-0.5 rounded text-[11px] mr-1 inline-block">{r.machine || '—'}</span>
                         {r.operator ? `${r.operator} · ` : ''}{fmtTime24(hh(r.start_time))}–{fmtTime24(hh(r.end_time))}{r.quantity != null ? ` · Qty ${r.quantity}` : ''}
@@ -610,7 +611,7 @@ export function PlannedTimeline() {
           <PlanEditor value={form.plan} onChange={plan => setForm(f => ({ ...f, plan }))} />
           {conflicts.length > 0 && (
             <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2" data-testid="plan-conflict">
-              {form.machine} is already planned at these times: {conflicts.slice(0, 3).map(c => `${woById.get(String(c.o.work_order_id))?.wo_no ?? 'another order'} on ${dayLabel(c.s.date)} ${fmtTime24(hh(c.o.start_time))}–${fmtTime24(hh(c.o.end_time))}`).join('; ')}{conflicts.length > 3 ? ` and ${conflicts.length - 3} more` : ''}.
+              {form.machine} is already planned at these times: {conflicts.slice(0, 3).map(c => `${workOrderTitle(woById.get(String(c.o.work_order_id))) || 'another order'} on ${dayLabel(c.s.date)} ${fmtTime24(hh(c.o.start_time))}–${fmtTime24(hh(c.o.end_time))}`).join('; ')}{conflicts.length > 3 ? ` and ${conflicts.length - 3} more` : ''}.
             </p>
           )}
         </div>
@@ -619,7 +620,7 @@ export function PlannedTimeline() {
       <Modal open={!!picked} onClose={() => setPicked(null)} title="Edit Planned Slot" size="md"
         subtitle={picked ? (() => {
           const wo = woById.get(String(picked.work_order_id));
-          return `${wo?.wo_no ?? 'Work order'} · ${wo?.part_name ?? ''} ${wo?.customer ? `(${wo.customer})` : ''}`;
+          return `${wo ? workOrderTitle(wo) : 'Order'} ${wo?.customer ? `(${wo.customer})` : ''}`;
         })() : undefined}
         footer={picked ? (
           <div className="flex flex-wrap items-center justify-between w-full gap-2">
@@ -733,7 +734,7 @@ export function PlannedTimeline() {
 
               {editConflicts.length > 0 && (
                 <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2" data-testid="plan-edit-conflict">
-                  ⚠️ Conflict: {editForm.machine}{editForm.operator.trim() ? ' / ' + editForm.operator.trim() : ''} is already planned at this time on {editConflicts.slice(0, 2).map(c => `${woById.get(String(c.work_order_id))?.wo_no ?? 'another order'} (${fmtTime24(hh(c.start_time))}–${fmtTime24(hh(c.end_time))})`).join('; ')}{editConflicts.length > 2 ? ` and ${editConflicts.length - 2} more` : ''}.
+                  ⚠️ Conflict: {editForm.machine}{editForm.operator.trim() ? ' / ' + editForm.operator.trim() : ''} is already planned at this time on {editConflicts.slice(0, 2).map(c => `${workOrderTitle(woById.get(String(c.work_order_id))) || 'another order'} (${fmtTime24(hh(c.start_time))}–${fmtTime24(hh(c.end_time))})`).join('; ')}{editConflicts.length > 2 ? ` and ${editConflicts.length - 2} more` : ''}.
                 </p>
               )}
             </div>

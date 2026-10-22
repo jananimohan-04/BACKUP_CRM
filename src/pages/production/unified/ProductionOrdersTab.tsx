@@ -1,3 +1,4 @@
+import { workOrderTitle } from '@/lib/workOrderFormat';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { formatDate } from '@/lib/format';
@@ -11,6 +12,7 @@ import {
 import { WorkOrderDetail } from './WorkOrderDetail';
 import { fetchActiveRouting } from '@/lib/partRouting';
 import { PlanEditor } from './PlanEditor';
+import { buildPartChoices, buildProductChoices, isPartOrder } from '@/lib/partOrders';
 import { emptyPlan, expandPlan, isMissingTable, planError, planFromRows, planIsBlank, type PlanDraft } from '@/lib/operationPlans';
 
 export const WO_STATUSES = ['Draft', 'Planned', 'Released', 'In Progress', 'Completed', 'On Hold', 'Cancelled'];
@@ -35,6 +37,9 @@ export interface OpDraft {
 }
 
 interface WOForm {
+  /** Product and part picked in the form; the sales order is worked out from them. */
+  productKey: string;
+  partKey: string;
   salesOrderId: string;
   targetQty: string;
   startDate: string;
@@ -43,6 +48,8 @@ interface WOForm {
 }
 
 const EMPTY_WO_FORM: WOForm = {
+  productKey: '',
+  partKey: '',
   salesOrderId: '',
   targetQty: '',
   startDate: '',
@@ -58,6 +65,7 @@ const newOpKey = () =>
 export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]; refresh: () => void }) {
   const { setTabActions } = useHeaderKpis();
   const [salesOrders, setSalesOrders] = useState<any[]>([]);
+  const [inwards, setInwards] = useState<any[]>([]);
   const [processes, setProcesses] = useState<any[]>([]);
   const [processesMissing, setProcessesMissing] = useState(false);
   const [operations, setOperations] = useState<any[]>([]);
@@ -94,6 +102,12 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
       else setSalesOrders(soData ?? []);
     } catch (err) {
       console.error('Failed to load sales orders:', err);
+    }
+    try {
+      const { data } = await supabase.from('cnc_inwards').select('*').neq('status', 'Deleted');
+      setInwards(data ?? []);
+    } catch (err) {
+      console.error('Failed to load inwards:', err);
     }
     try {
       const { data, error } = await supabase
@@ -217,10 +231,15 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
     search.trim() !== '' || customerFilter !== 'All Companies' || productFilter !== 'All Products' ||
     statusFilter !== 'All Statuses' || dateFrom !== '' || dateTo !== '';
 
-  const selectedSO = useMemo(
-    () => salesOrders.find((s) => String(s.id) === woForm.salesOrderId) ?? null,
-    [salesOrders, woForm.salesOrderId]
+  // Products (sales orders + inwards), and the parts of each with how many were ordered / are still remaining.
+  const productChoices = useMemo(() => buildProductChoices(salesOrders, inwards), [salesOrders, inwards]);
+  const partChoices = useMemo(() => buildPartChoices(productChoices, inwards, workOrders ?? []), [productChoices, inwards, workOrders]);
+  const partOptions = useMemo(
+    () => (woForm.productKey ? partChoices.filter((p) => p.productKey === woForm.productKey) : partChoices),
+    [partChoices, woForm.productKey]
   );
+  const selectedPart = useMemo(() => partChoices.find((p) => p.key === woForm.partKey) ?? null, [partChoices, woForm.partKey]);
+  const selectedSO = selectedPart?.so ?? null;
   const activeProcesses = useMemo(
     () => processes.filter((p) => (p.status ?? 'Active') === 'Active'),
     [processes]
@@ -236,18 +255,16 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
     setShowForm(true);
   }, []);
 
+  // The Create Production Order button is not shown on this page (the order form below is kept for when it is needed).
   useEffect(() => {
-    setTabActions(
-      <Button icon={<Plus size={14} />} onClick={openCreate} size="sm" className="h-7 py-1 text-xs px-2.5 shadow-sm">
-        Create Production Order
-      </Button>
-    );
-    return () => setTabActions(null);
-  }, [openCreate, setTabActions]);
+    setTabActions(null);
+  }, [setTabActions]);
 
   const openEdit = (wo: any) => {
     setEditWO(wo);
     setWoForm({
+      productKey: '',
+      partKey: '',
       salesOrderId: '',
       targetQty: String(wo.quantity ?? ''),
       startDate: (wo.start_date ?? '').slice(0, 10),
@@ -293,19 +310,36 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
     });
   };
 
-  const handleSOSelect = (id: string) => {
-    const so = salesOrders.find((s) => String(s.id) === id) ?? null;
+  const clearFormError = (key: string) => setFormErrors((e) => {
+    if (!e[key]) return e;
+    const next = { ...e };
+    delete next[key];
+    return next;
+  });
+
+  const applyPart = (part: (typeof partChoices)[number]) => {
     setWoForm((f) => ({
       ...f,
-      salesOrderId: id,
-      targetQty: so?.quantity != null ? String(so.quantity) : f.targetQty,
-      finishDate: so?.delivery_date ? String(so.delivery_date).slice(0, 10) : f.finishDate,
+      productKey: part.productKey,
+      partKey: part.key,
+      salesOrderId: part.so?.id != null ? String(part.so.id) : '',
+      targetQty: part.remaining > 0 ? String(part.remaining) : f.targetQty,
+      finishDate: part.so?.delivery_date ? String(part.so.delivery_date).slice(0, 10) : f.finishDate,
     }));
-    setFormErrors((e) => {
-      const next = { ...e };
-      delete next.salesOrderId;
-      return next;
-    });
+    clearFormError('partKey');
+  };
+
+  // Picking a product narrows the part list; a product with a single part selects it.
+  const handleProductSelect = (key: string) => {
+    const parts = key ? partChoices.filter((p) => p.productKey === key) : [];
+    if (parts.length === 1) { applyPart(parts[0]); return; }
+    setWoForm((f) => ({ ...f, productKey: key, partKey: '', salesOrderId: '' }));
+  };
+
+  const handlePartSelect = (key: string) => {
+    const part = partChoices.find((p) => p.key === key);
+    if (!part) { setWoForm((f) => ({ ...f, partKey: '', salesOrderId: '' })); return; }
+    applyPart(part);
   };
 
   const updateOpDraft = (key: string, patch: Partial<OpDraft>) => {
@@ -335,9 +369,9 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
   // Fill operation drafts from the product's Active routing revision only.
   // Inactive/Draft revisions are never offered; rows stay editable afterwards.
   const loadRoutingIntoDrafts = async () => {
-    const partNo = editWO ? (editWO.part_no ?? '') : (selectedSO?.part_number || selectedSO?.part_no || '');
+    const partNo = editWO ? (editWO.part_no ?? '') : (selectedPart?.partNumber || selectedSO?.part_number || selectedSO?.part_no || '');
     if (!String(partNo ?? '').trim()) {
-      setFormErrors((e) => ({ ...e, ops: 'Select a sales order (product) first.' }));
+      setFormErrors((e) => ({ ...e, ops: 'Select a part (or product) first.' }));
       return;
     }
     if (processesMissing || activeProcesses.length === 0) {
@@ -392,10 +426,13 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
 
   const validateWO = (): boolean => {
     const next: Record<string, string> = {};
-    if (!editWO && !woForm.salesOrderId) next.salesOrderId = 'Sales Order is required.';
+    if (!editWO && !selectedPart) next.partKey = 'Select the part (or the whole product) to produce.';
     const qty = Number(woForm.targetQty);
     if (woForm.targetQty.trim() === '') next.targetQty = 'Target Quantity is required.';
     else if (!Number.isFinite(qty) || qty <= 0) next.targetQty = 'Target Quantity must be greater than 0.';
+    else if (!editWO && selectedPart && selectedPart.ordered > 0 && qty > selectedPart.remaining) {
+      next.targetQty = `Only ${selectedPart.remaining} of ${selectedPart.ordered} remaining for ${selectedPart.part}.`;
+    }
     if (!woForm.startDate) next.startDate = 'Planned Start Date is required.';
     if (!woForm.finishDate) next.finishDate = 'Planned Finish Date is required.';
     if (woForm.startDate && woForm.finishDate && woForm.finishDate < woForm.startDate) {
@@ -421,6 +458,10 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
     });
     setFormErrors(next);
     return Object.keys(next).length === 0;
+  };
+
+  const soItemCount = (so: any): number => {
+    try { const v = typeof so?.items === 'string' ? JSON.parse(so.items) : so?.items; return Array.isArray(v) ? v.length : 1; } catch { return 1; }
   };
 
   const generateWoNo = () => {
@@ -455,14 +496,19 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
         await savePlans(String(editWO.id));
       } else {
         const so = selectedSO;
+        const pc = selectedPart!;
         const woId = crypto.randomUUID();
-        const { error } = await supabase.from('cnc_work_orders').insert([{
+        const isPart = !pc.whole;
+        // A whole-product order keeps the classic shape (the sales order's product). A part order is saved for the part and
+        // linked to its product; it is never counted as finished product.
+        const wholeName = so && soItemCount(so) <= 1 ? (so.part_name || pc.productName) : pc.productName;
+        const base: any = {
           id: woId,
           wo_no: generateWoNo(),
           sales_order: so?.order_no ?? '',
           customer: so?.customer ?? '',
-          part_name: so?.part_name ?? '',
-          part_no: so?.part_number || so?.part_no || 'N/A',
+          part_name: isPart ? pc.part : wholeName,
+          part_no: pc.partNumber || so?.part_number || so?.part_no || 'N/A',
           quantity: Number(woForm.targetQty),
           completed: 0,
           rejected: 0,
@@ -470,7 +516,12 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
           due_date: woForm.finishDate || null,
           status: 'Draft',
           priority: woForm.priority,
-        }]);
+        };
+        if (isPart) { base.product_name = pc.productName; base.is_part_order = true; }
+        const { error } = await supabase.from('cnc_work_orders').insert([base]);
+        if (error && isPart && /product_name|is_part_order/.test(String(error.message || ''))) {
+          throw new Error('Part orders need the database update 20261021000000_work_order_parts.sql. Run it in the Supabase SQL Editor, then try again. (Nothing was saved.)');
+        }
         if (error) throw error;
         await saveOpDrafts(woId, { wo_no: '', sales_order: so?.order_no ?? '' });
         await savePlans(woId);
@@ -578,12 +629,6 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
   // ---------- table ----------
   const columns: Column<any>[] = [
     {
-      key: 'wo_no',
-      label: 'Work Order No.',
-      sortable: true,
-      render: (r) => <span className="font-mono text-xs font-semibold text-slate-700">{r.wo_no}</span>,
-    },
-    {
       key: 'sales_order',
       label: 'Sales Order No.',
       sortable: true,
@@ -594,7 +639,9 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
       key: 'part_name',
       label: 'Product',
       sortable: true,
-      render: (r) => <span className="font-medium text-slate-800">{r.part_name}</span>,
+      render: (r) => isPartOrder(r) ? (
+        <span className="font-medium text-slate-800">{r.part_name}<span className="block text-[11px] font-normal text-slate-500">Part of {r.product_name || '—'}</span></span>
+      ) : <span className="font-medium text-slate-800">{r.part_name}</span>,
     },
     {
       key: 'quantity',
@@ -687,11 +734,6 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
       <div className="flex lg:hidden flex-wrap items-center gap-x-3 gap-y-1 mb-3">
         <h1 className="text-xl font-bold text-slate-800 whitespace-nowrap">Production</h1>
         <p className="text-sm text-slate-500 whitespace-nowrap">Plan, release and track manufacturing work orders.</p>
-        <div className="ml-auto">
-          <Button icon={<Plus size={15} />} onClick={openCreate}>
-            Create Production Order
-          </Button>
-        </div>
       </div>
 
       {opsMissing && (
@@ -710,64 +752,24 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
         </div>
       )}
 
-      {/* Stats + filters share one line with no scrolling (compact widths throughout). */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-2.5 py-1.5 mb-2">
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-thin">
-          <div className="flex items-center gap-2 shrink-0">
+      <DataTable
+        data={filtered}
+        columns={columns}
+        title="Work Orders"
+        toolbarLeft={
+          <div className="flex shrink-0 items-center gap-3">
             {[
               { l: 'Total', v: stats.total, c: 'text-slate-800' },
               { l: 'Planned', v: stats.planned, c: 'text-slate-600' },
               { l: 'In Progress', v: stats.inProgress, c: 'text-brand-600' },
               { l: 'Completed', v: stats.completed, c: 'text-emerald-600' },
-            ].map((s) => (
-              <span key={s.l} className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                {s.l} <b className={`text-[13px] tabular-nums ${s.c}`}>{s.v}</b>
+            ].map((x) => (
+              <span key={x.l} className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                {x.l} <b className={`text-[13px] tabular-nums ${x.c}`}>{x.v}</b>
               </span>
             ))}
           </div>
-          <span className="h-6 w-px bg-slate-200 shrink-0" aria-hidden="true" />
-          <div className="flex items-center gap-1.5 shrink-0">
-            <select value={customerFilter} onChange={(e) => setCustomerFilter(e.target.value)} className={`${inputClass} w-28`} aria-label="Company">
-              <option>All Companies</option>
-              {customers.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            <select value={productFilter} onChange={(e) => setProductFilter(e.target.value)} className={`${inputClass} w-28`} aria-label="Product">
-              <option>All Products</option>
-              {products.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
-          </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            <span className="text-[10px] font-bold text-slate-500 uppercase whitespace-nowrap">Status</span>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={`${inputClass} w-28`}>
-              <option>All Statuses</option>
-              {statusOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            <span className="text-[10px] font-bold text-slate-500 uppercase whitespace-nowrap">From</span>
-            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className={`${inputClass} w-32`} />
-          </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            <span className="text-[10px] font-bold text-slate-500 uppercase whitespace-nowrap">To</span>
-            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className={`${inputClass} w-32`} />
-          </div>
-          {filtersActive && (
-            <button
-              onClick={clearFilters}
-              className="inline-flex shrink-0 items-center gap-1.5 px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
-            >
-              <X size={14} /> Clear
-            </button>
-          )}
-        </div>
-      </div>
-
-      <DataTable
-        data={filtered}
-        columns={columns}
-        title="Work Orders"
+        }
         searchKeys={['wo_no', 'sales_order', 'customer', 'part_name', 'status']}
         onRowClick={(r) => setDetailWO(r)}
         emptyMessage="No work orders found"
@@ -777,7 +779,7 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
       <Modal
         open={showForm}
         onClose={() => setShowForm(false)}
-        title={editWO ? `Edit Work Order ${editWO.wo_no}` : 'Create Production Order'}
+        title={editWO ? `Edit ${workOrderTitle(editWO)}` : 'Create Production Order'}
         subtitle={editWO ? 'Update production details and operations.' : 'Convert a Sales Order into a Production Order with sequenced operations.'}
         size="2xl"
         footer={
@@ -793,26 +795,36 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
           {!editWO ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2">
-                <FormField label="Sales Order" required>
-                  <select value={woForm.salesOrderId} onChange={(e) => handleSOSelect(e.target.value)} className={`${inputClass} ${formErrors.salesOrderId ? 'border-red-400' : ''}`}>
-                    <option value="">Select Sales Order...</option>
-                    {salesOrders.map((so) => (
-                      <option key={so.id} value={so.id}>
-                        {so.order_no} — {so.customer} — {so.part_name} (Qty {so.quantity})
-                      </option>
-                    ))}
+                <FormField label="Product">
+                  <select value={woForm.productKey} onChange={(e) => handleProductSelect(e.target.value)} className={inputClass}>
+                    <option value="">Select product…</option>
+                    {productChoices.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
                   </select>
                 </FormField>
-                {errText('salesOrderId')}
+              </div>
+              <div className="md:col-span-2">
+                <FormField label="Part" required>
+                  <select value={woForm.partKey} onChange={(e) => handlePartSelect(e.target.value)} className={`${inputClass} ${formErrors.partKey ? 'border-red-400' : ''}`}>
+                    <option value="">Select part…</option>
+                    {partOptions.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+                  </select>
+                </FormField>
+                {errText('partKey')}
+                {partOptions.length === 0 && (
+                  <p className="text-xs text-slate-500 mt-1">{woForm.productKey ? 'This product has no parts on its inwards and no sales order quantity yet.' : 'No products yet. Create a sales order or an inward first.'}</p>
+                )}
               </div>
               <FormField label="Company">
-                <input className={`${inputClass} bg-slate-50`} readOnly placeholder="Auto-filled from Sales Order" value={selectedSO?.customer ?? ''} />
+                <input className={`${inputClass} bg-slate-50`} readOnly placeholder="Auto-filled" value={selectedPart?.customer ?? ''} />
               </FormField>
-              <FormField label="Product">
-                <input className={`${inputClass} bg-slate-50`} readOnly placeholder="Auto-filled from Sales Order" value={selectedSO?.part_name ?? ''} />
+              <FormField label="Sales Order">
+                <input className={`${inputClass} bg-slate-50`} readOnly placeholder="Auto-filled" value={selectedSO?.order_no ?? ''} />
               </FormField>
-              <FormField label="Sales Order Quantity">
-                <input className={`${inputClass} bg-slate-50`} readOnly placeholder="Auto-filled" value={selectedSO?.quantity ?? ''} />
+              <FormField label="Ordered">
+                <input className={`${inputClass} bg-slate-50`} readOnly placeholder="Auto-filled" value={selectedPart ? selectedPart.ordered : ''} />
+              </FormField>
+              <FormField label="Remaining to plan">
+                <input className={`${inputClass} bg-slate-50`} readOnly placeholder="Auto-filled" value={selectedPart ? selectedPart.remaining : ''} />
               </FormField>
               <FormField label="Delivery Date">
                 <input className={`${inputClass} bg-slate-50`} readOnly placeholder="Auto-filled" value={selectedSO?.delivery_date ? formatDate(selectedSO.delivery_date) : ''} />
@@ -822,7 +834,7 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Sales Order</p><p className="font-mono font-semibold text-slate-800">{editWO.sales_order || '—'}</p></div>
               <div><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Company</p><p className="font-semibold text-slate-800">{editWO.customer || '—'}</p></div>
-              <div><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Product</p><p className="font-semibold text-slate-800">{editWO.part_name || '—'}</p></div>
+              <div><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{isPartOrder(editWO) ? 'Part' : 'Product'}</p><p className="font-semibold text-slate-800">{editWO.part_name || '—'}{isPartOrder(editWO) && <span className="block text-[11px] font-normal text-slate-500">of {editWO.product_name || '—'}</span>}</p></div>
               <div><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</p><p><Badge variant={statusToVariant(editWO.status)} dot>{editWO.status}</Badge></p></div>
             </div>
           )}

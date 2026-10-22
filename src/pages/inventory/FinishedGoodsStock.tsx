@@ -140,6 +140,12 @@ export function useFinishedGoods(refreshKey: number) {
         if (base.error) throw base.error;
         wos = (base.data ?? []) as WoLike[];
       } else wos = (full.data ?? []) as WoLike[];
+      // Part orders are not finished product (the flag column exists once the part-orders migration has run).
+      const partIds = await supabase.from('cnc_work_orders').select('id').eq('is_part_order', true);
+      if (!partIds.error) {
+        const skip = new Set((partIds.data ?? []).map((r: { id: string }) => String(r.id)));
+        wos = wos.filter(w => !skip.has(String(w.id)));
+      }
       const dcs = await supabase.from('cnc_deliveries').select('sales_order_no,part_name,dispatch_qty,quantity,status');
       if (dcs.error) throw dcs.error;
       setRows(finishedGoodsStock(wos, (dcs.data ?? []) as never[]));

@@ -4117,7 +4117,8 @@ export function SalesPipelinePage() {
     }
 
     // Quantities count every work order (dispatched ones too); only open ones become Finished Goods cards.
-    const { data: allWos } = await supabase.from('cnc_work_orders').select('*');
+    const { data: allWosRaw } = await supabase.from('cnc_work_orders').select('*');
+    const allWos = allWosRaw ? allWosRaw.filter((w: any) => w.is_part_order !== true) : allWosRaw; // part orders are not finished product
     const fgs = allWos ? allWos.filter((w: any) => ['Completed', 'In Progress'].includes(String(w.status))) : allWos;
     const { data: dcs, error: dcErr } = await supabase.from('cnc_deliveries').select('*');
     if (dcErr) console.warn("Error fetching deliveries:", dcErr);

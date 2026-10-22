@@ -10,6 +10,7 @@
 // Quantities: Planned / Gross(=good+rejected) / Good / Rejected / Rework /
 // Remaining — good and rejected stay separate; only good is downstream-eligible.
 
+import { workOrderTitle } from '@/lib/workOrderFormat';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -246,7 +247,7 @@ export function JobCardsTab({ workOrders }: { workOrders: any[] }) {
         .eq('work_order_id', selWO.id).eq('operation_id', selOp.id)
         .not('status', 'in', '("Cancelled","Completed")').limit(1);
       if (!dup.error && (dup.data ?? []).length > 0) {
-        setCreateErr(`This operation already has an active Job Card (${(dup.data ?? [])[0].job_no}).`);
+        setCreateErr('This operation already has an active Job Card.');
         await load();
         return;
       }
@@ -490,11 +491,9 @@ export function JobCardsTab({ workOrders }: { workOrders: any[] }) {
   };
 
   const columns: Column<any>[] = [
-    { key: 'job_no', label: 'Job Card No.', sortable: true, render: (r) => <button className="font-mono text-xs font-bold text-brand-700 hover:underline" onClick={() => openDetail(String(r.id))}>{r.job_no}</button> },
-    { key: 'work_order', label: 'Work Order No.', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-600">{r.work_order || '—'}</span> },
+    { key: 'part_name', label: 'Product / Part', sortable: true, render: (r) => <button className="text-xs font-bold text-brand-700 hover:underline text-left" onClick={() => openDetail(String(r.id))}>{r.part_name || '—'}</button> },
     { key: 'sales_order_no', label: 'Sales Order No.', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-500">{r.sales_order_no || '—'}</span> },
     { key: 'customer', label: 'Company', sortable: true, render: (r) => <span className="text-xs">{r.customer || '—'}</span> },
-    { key: 'part_name', label: 'Product', sortable: true, render: (r) => <span className="text-xs font-medium">{r.part_name || '—'}</span> },
     { key: 'op_no', label: 'Seq', sortable: true, align: 'right', render: (r) => <span className="font-mono text-xs">{r.op_no ?? '—'}</span> },
     { key: 'operation', label: 'Process', sortable: true, render: (r) => <span className="text-xs">{r.operation || '—'}</span> },
     { key: 'machine', label: 'Machine', sortable: true, render: (r) => <span className="font-mono text-xs">{r.machine || '—'}</span> },
@@ -659,7 +658,6 @@ export function JobCardsTab({ workOrders }: { workOrders: any[] }) {
                 {[
                   ['Company', selWO.customer || '—'], ['Product', selWO.part_name || '—'],
                   ['Product Code', selWO.part_no || '—'], ['Sales Order', selWO.sales_order || '—'],
-                  ['Work Order', selWO.wo_no || '—'],
                   ['Sequence', `Seq ${selOp.operation_sequence}`],
                   ['Process', selOp.process_name || selOp.process_code || '—'],
                   ['Process Code', selOp.process_code || '—'],
@@ -707,8 +705,8 @@ export function JobCardsTab({ workOrders }: { workOrders: any[] }) {
       <Modal
         open={!!viewJob}
         onClose={() => setViewId(null)}
-        title={viewJob ? `JOB CARD ${viewJob.job_no}` : 'Job Card'}
-        subtitle={viewJob ? `${viewJob.work_order || ''} · ${viewJob.part_name || ''}` : ''}
+        title={viewJob ? `Job Card — ${viewJob.part_name || ''}` : 'Job Card'}
+        subtitle={viewJob ? `${viewJob.operation || ''}` : ''}
         size="3xl"
         footer={
           viewJob ? (
@@ -759,8 +757,7 @@ export function JobCardsTab({ workOrders }: { workOrders: any[] }) {
             <FormSection title="Section 1 — Job Information">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
                 {[
-                  ['Job Card No.', viewJob.job_no], ['Work Order No.', viewJob.work_order || '—'],
-                  ['Sales Order No.', viewJob.sales_order_no || viewWO?.sales_order || '—'],
+                                    ['Sales Order No.', viewJob.sales_order_no || viewWO?.sales_order || '—'],
                   ['Company', viewJob.customer || viewWO?.customer || '—'],
                   ['Product', viewJob.part_name || '—'], ['Product Code', viewJob.part_no || viewWO?.part_no || '—'],
                 ].map(([k, v]) => (
@@ -845,7 +842,7 @@ export function JobCardsTab({ workOrders }: { workOrders: any[] }) {
 
       {/* ---------- edit (Draft / Ready only) ---------- */}
       <Modal
-        open={editOpen} onClose={() => setEditOpen(false)} title="Edit Job Card" subtitle={viewJob?.job_no ?? ''} size="lg"
+        open={editOpen} onClose={() => setEditOpen(false)} title="Edit Job Card" subtitle={viewJob?.part_name ?? ''} size="lg"
         footer={<><span className="flex-1" /><Button variant="secondary" onClick={() => setEditOpen(false)}>Cancel</Button><Button disabled={busy} onClick={() => void doEdit()}>Save Changes</Button></>}
       >
         <div className="grid grid-cols-2 gap-3">
@@ -874,7 +871,7 @@ export function JobCardsTab({ workOrders }: { workOrders: any[] }) {
 
       {/* ---------- record result ---------- */}
       <Modal
-        open={resultOpen} onClose={() => setResultOpen(false)} title="Record Production Result" subtitle={viewJob ? `${viewJob.job_no} · incremental to current totals` : ''} size="lg"
+        open={resultOpen} onClose={() => setResultOpen(false)} title="Record Production Result" subtitle={viewJob ? `${viewJob.part_name || ''} · incremental to current totals` : ''} size="lg"
         footer={<><span className="flex-1" /><Button variant="secondary" onClick={() => setResultOpen(false)}>Cancel</Button><Button disabled={busy} onClick={() => void doRecordResult()}>{busy ? 'Saving…' : 'Save Result'}</Button></>}
       >
         {viewJob && (
@@ -901,7 +898,7 @@ export function JobCardsTab({ workOrders }: { workOrders: any[] }) {
 
       {/* ---------- schedule ---------- */}
       <Modal
-        open={schedOpen} onClose={() => setSchedOpen(false)} title="Schedule Job Card" subtitle={viewJob?.job_no ?? ''} size="lg"
+        open={schedOpen} onClose={() => setSchedOpen(false)} title="Schedule Job Card" subtitle={viewJob?.part_name ?? ''} size="lg"
         footer={<><span className="flex-1" /><Button variant="secondary" onClick={() => setSchedOpen(false)}>Cancel</Button><Button disabled={busy} onClick={() => void doSchedule()}>Schedule</Button></>}
       >
         <div className="grid grid-cols-2 gap-3">
@@ -936,7 +933,7 @@ export function JobCardsTab({ workOrders }: { workOrders: any[] }) {
           }
         }}
         title="Cancel this Job Card?"
-        message={cancelTarget ? `${cancelTarget.job_no} · ${cancelTarget.work_order || ''} · Seq ${cancelTarget.op_no ?? ''} · ${cancelTarget.part_name || ''}. The record is kept for audit history.` : ''}
+        message={cancelTarget ? `${cancelTarget.part_name || ''} · Seq ${cancelTarget.op_no ?? ''}. The record is kept for audit history.` : ''}
         confirmLabel="Cancel Job Card"
         danger
       />

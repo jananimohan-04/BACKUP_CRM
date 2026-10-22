@@ -72,7 +72,7 @@ export function PlannedListView() {
     try {
       const [p, w, m, pr, jc, opRes] = await Promise.all([
         supabase.from('cnc_operation_plans').select('*').order('plan_date', { ascending: false }).order('start_time', { ascending: true }),
-        supabase.from('cnc_work_orders').select('id,wo_no,part_name,customer,status,quantity,completed,created_at'),
+        supabase.from('cnc_work_orders').select('*'),
         supabase.from('cnc_machines').select('code'),
         supabase.from('cnc_processes').select('machine_type'),
         supabase.from('cnc_job_cards').select('operator'),
@@ -198,14 +198,13 @@ export function PlannedListView() {
   const handleExport = () => {
     if (!filteredPlans.length) return;
     const rows = [
-      ['#', 'Work Order', 'Product / Part', 'Customer', 'Operation', 'Process', 'Machine', 'Operator', 'Plan Date', 'Start Time', 'End Time', 'Duration (Hours)', 'Planned Qty', 'Status'],
+      ['#', 'Product / Part', 'Customer', 'Operation', 'Process', 'Machine', 'Operator', 'Plan Date', 'Start Time', 'End Time', 'Duration (Hours)', 'Planned Qty', 'Status'],
       ...filteredPlans.map((p, i) => {
         const wo = woMap.get(String(p.work_order_id));
         const pDate = String(p.plan_date).slice(0, 10);
         const mins = calcDurationMins(p.start_time, p.end_time);
         return [
           i + 1,
-          wo?.wo_no || '',
           wo?.part_name || '',
           wo?.customer || '',
           p.operation_sequence ? `OP ${p.operation_sequence}` : '',
@@ -444,7 +443,7 @@ export function PlannedListView() {
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Search WO, product, customer, process, machine…"
+              placeholder="Search product, customer, process, machine…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full h-9 pl-9 pr-3 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-brand-500 focus:bg-white"
@@ -555,7 +554,7 @@ export function PlannedListView() {
             <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider text-[11px] sticky top-0 z-10 shadow-xs border-b border-slate-200">
               <tr className="text-left">
                 <th className="py-2.5 px-3 w-12 text-center">#</th>
-                <th className="py-2.5 px-3">Work Order</th>
+                <th className="py-2.5 px-3">Product / Part & Customer</th>
                 <th className="py-2.5 px-3">Operation / Process</th>
                 <th className="py-2.5 px-3">Plan Date</th>
                 <th className="py-2.5 px-3">Time Window</th>
@@ -578,9 +577,9 @@ export function PlannedListView() {
                   <tr key={p.id} className="hover:bg-slate-50/70 transition">
                     <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">{idx + 1}</td>
                     <td className="py-2.5 px-3">
-                      <div className="font-mono font-bold text-slate-900">{wo?.wo_no || '—'}</div>
-                      <div className="text-[11px] text-slate-500 truncate max-w-[220px]" title={wo?.part_name}>
-                        {wo?.part_name || '—'} {wo?.customer ? `(${wo.customer})` : ''}
+                      <div className="font-semibold text-slate-900 truncate max-w-[260px]" title={wo?.part_name}>{wo?.part_name || '—'}</div>
+                      <div className="text-[11px] text-slate-500 truncate max-w-[260px]">
+                        {wo?.is_part_order === true && wo?.product_name ? `Part of ${wo.product_name}` : ''}{wo?.customer ? `${wo?.is_part_order === true && wo?.product_name ? ' · ' : ''}${wo.customer}` : ''}
                       </div>
                     </td>
                     <td className="py-2.5 px-3">
@@ -649,7 +648,7 @@ export function PlannedListView() {
 
               {!loading && filteredPlans.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-400">
+                  <td colSpan={10} className="py-12 text-center text-slate-400">
                     <Calendar size={32} className="mx-auto mb-2 text-slate-300" />
                     <p className="text-sm font-semibold text-slate-600">No planned operations match these filters</p>
                     <p className="text-xs text-slate-400 mt-0.5">Use the Planned Timeline tab to schedule operations</p>
@@ -658,7 +657,7 @@ export function PlannedListView() {
               )}
               {loading && filteredPlans.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-400 text-xs">Loading planned operations…</td>
+                  <td colSpan={10} className="py-12 text-center text-slate-400 text-xs">Loading planned operations…</td>
                 </tr>
               )}
             </tbody>
@@ -693,8 +692,8 @@ export function PlannedListView() {
         {picked && (
           <div className="space-y-3.5 text-xs">
             <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-              <div className="font-mono font-bold text-slate-900">{woMap.get(String(picked.work_order_id))?.wo_no}</div>
-              <div className="text-slate-600 font-medium">{picked.process_name} · {woMap.get(String(picked.work_order_id))?.part_name}</div>
+              <div className="font-bold text-slate-900">{woMap.get(String(picked.work_order_id))?.part_name}</div>
+              <div className="text-slate-600 font-medium">{picked.process_name}</div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">

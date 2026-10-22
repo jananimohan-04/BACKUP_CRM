@@ -1,3 +1,4 @@
+import { workOrderTitle } from '@/lib/workOrderFormat';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Upload } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -47,7 +48,7 @@ export function useTimelineData() {
     setLoading(true);
     const [p, w, j] = await Promise.all([
       supabase.from('cnc_operation_plans').select('*'),
-      supabase.from('cnc_work_orders').select('id,wo_no,part_name,customer,status,quantity,completed,sales_order'),
+      supabase.from('cnc_work_orders').select('*'),
       supabase.from('cnc_job_cards').select('*'),
     ]);
     setMissing(!!p.error && isMissingTable(p.error));
@@ -203,8 +204,8 @@ export function ComparisonTimeline() {
       if (!visibleKeys.has(keyOf(wo.wo_no, Number(p.operation_sequence) || 0))) continue;
       out.push({
         id: `p-${p.id}`, date: String(p.plan_date).slice(0, 10), startMin: toMinutes(hh(p.start_time)), endMin: toMinutes(hh(p.end_time)), lane: 0, lanes: 2, ghost: true,
-        className: colorFor(wo.wo_no), title: `Planned · ${wo.wo_no} · ${p.process_name}`,
-        lines: [`Planned · ${wo.wo_no}`, `${p.machine} · ${fmtTime24(hh(p.start_time))}–${fmtTime24(hh(p.end_time))}`],
+        className: colorFor(wo.wo_no), title: `Planned · ${workOrderTitle(wo)} · ${p.process_name}`,
+        lines: [`Planned · ${workOrderTitle(wo)}`, `${p.machine} · ${fmtTime24(hh(p.start_time))}–${fmtTime24(hh(p.end_time))}`],
       });
     }
     const now = new Date();
@@ -213,8 +214,8 @@ export function ComparisonTimeline() {
       const span = jobSpan(j, now); if (!span) continue;
       splitByDay(span.start, span.end).forEach((s, i) => out.push({
         id: `a-${j.id}-${i}`, date: s.date, startMin: s.startMin, endMin: s.endMin, lane: 1, lanes: 2,
-        className: colorFor(String(j.work_order)), ring: false, title: `Actual · ${j.work_order} · ${j.operation ?? ''}`,
-        lines: [`Actual · ${j.work_order}`, `${j.machine ?? '—'} · ${fmtTime24(minToHhmm(s.startMin))}–${span.running && s.date === ymd(now) ? 'now' : fmtTime24(minToHhmm(Math.min(s.endMin, 24 * 60 - 1)))}`],
+        className: colorFor(String(j.work_order)), ring: false, title: `Actual · ${data.woByNo.get(String(j.work_order))?.part_name || j.part_name || ''} · ${j.operation ?? ''}`,
+        lines: [`Actual · ${data.woByNo.get(String(j.work_order))?.part_name || j.part_name || ''}`, `${j.machine ?? '—'} · ${fmtTime24(minToHhmm(s.startMin))}–${span.running && s.date === ymd(now) ? 'now' : fmtTime24(minToHhmm(Math.min(s.endMin, 24 * 60 - 1)))}`],
       }));
     }
     return out;
@@ -312,7 +313,7 @@ export function ComparisonTimeline() {
             <tbody>
               {rows.map(r => (
                 <tr key={r.key} className="border-t hover:bg-slate-50/70 cursor-pointer" data-testid="comparison-row" onClick={() => setPicked(r)}>
-                  <td className="p-2"><div className="font-mono font-semibold text-slate-800">{r.woNo}</div><div className="text-[10px] text-slate-500">{r.part}{r.customer ? ` · ${r.customer}` : ''}</div></td>
+                  <td className="p-2"><div className="font-semibold text-slate-800">{r.part || '—'}</div><div className="text-[10px] text-slate-500">{r.customer || ''}</div></td>
                   <td className="p-2">{r.operation || '—'}</td>
                   <td className="p-2">{r.machine || '—'}{r.operator ? <div className="text-[10px] text-slate-500">{r.operator}</div> : null}</td>
                   <td className="p-2 whitespace-nowrap">{r.plannedStart ? `${dt(r.plannedStart)} → ${dt(r.plannedEnd)}` : '—'}</td>
@@ -359,7 +360,7 @@ export function ComparisonTimeline() {
         {picked && (
           <div className="space-y-4 text-sm" data-testid="cmp-detail">
             <div>
-              <p><b>{picked.woNo}</b> — {picked.part} {picked.customer ? `(${picked.customer})` : ''}</p>
+              <p><b>{picked.part}</b> {picked.customer ? `(${picked.customer})` : ''}</p>
               <p className="text-slate-600">{picked.operation || '—'} · {picked.machine || '—'}{picked.operator ? ` · ${picked.operator}` : ''}</p>
               <p className="mt-1"><span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${toneClass[picked.tone]}`}>{picked.status}</span></p>
             </div>
@@ -379,7 +380,7 @@ export function ComparisonTimeline() {
                 {picked.jobs.length === 0 ? <p className="text-xs text-slate-400">Not started</p> : (
                   <ul className="text-xs space-y-0.5 max-h-56 overflow-auto">
                     {picked.jobs.map(j => { const sp = jobSpan(j, new Date()); return (
-                      <li key={j.id}>{j.job_no} · {dt(sp?.start ?? null)} → {sp?.running ? 'running' : dt(sp?.end ?? null)} · {j.qty_completed ?? 0}/{j.qty_planned ?? 0} pcs{j.operator && j.operator !== '—' ? ` · ${j.operator}` : ''}</li>
+                      <li key={j.id}>{dt(sp?.start ?? null)} → {sp?.running ? 'running' : dt(sp?.end ?? null)} · {j.qty_completed ?? 0}/{j.qty_planned ?? 0} pcs{j.operator && j.operator !== '—' ? ` · ${j.operator}` : ''}</li>
                     ); })}
                   </ul>
                 )}

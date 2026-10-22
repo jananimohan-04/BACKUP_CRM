@@ -7,7 +7,6 @@ import { getMockImage } from '@/lib/mockStorage';
 
 export function JobCardTab({ workOrders }: { workOrders: any[] }) {
   const columns: Column<any>[] = [
-    { key: 'wo_no', label: 'WO No', sortable: true },
     { key: 'part_name', label: 'Part Name', sortable: true },
     { key: 'quantity', label: 'Target Qty', sortable: true },
     { key: 'start_date', label: 'Start Date' },
@@ -41,7 +40,6 @@ export function WIPTab({ workOrders }: { workOrders: any[] }) {
   }, [workOrders]);
   
   const columns: Column<any>[] = [
-    { key: 'wo_no', label: 'WO No', sortable: true },
     { 
       key: 'customer', 
       label: 'Project', 
@@ -98,7 +96,6 @@ export function CompletedTab({ workOrders }: { workOrders: any[] }) {
   }, [workOrders]);
   
   const columns: Column<any>[] = [
-    { key: 'wo_no', label: 'WO No', sortable: true },
     { 
       key: 'customer', 
       label: 'Project', 

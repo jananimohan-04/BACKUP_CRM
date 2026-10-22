@@ -8,6 +8,8 @@ import { generateJobNo } from '@/lib/jobCards';
 import { fmtTime24, ymd } from '@/lib/operationPlans';
 import { CalendarNav, TimelineGrid, colorForMachine, minToHhmm, useCalendarNav, type GridBlock } from './TimelineGrid';
 import { dt, dur, jobSpan, splitByDay, useTimelineData } from './ComparisonPage';
+import { ProductPartSelect } from '@/components/ProductPartSelect';
+import { ensureRunWorkOrder, type PartChoice } from '@/lib/partOrders';
 
 // Actual timeline: when each job card really ran (actual start to actual end), on the same calendar as the plan,
 // with the machine and the man (operator) on every block and filters for both.
@@ -33,6 +35,7 @@ export function ActualTimeline() {
   const [saving, setSaving] = useState(false);
   const emptyRun = { item: '', qty: '', rejected: '', process: '', machine: '', operator: '', date: '', start: '08:00', endDate: '', end: '12:00' };
   const [run, setRun] = useState(emptyRun);
+  const [pickedPart, setPickedPart] = useState<PartChoice | null>(null);
   useEffect(() => {
     void (async () => {
       const [o, p, so, inw] = await Promise.all([
@@ -47,6 +50,7 @@ export function ActualTimeline() {
     })();
   }, []);
   const openRun = useCallback((r: { date: string; start: string; end: string }) => {
+    setPickedPart(null);
     setRun({ ...emptyRun, date: r.date, start: r.start, endDate: r.date, end: r.end });
     setShowAdd(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -61,35 +65,10 @@ export function ActualTimeline() {
     const p = (n: number) => String(n).padStart(2, '0');
     return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
   };
-  const choices = useMemo(() => {
-    type Item = { value: string; label: string; soRef: string; customer: string; part: string; partNo: string; qty: number; remaining: number };
-    const sos: Item[] = []; const ins: Item[] = [];
-    const seen = new Set<string>();
-    const add = (list: Item[], value: string, ref: string, shown: string, customer: string, part: string, partNo: string, qty: number) => {
-      const key = lc(part);
-      if (!part || seen.has(key)) return;
-      seen.add(key);
-      const done = woFor(customer, part).reduce((s, w) => s + (Number(w.completed) || 0), 0);
-      const remaining = Math.max(0, qty - done);
-      if (qty > 0 && remaining <= 0) return; // fully finished: it has moved on to Finished Goods
-      list.push({ value, label: `${part} - ${customer || '—'}${shown ? ` - ${shown}` : ''} - Qty ${qty}${done ? ` (${done} done)` : ''}`, soRef: ref, customer, part, partNo, qty, remaining: qty > 0 ? remaining : 0 });
-    };
-    const soCustomer = (ref: unknown) => (ref ? String(salesOrders.find(s => lc(s.order_no) === lc(ref))?.customer ?? '') : '');
-    salesOrders.filter(s => !['Cancelled', 'Completed', 'Delivered', 'Closed'].includes(String(s.status))).forEach(s => {
-      let items: any[] = [];
-      try { const raw = typeof s.items === 'string' ? JSON.parse(s.items) : s.items; if (Array.isArray(raw)) items = raw; } catch { /* single product */ }
-      const named = items.filter(it => String(it.partName || it.productName || it.part_name || '').trim());
-      if (named.length) named.forEach((it, n) => add(sos, `so:${s.id}:${n}`, s.order_no, stampOf(s.created_at || s.order_date), s.customer ?? '', String(it.partName || it.productName || it.part_name).trim(), String(it.partNumber || it.part_no || ''), Number(it.quantity ?? it.qty) || 0));
-      else add(sos, `so:${s.id}:0`, s.order_no, stampOf(s.created_at || s.order_date), s.customer ?? '', String(s.part_name ?? '').trim(), String(s.part_number || s.part_no || ''), Number(s.quantity) || 0);
-    });
-    inwards.filter(i => String(i.status) !== 'Deleted' && String(i.category ?? '').trim().toUpperCase() !== 'EXPENSES').forEach(i =>
-      add(ins, `in:${i.id}`, i.sales_order_ref || '', stampOf(i.created_at), soCustomer(i.sales_order_ref) || i.party_name || '', String(i.part_name || i.product_name || '').trim(), String(i.part_number || ''), Number(i.quantity) || 0));
-    return { sos, ins, byValue: new Map([...sos, ...ins].map(x => [x.value, x])) };
-  }, [data.wos, salesOrders, inwards]);
-  const pendingSrc = choices.byValue.get(run.item);
+  const pendingSrc = pickedPart;
   const saveRun = async () => {
-    const src = choices.byValue.get(run.item);
-    if (!src) return alert('Select the sales order / inward item.');
+    const src = pickedPart;
+    if (!src) return alert('Select the product and part.');
     const good = Number(run.qty) || 0; const rej = Number(run.rejected) || 0;
     if (run.qty.trim() === '' || good < 0 || rej < 0 || (good <= 0 && rej <= 0)) return alert('Enter the finished quantity.');
     if (!run.machine.trim()) return alert('Select the machine.');
@@ -99,25 +78,14 @@ export function ActualTimeline() {
     if (end.getTime() > Date.now() + 60000) return alert('An actual run cannot end in the future. Use the Planned Timeline to plan ahead.');
     setSaving(true);
     try {
-      // The finished quantity is kept on this product's work order (behind the scenes): reuse the open one, else start one.
-      let wo: any = woFor(src.customer, src.part).find(w => !['Completed', 'Dispatched'].includes(String(w.status)) && !((Number(w.quantity) || 0) > 0 && (Number(w.completed) || 0) >= Number(w.quantity)));
-      if (!wo) {
-        const d = new Date();
-        const prefix = `WO-${String(d.getFullYear()).slice(-2)}${String(d.getMonth() + 1).padStart(2, '0')}-`;
-        const used = new Set(data.wos.map(w => w.wo_no));
-        let woNo = `${prefix}${Date.now().toString().slice(-4)}`;
-        for (let i = 0; used.has(woNo) && i < 50; i++) woNo = `${prefix}${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
-        const fresh = { id: crypto.randomUUID(), wo_no: woNo, sales_order: src.soRef, customer: src.customer, part_name: src.part, part_no: src.partNo || 'N/A', quantity: src.qty, completed: 0, rejected: 0, status: 'In Progress', priority: 'Medium' };
-        const { error: woErr } = await supabase.from('cnc_work_orders').insert([fresh]);
-        if (woErr) throw new Error(`Could not record the production for ${src.part}: ${woErr.message}`);
-        wo = fresh;
-      }
+      // The finished quantity is kept on this part's production order (behind the scenes): reuse the open one, else start one.
+      const wo: any = await ensureRunWorkOrder(src, data.wos);
       const jobsOfWo = data.jobs.filter(j => String(j.work_order) === String(wo.wo_no));
       await insertTolerant('cnc_job_cards', [{
-        id: crypto.randomUUID(), job_no: await generateJobNo(), work_order: wo.wo_no, part_name: src.part,
+        id: crypto.randomUUID(), job_no: await generateJobNo(), work_order: wo.wo_no, part_name: wo.part_name,
         op_no: (Math.max(0, ...jobsOfWo.map(j => Number(j.op_no) || 0)) || 0) + 10, operation: run.process || 'Machining',
         machine: run.machine.trim(), operator: run.operator.trim() || null,
-        qty_planned: src.qty, qty_completed: good, qty_rejected: rej, cycle_time: 0, setup_time: 0,
+        qty_planned: src.ordered, qty_completed: good, qty_rejected: rej, cycle_time: 0, setup_time: 0,
         status: 'Completed', actual_start: start.toISOString(), actual_end: end.toISOString(), completed_at: end.toISOString(), created_at: start.toISOString(),
       }]);
       const completed = (Number(wo.completed) || 0) + good;
@@ -190,13 +158,7 @@ Then save the run again.`
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Add actual run" size="lg"
         footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button variant="primary" onClick={saveRun} disabled={saving}>{saving ? 'Saving…' : 'Save Run'}</Button></>}>
         <div className="space-y-4">
-          <FormField label="Sales Order / Inward Item" required>
-            <select className={inputClass} value={run.item} onChange={e => setRun(r => ({ ...r, item: e.target.value }))}>
-              <option value="">-- Select item --</option>
-              {choices.sos.length > 0 && <optgroup label="Sales Orders">{choices.sos.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}</optgroup>}
-              {choices.ins.length > 0 && <optgroup label="Inward">{choices.ins.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}</optgroup>}
-            </select>
-          </FormField>
+          <ProductPartSelect salesOrders={salesOrders} inwards={inwards} workOrders={data.wos} value={run.item} onChange={c => { setPickedPart(c); setRun(r => ({ ...r, item: c?.key ?? '' })); }} />
           <div className="grid grid-cols-2 gap-4">
             <FormField label={`Finished Qty${pendingSrc ? ` (${pendingSrc.remaining} remaining)` : ''}`} required>
               <input type="number" min="0" inputMode="decimal" className={inputClass} value={run.qty} onChange={e => setRun(r => ({ ...r, qty: e.target.value }))} placeholder="Pieces finished in this run" />
@@ -245,8 +207,8 @@ Then save the run again.`
           const wo = data.woByNo.get(String(picked.work_order));
           return (
             <div className="space-y-1.5 text-sm">
-              <p><b>{picked.work_order}</b> — {picked.part_name} {wo?.customer ? `(${wo.customer})` : ''}</p>
-              <p>Job {picked.job_no} · {picked.operation || '—'}</p>
+              <p><b>{picked.part_name}</b> {wo?.customer ? `(${wo.customer})` : ''}</p>
+              <p>{picked.operation || '—'}</p>
               <p>Machine {picked.machine || '—'} · Operator {man(picked) || '—'}</p>
               <p>Started {dt(span?.start ?? null)} · {span?.running ? 'still running' : `ended ${dt(span?.end ?? null)}`}</p>
               <p>Run time {span ? dur((span.end.getTime() - span.start.getTime()) / 60000) : '—'}</p>
