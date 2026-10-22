@@ -9,6 +9,8 @@ import { Time24 } from '@/components/ui/Time24';
 import { PlannedTimeline } from './PlannedTimeline';
 import { ComparisonTimeline } from './ComparisonPage';
 import { ActualTimeline } from './ActualPage';
+import { ActualListView } from './ActualListView';
+import { PlannedListView } from './PlannedListView';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 
 function ActualScheduling() {
@@ -1115,9 +1117,9 @@ function ActualScheduling() {
 // Scheduling has three views: what is planned, what actually ran, and the two compared.
 // Planned is the new timeline; Actual keeps the machine scheduling board for now; Comparison follows.
 export function SchedulingPage() {
-  const [tab, setTab] = useState<'planned' | 'actual' | 'comparison' | 'board'>('planned');
+  const [tab, setTab] = useState<'planned' | 'actual' | 'comparison' | 'board' | 'actual_list' | 'planned_list'>('planned');
   const tabs: { id: typeof tab; label: string }[] = [
-    { id: 'planned', label: 'Planned Timeline' }, { id: 'actual', label: 'Actual Timeline' }, { id: 'comparison', label: 'Comparison' }, { id: 'board', label: 'Job Board (Machines & Manpower)' },
+    { id: 'planned', label: 'Planned Timeline' }, { id: 'actual', label: 'Actual Timeline' }, { id: 'comparison', label: 'Comparison' }, { id: 'board', label: 'Job Board (Machines & Manpower)' }, { id: 'actual_list', label: 'Actual (List View)' }, { id: 'planned_list', label: 'Planned (List View)' },
   ];
   // Tabs live in the top bar on desktop (same line as date/profile); the local
   // row below stays only for smaller screens. Cleared on unmount.
@@ -1129,7 +1131,7 @@ export function SchedulingPage() {
   }, [tab, setTabs]);
   return (
     <div className="space-y-4">
-      <div className="flex lg:hidden gap-1 border-b border-slate-200" role="tablist">
+      <div className="flex lg:hidden gap-1 border-b border-slate-200 overflow-x-auto pb-1" role="tablist">
         {tabs.map(t => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
             className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${tab === t.id ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-300 hover:text-white'}`}>{t.label}</button>
@@ -1139,6 +1141,8 @@ export function SchedulingPage() {
       {tab === 'actual' && <ActualTimeline />}
       {tab === 'comparison' && <ComparisonTimeline />}
       {tab === 'board' && <ActualScheduling />}
+      {tab === 'actual_list' && <ActualListView />}
+      {tab === 'planned_list' && <PlannedListView />}
     </div>
   );
 }
