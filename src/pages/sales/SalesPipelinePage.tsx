@@ -7168,12 +7168,12 @@ export function SalesPipelinePage() {
                   {inwardForm.parts.length > 1 && <button type="button" onClick={() => setInwardForm({...inwardForm, parts: inwardForm.parts.filter((_: any, i: number) => i !== index)})} className="ml-auto shrink-0 text-xs font-medium text-rose-600 hover:text-rose-800">Remove</button>}
                 </div>
                 {(group.items || []).map((item: any, ii: number) => (
-                  <div key={ii} className={opts?.popup ? 'mt-1.5 grid grid-cols-2 xl:grid-cols-4 items-center gap-x-2 gap-y-1.5 border-t border-slate-200 pt-1.5 pb-1' : 'mt-1.5 flex flex-nowrap items-center gap-1.5 border-t border-slate-200 pt-1.5 overflow-x-auto py-1'}>
-                    <span className={opts?.popup ? 'hidden' : 'w-4 shrink-0 text-center text-[11px] font-bold text-slate-400'}>{ii + 1}</span>
-                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 min-w-0 items-center gap-1'}>
+                  <div key={ii} className={opts?.popup ? 'mt-1.5 grid grid-cols-2 xl:grid-cols-4 items-center gap-x-2 gap-y-1.5 border-t border-slate-200 pt-1.5 pb-1' : 'mt-1.5 flex flex-nowrap items-center gap-1 border-t border-slate-200 pt-1.5 py-1 w-full min-w-0'}>
+                    <span className={opts?.popup ? 'hidden' : 'w-4 shrink-0 text-center text-[10px] font-bold text-slate-400'}>{ii + 1}</span>
+                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex flex-[2.2_2.2_0%] min-w-0 items-center gap-1'}>
                       {(group.category || 'GOODS PURCHASE') === 'EXPENSES' ? (
                         <>
-                          <input autoComplete="off" className={opts?.popup ? `${compactInput} flex-1 min-w-[12rem]` : `${compactInput} w-[18rem] sm:w-[22rem] shrink-0 font-medium`} list={`expense-products-${index}-${ii}`} placeholder="Product - Date/Time - Qty" title="Reference (Product - Date/Time - Qty)" value={item.productRef ?? (splitProductAndRef(item.productName || '', [], '', item.quantity).reference || '')}
+                          <input autoComplete="off" className={opts?.popup ? `${compactInput} flex-1 min-w-[12rem]` : `${compactInput} flex-[1.4_1.4_0%] min-w-0 font-medium`} list={`expense-products-${index}-${ii}`} placeholder="Product - Date/Time - Qty" title="Reference (Product - Date/Time - Qty)" value={item.productRef ?? (splitProductAndRef(item.productName || '', [], '', item.quantity).reference || '')}
                             onChange={e => {
                               const s = splitProductAndRef(e.target.value, [], '', item.quantity);
                               setItem(ii, {
@@ -7184,7 +7184,7 @@ export function SalesPipelinePage() {
                               });
                               onInwardProductInput(index, ii, e.target.value, { allowFreeText: true });
                             }} />
-                          <input autoComplete="off" className={opts?.popup ? `${compactInput} w-[12rem]` : `${compactInput} w-[14rem] sm:w-[16rem] shrink-0 font-medium`} placeholder="Original Product" title="Original Product" value={item.originalProduct ?? (splitProductAndRef(item.productName || '').original || item.productName || '')}
+                          <input autoComplete="off" className={opts?.popup ? `${compactInput} w-[10rem]` : `${compactInput} flex-[1_1_0%] min-w-0 font-medium`} placeholder="Original Product" title="Original Product" value={item.originalProduct ?? (splitProductAndRef(item.productName || '').original || item.productName || '')}
                             onChange={e => {
                               const orig = e.target.value;
                               const ref = item.productRef ?? (splitProductAndRef(item.productName || '').reference || '');
@@ -7197,7 +7197,7 @@ export function SalesPipelinePage() {
                         </>
                       ) : (
                         <>
-                          <input autoComplete="off" className={opts?.popup ? `${compactInput} flex-1 min-w-[18rem] sm:min-w-[22rem]` : `${compactInput} w-[26rem] sm:w-[32rem] min-w-[24rem] shrink-0 font-medium`} list={`inward-products-${index}-${ii}`} placeholder="Product - Company - Date/Time - Qty" title={item.productRef || "Full Reference (Product - Company - Date/Time - Qty)"} value={item.productRef ?? (splitProductAndRef(item.productDisplay || item.productName || '', allKnownCompanies.map((c: any) => c.company || c.name), group.partyName, item.quantity).reference || '')}
+                          <input autoComplete="off" className={opts?.popup ? `${compactInput} flex-1 min-w-[14rem]` : `${compactInput} flex-[1.4_1.4_0%] min-w-0 font-medium`} list={`inward-products-${index}-${ii}`} placeholder="Product - Company - Date/Time - Qty" title={item.productRef || "Full Reference (Product - Company - Date/Time - Qty)"} value={item.productRef ?? (splitProductAndRef(item.productDisplay || item.productName || '', allKnownCompanies.map((c: any) => c.company || c.name), group.partyName, item.quantity).reference || '')}
                             onChange={e => {
                               const s = splitProductAndRef(e.target.value, allKnownCompanies.map((c: any) => c.company || c.name), group.partyName, item.quantity);
                               const orig = s.original;
@@ -7210,7 +7210,7 @@ export function SalesPipelinePage() {
                               });
                               onInwardProductInput(index, ii, e.target.value);
                             }} />
-                          <input autoComplete="off" className={opts?.popup ? `${compactInput} w-[14rem] sm:w-[16rem]` : `${compactInput} w-[16rem] sm:w-[18rem] min-w-[15rem] shrink-0 font-medium`} placeholder="Original Product" title="Original Product" value={item.originalProduct ?? (splitProductAndRef(item.productDisplay || item.productName || '', allKnownCompanies.map((c: any) => c.company || c.name), group.partyName).original || item.productName || '')}
+                          <input autoComplete="off" className={opts?.popup ? `${compactInput} w-[10rem]` : `${compactInput} flex-[1_1_0%] min-w-0 font-medium`} placeholder="Original Product" title="Original Product" value={item.originalProduct ?? (splitProductAndRef(item.productDisplay || item.productName || '', allKnownCompanies.map((c: any) => c.company || c.name), group.partyName).original || item.productName || '')}
                             onChange={e => {
                               const orig = e.target.value;
                               const ref = item.productRef ?? (splitProductAndRef(item.productDisplay || item.productName || '', allKnownCompanies.map((c: any) => c.company || c.name), group.partyName, item.quantity).reference || '');
@@ -7231,19 +7231,19 @@ export function SalesPipelinePage() {
                         </>
                       )}
                     </div>
-                    <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[16rem] sm:w-[18rem] min-w-[15rem] shrink-0 font-medium`} placeholder={(group.category || 'GOODS PURCHASE') === 'EXPENSES' ? 'Part Name' : 'Part Name *'} title="Part Name" list="saved-products" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} />
-                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-1'}><span className={inlineLbl}>Qty *</span>
-                      <input type="number" min="0" className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[4.25rem]`} placeholder="Qty" value={item.quantity || ''} onChange={e=>setItem(ii, { quantity: e.target.value })} /></div>
-                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-1'}><span className={inlineLbl}>Price *</span>
-                      <input type="number" min="0" className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[5.5rem]`} placeholder="Price" value={item.price || ''} onChange={e=>setItem(ii, { price: e.target.value })} /></div>
-                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-1'}><span className={inlineLbl}>Disc %</span>
-                      <input type="number" min="0" className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[3.75rem]`} placeholder="%" value={item.discount || ''} onChange={e=>setItem(ii, { discount: e.target.value })} /></div>
-                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-1'}><span className={inlineLbl}>GST %</span>
-                      <input type="number" min="0" className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[3.75rem]`} placeholder="%" value={item.gst || ''} onChange={e=>setItem(ii, { gst: e.target.value })} /></div>
-                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-1'}><span className={inlineLbl}>Total</span>
-                      <input className={opts?.popup ? `${compactInput} w-full min-w-0 bg-white font-bold` : `${compactInput} w-[5.5rem] bg-white font-bold`} value={lineTotal(item) || 0} title="Total" disabled /></div>
+                    <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} flex-[1_1_0%] min-w-0 font-medium`} placeholder={(group.category || 'GOODS PURCHASE') === 'EXPENSES' ? 'Part Name' : 'Part Name *'} title="Part Name" list="saved-products" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} />
+                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-0.5'}><span className={inlineLbl}>Qty *</span>
+                      <input type="number" min="0" className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[3.5rem]`} placeholder="Qty" value={item.quantity || ''} onChange={e=>setItem(ii, { quantity: e.target.value })} /></div>
+                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-0.5'}><span className={inlineLbl}>Price *</span>
+                      <input type="number" min="0" className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[4.25rem]`} placeholder="Price" value={item.price || ''} onChange={e=>setItem(ii, { price: e.target.value })} /></div>
+                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-0.5'}><span className={inlineLbl}>Disc %</span>
+                      <input type="number" min="0" className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[2.75rem] px-1 text-center`} placeholder="%" value={item.discount || ''} onChange={e=>setItem(ii, { discount: e.target.value })} /></div>
+                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-0.5'}><span className={inlineLbl}>GST %</span>
+                      <input type="number" min="0" className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[2.75rem] px-1 text-center`} placeholder="%" value={item.gst || ''} onChange={e=>setItem(ii, { gst: e.target.value })} /></div>
+                    <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex shrink-0 items-center gap-0.5'}><span className={inlineLbl}>Total</span>
+                      <input className={opts?.popup ? `${compactInput} w-full min-w-0 bg-white font-bold` : `${compactInput} w-[4.5rem] bg-white font-bold`} value={lineTotal(item) || 0} title="Total" disabled /></div>
                     <div className={opts?.popup ? 'flex min-w-0 items-center gap-1 col-span-2' : 'flex shrink-0 items-center gap-1'}>
-                      <label className="inline-flex h-7 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach drawing or spec for this product">
+                      <label className="inline-flex h-7 cursor-pointer items-center gap-1 whitespace-nowrap rounded-md border border-dashed border-slate-300 bg-white px-1.5 text-[10px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach drawing or spec for this product">
                         <UploadCloud size={13} />{(item.files || []).length ? `${item.files.length} file${item.files.length === 1 ? '' : 's'}` : 'Attach Drawing'}
                         <input type="file" multiple accept="*/*" className="hidden" onChange={e => {
                           const picked = Array.from(e.target.files || []);
@@ -7257,7 +7257,7 @@ export function SalesPipelinePage() {
                         <div className="flex items-center gap-1">
                           {((item.files || []) as File[]).map((f: File, fi: number) => (
                             <span key={`item-f-${f.name}-${fi}`} className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-700 shadow-xs">
-                              <span className="max-w-[90px] truncate font-medium">{f.name}</span>
+                              <span className="max-w-[70px] truncate font-medium">{f.name}</span>
                               <button
                                 type="button"
                                 className="ml-0.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-slate-400 hover:bg-rose-100 hover:text-rose-600 transition-colors cursor-pointer text-xs font-bold leading-none"
@@ -7277,7 +7277,7 @@ export function SalesPipelinePage() {
                         </div>
                       )}
                     </div>
-                    <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} w-[12rem] sm:w-[14rem] shrink-0`} placeholder="Remarks..." title="Remarks" value={item.remarks ?? ''} onChange={e=>setItem(ii, { remarks: e.target.value })} />
+                    <input className={opts?.popup ? `${compactInput} w-full min-w-0` : `${compactInput} flex-[1_1_0%] min-w-0`} placeholder="Remarks..." title="Remarks" value={item.remarks ?? ''} onChange={e=>setItem(ii, { remarks: e.target.value })} />
                     {(group.items || []).length > 1 ? (
                       <button type="button" className="shrink-0 rounded p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 ml-auto" title="Remove line" onClick={() => setGroup({ items: (group.items || []).filter((_: any, j: number) => j !== ii) })}>
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
