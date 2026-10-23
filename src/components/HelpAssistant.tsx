@@ -123,7 +123,9 @@ export function HelpAssistant() {
       speakReady(true);
       if (!full.trim()) patchLast((t) => ({ ...t, text: 'No answer came back. Please try again.', error: true }));
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      let msg = e instanceof Error ? e.message : String(e);
+      // A browser reports an unreachable or not-yet-deployed function as just "Failed to fetch".
+      if (/failed to fetch|networkerror|load failed/i.test(msg)) msg = 'Could not reach the help service. If this is a new setup, the help function has not been deployed yet (administrator: supabase functions deploy help-assistant). Otherwise check your internet connection.';
       patchLast((t) => ({ ...t, text: full ? `${full}\n\n${msg}` : msg, error: !full }));
     } finally { setBusy(false); }
   }, [busy, lang, page, pageTitle]);
@@ -176,7 +178,7 @@ export function HelpAssistant() {
           <div className="flex items-center justify-between gap-2 bg-emerald-700 px-3 py-2 text-white">
             <div className="flex min-w-0 items-center gap-2"><CircleHelp size={18} /><div className="min-w-0"><p className="truncate text-sm font-bold">ERP உதவி · Help</p>{pageTitle && <p className="truncate text-[10px] opacity-80">{pageTitle}</p>}</div></div>
             <div className="flex items-center gap-1">
-              <button type="button" onClick={() => setSpeak((s) => !s)} title={speak ? 'Voice answers on' : 'Voice answers off'} aria-label="Toggle voice answers" className="rounded p-1.5 hover:bg-white/15">{speak ? <Volume2 size={16} /> : <VolumeX size={16} />}</button>
+              <button type="button" onClick={() => { const next = !speak; setSpeak(next); if (next) { loadVoices(); say(lang === 'ta' ? 'குரல் இயக்கப்பட்டது' : lang === 'tanglish' ? 'Voice on aagiduchu' : 'Voice is on'); } }} title={speak ? 'Voice answers on' : 'Voice answers off'} aria-label="Toggle voice answers" className="rounded p-1.5 hover:bg-white/15">{speak ? <Volume2 size={16} /> : <VolumeX size={16} />}</button>
               <button type="button" onClick={() => { stopSpeaking(); setTurns([]); }} title="Clear" aria-label="Clear chat" className="rounded p-1.5 hover:bg-white/15"><Trash2 size={16} /></button>
               <button type="button" onClick={() => setOpen(false)} title="Close" aria-label="Close help" className="rounded p-1.5 hover:bg-white/15"><X size={16} /></button>
             </div>
