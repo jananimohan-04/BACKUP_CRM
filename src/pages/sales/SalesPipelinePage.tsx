@@ -1,3 +1,4 @@
+import { defaultTermsText } from '@/lib/termsLibrary';
 import { MemberSelect, useMemberNames } from '@/components/MemberSelect';
 import { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback, Fragment } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -3466,6 +3467,7 @@ export function SalesPipelinePage() {
         roundOff: Number((record as any).round_off ?? 0) || 0,
         grandTotal: Number(record.total || record.total_value || record.value || 0) || 0,
         bankLines: comp.bankLines,
+        terms: defaultTermsText((company as any)?.id),
       };
     }
     // ---- Delivery Challan: gather EVERY item from the same DC object/data shown

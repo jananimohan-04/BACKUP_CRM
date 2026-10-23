@@ -1,3 +1,4 @@
+import { defaultTermsText } from '@/lib/termsLibrary';
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Download, Upload, Eye, FileText, Plus, Printer, CreditCard, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
@@ -12,7 +13,7 @@ import { compactInput } from '@/lib/compactFields';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
-import { downloadSalesInvoice, fetchCompanyPrintDetails } from '@/lib/brandedDocument';
+import { downloadSalesInvoice, fetchCompanyPrintDetails, salesInvoicePreviewUrl } from '@/lib/brandedDocument';
 import { splitProductAndRef, combineProductAndRef, formatFullReference } from '@/lib/productLabel';
 import { loadTerms } from '@/lib/termsLibrary';
 
@@ -395,67 +396,75 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     } catch (e) { setError(e instanceof Error ? e.message : 'Export failed.'); }
     finally { setBusy(false); }
   };
-  const printInvoice = (invToPrint?: any) => {
-    const inv = invToPrint || selected;
-    if (!inv) { window.print(); return; }
-    const itemsList = (inv.items && inv.items.length ? inv.items : lines) || [];
-    const items = itemsList.map((x: any, i: number) => {
-      const desc = x.description || x.part_name || '';
-      const qty = x.quantity ?? '';
-      const rate = x.rate ?? x.unit_price ?? x.price ?? 0;
-      const amt = x.amount ?? (Number(qty) * Number(rate));
-      return '<tr><td>'+(i+1)+'</td><td>'+escapeHtml(desc)+'</td><td>'+escapeHtml(String(qty))+'</td><td>'+cash(rate)+'</td><td>'+cash(amt)+'</td></tr>';
-    }).join('');
-    const tot = inv.total != null ? cash(inv.total) : cash(itemsList.reduce((s: number, it: any) => s + (Number(it.amount ?? (Number(it.quantity || 0) * Number(it.rate || it.unit_price || 0))) || 0), 0));
-    printHtml(inv.invoice_no || 'Invoice', '<h1>ARGUS CNC</h1><h2>Tax Invoice</h2><p>'+escapeHtml(inv.invoice_no || 'Invoice')+' · '+escapeHtml(formatDate(inv.invoice_date || todayISO()))+'</p><p>Bill To: '+escapeHtml(inv.customer_name||'')+'</p><table><thead><tr><th>#</th><th>Product</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>'+items+'</tbody></table><h3>Total: '+tot+'</h3>');
+  // The invoice as the PDF layout (same document as Download), built from a saved invoice record.
+  const buildInvoicePdfInput = async (inv: any) => {
+    const comp = await fetchCompanyPrintDetails((company as any)?.id);
+    const basic = Number(inv.basic_value) || 0;
+    const cg = Number(inv.cgst) || 0;
+    const sg = Number(inv.sgst) || 0;
+    const ig = Number(inv.igst) || 0;
+    const rateOf = (a: number) => (basic > 0 && a > 0 ? Math.round((a / basic) * 10000) / 100 : null);
+    let dcDate: string | null = null;
+    if (inv.dc_no) {
+      try {
+        const dr = await supabase.from('cnc_deliveries').select('delivery_date').eq('delivery_no', inv.dc_no).order('created_at').limit(1).maybeSingle();
+        if (!dr.error && dr.data) dcDate = (dr.data as any).delivery_date || null;
+      } catch { /* date stays empty */ }
+    }
+    const custMatch: any = (customers || []).find((x: any) => String(x.name || '').trim().toLowerCase() === String(inv.customer_name || '').trim().toLowerCase()) || {};
+    return {
+      companyName: company?.company_name || 'ARGUS CNC',
+      companyGstin: comp.gstin,
+      title: inv.invoice_type || 'Sales Invoice',
+      docNo: inv.invoice_no,
+      invDate: inv.invoice_date,
+      partyName: inv.customer_name || '',
+      partyAddress: inv.billing_address || '',
+      partyCode: String(custMatch.id || inv.customer_id || ''),
+      partyGstin: inv.customer_gstin || '',
+      dcNo: inv.dc_no || '',
+      dcDate,
+      poNo: inv.po_no || '',
+      items: (inv.items || []).map((item: any) => {
+        const q = Number(item.quantity) || 0;
+        const r = Number(item.rate) || 0;
+        return { description: item.description || '', hsn: item.hsn || '', qty: q, unit: item.unit || '', price: r, amount: Number(item.amount ?? q * r) || 0 };
+      }),
+      basicValue: basic,
+      cgstRate: rateOf(cg), cgstAmt: cg,
+      sgstRate: rateOf(sg), sgstAmt: sg,
+      igstRate: rateOf(ig), igstAmt: ig,
+      roundOff: Number(inv.round_off) || 0,
+      grandTotal: Number(inv.total) || 0,
+      bankLines: comp.bankLines,
+      terms: defaultTermsText((company as any)?.id),
+    };
+  };
+  // Print opens the browser's print box on the real invoice PDF (not a plain table).
+  const printInvoice = async (invToPrint?: any) => {
+    let inv = invToPrint || selected;
+    if (!inv) { setError('Select an invoice to print.'); return; }
+    try {
+      // A just-saved record only has what the form held; read it back so the tax and totals are the stored ones.
+      if (inv.id && (inv.basic_value == null || inv.total == null || !(inv.items || []).length)) {
+        try { inv = await financeApi.invoice(inv.id); } catch { /* print what we have */ }
+      }
+      const url = await salesInvoicePreviewUrl(await buildInvoicePdfInput(inv));
+      const frame = document.createElement('iframe');
+      frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+      frame.src = url;
+      frame.onload = () => {
+        try { frame.contentWindow?.focus(); frame.contentWindow?.print(); }
+        catch { window.open(url, '_blank'); }
+      };
+      document.body.appendChild(frame);
+      window.setTimeout(() => { frame.remove(); URL.revokeObjectURL(url); }, 120_000);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Unable to print the invoice.'); }
   };
   const downloadInvoice = async () => {
     if (!selected) { setError('Select an invoice first.'); return; }
     try {
-      const comp = await fetchCompanyPrintDetails((company as any)?.id);
-      const basic = Number(selected.basic_value) || 0;
-      const cg = Number(selected.cgst) || 0;
-      const sg = Number(selected.sgst) || 0;
-      const ig = Number(selected.igst) || 0;
-      const rateOf = (a: number) => (basic > 0 && a > 0 ? Math.round((a / basic) * 10000) / 100 : null);
-      let dcDate: string | null = null;
-      if (selected.dc_no) {
-        try {
-          const dr = await supabase.from('cnc_deliveries').select('delivery_date').eq('delivery_no', selected.dc_no).order('created_at').limit(1).maybeSingle();
-          if (!dr.error && dr.data) dcDate = (dr.data as any).delivery_date || null;
-        } catch { /* date stays empty */ }
-      }
-      const custMatch: any = (customers || []).find((x: any) => String(x.name || '').trim().toLowerCase() === String(selected.customer_name || '').trim().toLowerCase()) || {};
-      await downloadSalesInvoice({
-        companyName: company?.company_name || 'ARGUS CNC',
-        companyGstin: comp.gstin,
-        title: selected.invoice_type || 'Sales Invoice',
-        docNo: selected.invoice_no,
-        invDate: selected.invoice_date,
-        partyName: selected.customer_name || '',
-        partyAddress: selected.billing_address || '',
-        partyCode: String(custMatch.id || selected.customer_id || ''),
-        partyGstin: selected.customer_gstin || '',
-        dcNo: selected.dc_no || '',
-        dcDate,
-        poNo: selected.po_no || '',
-        items: (selected.items || []).map((item) => {
-          const q = Number(item.quantity) || 0;
-          const r = Number(item.rate) || 0;
-          return {
-            description: item.description || '', hsn: item.hsn || '',
-            qty: q, unit: item.unit || '', price: r,
-            amount: Number(item.amount ?? q * r) || 0,
-          };
-        }),
-        basicValue: basic,
-        cgstRate: rateOf(cg), cgstAmt: cg,
-        sgstRate: rateOf(sg), sgstAmt: sg,
-        igstRate: rateOf(ig), igstAmt: ig,
-        roundOff: Number(selected.round_off) || 0,
-        grandTotal: Number(selected.total) || 0,
-        bankLines: comp.bankLines,
-      });
+      await downloadSalesInvoice(await buildInvoicePdfInput(selected));
     } catch (e) { setError(e instanceof Error ? e.message : 'Unable to generate the invoice PDF.'); }
   };
   const cancelInvoice = async () => {

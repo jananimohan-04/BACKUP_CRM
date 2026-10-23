@@ -210,6 +210,18 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   // Selectable rows: SALE ORDER products lead (order qty shown, inward qty
   // matched underneath); without SO items, the inward lines lead instead.
   // Warehouses for the finished goods: each product shows the default one, and can be changed.
+  // Parts that are combined into the product: what was bought (goods / service purchase) or received as a new part for it.
+  const [partInwards, setPartInwards] = useState<any[]>([]);
+  useEffect(() => {
+    let off = false;
+    void (async () => {
+      const r = await supabase.from('cnc_inwards').select('*').neq('status', 'Deleted').limit(5000);
+      if (off || r.error) return;
+      const cats = ['GOODS PURCHASE', 'SERVICE PURCHASE', 'NEW PART', 'NEW PROJECT', 'NEWPART', 'NEWPROJECT'];
+      setPartInwards((r.data ?? []).filter((x: any) => cats.includes(String(x.category ?? '').toUpperCase().replace(/\s+/g, ' ').trim())));
+    })();
+    return () => { off = true; };
+  }, []);
   const [whs, setWhs] = useState<{ id: string; name: string; isDefault: boolean }[]>([]);
   const [whSel, setWhSel] = useState<Record<string, string>>({});
   useEffect(() => {
@@ -271,6 +283,26 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
       };
     });
   }, [so, inwardLines]);
+
+  // The parts of each product, one line per part (same part bought on several inwards is added up).
+  const partsOfProducts = useMemo(() => {
+    const base = (v: unknown) => getProductBaseName(String(v ?? '')).trim().toLowerCase();
+    return prodRows.map((pr) => {
+      const map = new Map<string, { part: string; category: string; company: string; qty: number; amount: number }>();
+      for (const x of partInwards) {
+        if (base(x.product_name) !== base(pr.name) || !String(x.part_name ?? '').trim()) continue;
+        const k = `${String(x.part_name).trim().toLowerCase()}|${String(x.category ?? '').toUpperCase()}`;
+        const q = Number(x.quantity) || 0;
+        const amt = Number(x.total_amount) || q * (Number(x.price) || 0) * (1 - (Number(x.discount_percent) || 0) / 100) * (1 + (Number(x.gst_percent) || 0) / 100);
+        const g = map.get(k) ?? { part: String(x.part_name).trim(), category: String(x.category ?? '').toUpperCase(), company: String(x.party_name ?? '').trim(), qty: 0, amount: 0 };
+        g.qty += q; g.amount += amt;
+        if (!g.company && x.party_name) g.company = String(x.party_name).trim();
+        map.set(k, g);
+      }
+      const lines = [...map.values()].sort((a, c) => a.part.localeCompare(c.part, undefined, { sensitivity: 'base' }));
+      return { key: pr.key, name: pr.name, lines, total: lines.reduce((n, l) => n + l.amount, 0) };
+    });
+  }, [prodRows, partInwards]);
 
   useEffect(() => {
     const key = prodRows.map((r) => r.key).join('|');
@@ -950,7 +982,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
           <div className="flex flex-wrap items-center gap-2">
             {titleSlot ?? <h3 className="text-[10px] font-bold uppercase tracking-widest text-brand-600">Section 1 — Transaction Details</h3>}
             <div className="flex items-center gap-1.5 relative" ref={prodRef}>
-              <span className={inlineLbl}>Reference *</span>
+              <span className={inlineLbl}>Product *</span>
               <div className="relative">
                 <input
                   ref={pickInputRef}
@@ -1014,21 +1046,6 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                   document.body,
                 )}
               </div>
-              <span className={inlineLbl}>Original</span>
-              <input
-                autoComplete="off"
-                className={`${compactInput} w-[16rem] sm:w-[18rem]`}
-                placeholder="Original Product"
-                title={pickOriginal || splitProductAndRef(pickProduct, [], pickCompany).original || ''}
-                value={pickOriginal || splitProductAndRef(pickProduct, [], pickCompany).original || ''}
-                onChange={(e) => {
-                  const orig = e.target.value;
-                  setPickOriginal(orig);
-                  const ref = pickReference || splitProductAndRef(pickProduct, [], pickCompany).reference || '';
-                  const comb = combineProductAndRef(orig, ref);
-                  setPickProduct(comb);
-                }}
-              />
             </div>
             <Button variant="secondary" size="sm" icon={<X size={14} />} onClick={onClose}>Cancel</Button>
             <Button
@@ -1186,6 +1203,41 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
             </>
             )}
           </div>
+
+          {/* The parts combined into each product (goods purchase, service purchase and new part inwards) */}
+          {fgView && partsOfProducts.some((x) => x.lines.length > 0) && (
+            <div className={inline ? 'bg-white rounded-xl border border-slate-200 p-2.5' : 'bg-white rounded-xl border border-slate-200 p-4'}>
+              <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-2 border-b border-brand-100 pb-1.5">Parts combined into the product</h3>
+              <div className="space-y-3">
+                {partsOfProducts.filter((x) => x.lines.length > 0).map((x) => (
+                  <div key={x.key}>
+                    <p className="text-xs font-bold text-slate-700 mb-1">{productWithCompany(x.name, card?.customer ?? '')}</p>
+                    <table className="w-full text-xs">
+                      <thead><tr className="text-left text-[10px] uppercase tracking-wider text-slate-500">
+                        <th className="py-1 pr-2">Part</th><th className="py-1 pr-2">Category</th><th className="py-1 pr-2">Company</th>
+                        <th className="py-1 pr-2 text-right">Qty</th><th className="py-1 text-right">Amount</th>
+                      </tr></thead>
+                      <tbody>
+                        {x.lines.map((l) => (
+                          <tr key={`${l.part}|${l.category}`} className="border-t border-slate-100">
+                            <td className="py-1 pr-2 font-medium text-slate-800">{l.part}</td>
+                            <td className="py-1 pr-2 text-slate-600">{l.category}</td>
+                            <td className="py-1 pr-2 text-slate-600">{l.company || '—'}</td>
+                            <td className="py-1 pr-2 text-right tabular-nums">{l.qty}</td>
+                            <td className="py-1 text-right tabular-nums">{inr(Math.round(l.amount * 100) / 100)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot><tr className="border-t border-slate-200 font-bold">
+                        <td className="py-1 pr-2" colSpan={4}>Total of parts</td>
+                        <td className="py-1 text-right tabular-nums">{inr(Math.round(x.total * 100) / 100)}</td>
+                      </tr></tfoot>
+                    </table>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Rejection capture removed — batches record good quantity only. */}
           {!hasCostView ? (

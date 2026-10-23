@@ -233,7 +233,7 @@ export function Modal({
   };
 
   return (
-    <div className={`fixed inset-0 z-50 ${dragging || resizing ? 'select-none' : ''}`}>
+    <div role="dialog" aria-modal="true" className={`fixed inset-0 z-50 ${dragging || resizing ? 'select-none' : ''}`}>
       <div
         className={`absolute inset-0 ${SCRIM}`}
         onPointerDown={(e) => { downRef.current = { x: e.clientX, y: e.clientY }; }}
@@ -409,7 +409,7 @@ export function ConfirmDialog({
 }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className={`absolute inset-0 ${SCRIM}`} onClick={onClose} />
       <div className="relative bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-sm p-6 animate-scale-in">
         <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">{title}</h2>

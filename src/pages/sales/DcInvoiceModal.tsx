@@ -6,6 +6,7 @@
 // silent zero. Save reuses financeApi.saveInvoice (DB computes tax authoritatively),
 // and duplicates for the same DC are refused.
 
+import { defaultTermsText } from '@/lib/termsLibrary';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { sameProduct } from '@/lib/productMatch';
 import { splitProductAndRef } from '@/lib/productLabel';
@@ -377,6 +378,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
       roundOff: 0,
       grandTotal: grand,
       bankLines: comp.bankLines,
+      terms: defaultTermsText((company as any)?.id),
     };
   };
 

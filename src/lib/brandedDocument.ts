@@ -824,6 +824,9 @@ export interface SalesInvoiceInput {
   roundOff: number;
   grandTotal: number;
   bankLines?: string[];
+  /** Terms printed on the invoice (the company's default terms from the Terms library). */
+  terms?: string;
+  /** @deprecated old name for the box text; `terms` wins. */
   declaration?: string;
 }
 
@@ -1005,7 +1008,7 @@ async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
     [`Add: ${taxLabel('SGST', input.sgstRate)}`, fmt(input.sgstAmt)],
     [`Add: ${taxLabel('IGST', input.igstRate)}`, fmt(input.igstAmt)],
     ['Round Off', fmt(input.roundOff)],
-    ['Total Amount After Tax', fmt(input.grandTotal)],
+    ['Total', fmt(input.grandTotal)],
   ];
   ensureSpace(52);
   autoTable(doc, {
@@ -1031,9 +1034,9 @@ async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
   });
   y = Math.max(leftEnd, (doc as any).lastAutoTable?.finalY ?? y) + 3;
 
-  // Declaration + bank details boxes
-  const declTitle = 'Declaration';
-  const declBody = String(input.declaration ||
+  // Terms + bank details boxes
+  const declTitle = 'Terms';
+  const declBody = String(input.terms || input.declaration ||
     'We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.');
   const bankBody = (input.bankLines && input.bankLines.length ? input.bankLines : ['—']).join('\n');
   const declLines: string[] = doc.splitTextToSize(declBody, (contentW - 3) / 2 - 10);
