@@ -4,6 +4,7 @@ import {
   activeScope, clearField, fillField, focusStep, listFields, matchFieldCommand, norm, pressCancel, pressOpen, pressSave, type Field,
 } from '@/lib/voiceFill';
 import { prepareTranslator, toEnglish, type SpeechLang } from '@/lib/voiceLang';
+import { useDraggable } from '@/lib/useDraggable';
 
 // Voice control for every form: say a field name and its value ("company Aabee Poly", "quantity 50",
 // "date 15 October 2026") and it is typed in; say "save" / "cancel" / "next" and it presses the button.
@@ -16,6 +17,8 @@ const store = {
 };
 
 export function VoiceControl() {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const drag = useDraggable('argus.voice.pos', rootRef); // the mic can be dragged anywhere; its spot is remembered
   const SR: any = typeof window !== 'undefined' ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
   const [on, setOn] = useState(false);
   const [heard, setHeard] = useState('');
@@ -186,6 +189,11 @@ export function VoiceControl() {
   useEffect(() => { store.set('voice.out', out); }, [out]);
   useEffect(() => () => { wantRef.current = false; try { recRef.current?.stop(); } catch { /* ignore */ } }, []);
   useEffect(() => {
+    const pause = () => { if (wantRef.current) stopRef.current(); };
+    window.addEventListener('argus:voice-pause', pause);
+    return () => window.removeEventListener('argus:voice-pause', pause);
+  }, []);
+  useEffect(() => {
     const k = (e: KeyboardEvent) => { if (e.altKey && e.key.toLowerCase() === 'v') { e.preventDefault(); if (wantRef.current) stopRef.current(); else start(); } };
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
@@ -208,15 +216,16 @@ export function VoiceControl() {
   ];
 
   return (
-    <div data-voice-ignore className="fixed left-4 bottom-4 z-[70] flex items-end gap-2 font-sans">
+    <div ref={rootRef} style={drag.style} data-voice-ignore className={`fixed left-4 bottom-4 z-[70] flex items-end gap-2 font-sans ${drag.pos && drag.pos.x > window.innerWidth / 2 ? 'flex-row-reverse' : ''}`}>
       <button
         type="button"
         onMouseDown={(e) => e.preventDefault()}
-        onClick={() => (on ? stop() : start())}
-        title={on ? 'Voice is on. Click to stop (Alt+V)' : 'Start voice control (Alt+V)'}
+        {...drag.bind}
+        onClick={() => { if (drag.wasDragged()) return; if (on) stop(); else start(); }}
+        title={on ? 'Voice is on. Click to stop (Alt+V) · drag to move' : 'Start voice control (Alt+V) · drag to move'}
         aria-label={on ? 'Stop voice control' : 'Start voice control'}
         aria-pressed={on}
-        className={`relative flex h-11 w-11 items-center justify-center rounded-full text-white shadow-lg transition-colors ${on ? 'bg-red-600 hover:bg-red-700' : 'bg-orange-500 hover:bg-orange-600'}`}
+        className={`relative flex h-11 w-11 touch-none cursor-grab items-center justify-center rounded-full text-white shadow-lg transition-colors active:cursor-grabbing ${on ? 'bg-red-600 hover:bg-red-700' : 'bg-orange-500 hover:bg-orange-600'}`}
       >
         {on && <span className="absolute inset-0 animate-ping rounded-full bg-red-500/40" />}
         {on ? <Mic size={20} className="relative" /> : <MicOff size={20} className="relative" />}
@@ -260,7 +269,7 @@ export function VoiceControl() {
         </div>
       )}
       {help && (
-        <div className="absolute bottom-14 left-0 w-[24rem] max-w-[90vw] rounded-xl border border-slate-200 bg-white p-3 shadow-2xl">
+        <div className={`absolute ${drag.pos && drag.pos.y < window.innerHeight / 2 ? 'top-14' : 'bottom-14'} ${drag.pos && drag.pos.x > window.innerWidth / 2 ? 'right-0' : 'left-0'} w-[24rem] max-w-[90vw] rounded-xl border border-slate-200 bg-white p-3 shadow-2xl`}>
           <div className="mb-1.5 flex items-center justify-between">
             <p className="text-sm font-bold text-slate-800">What you can say</p>
             <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setHelp(false)} aria-label="Close help" className="text-slate-400 hover:text-slate-700"><X size={15} /></button>
