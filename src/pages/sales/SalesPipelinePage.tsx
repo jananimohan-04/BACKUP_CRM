@@ -1,3 +1,4 @@
+import { DcOptionSelect } from '@/components/DcOptionSelect';
 import { defaultTermsText } from '@/lib/termsLibrary';
 import { MemberSelect, useMemberNames } from '@/components/MemberSelect';
 import { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback, Fragment } from 'react';
@@ -5704,7 +5705,7 @@ export function SalesPipelinePage() {
       billing_address: f.partyAddress || '', customer_gstin: f.partyGstin || '',
       customer_code: f.partyCode || '', eway_bill: f.ewayBill || '', po_no: f.poNumber || '',
       place_of_supply: f.placeOfSupply || '', packaging_details: f.packaging || '',
-      enquiry_no: f.enquiryNo || '', phone: f.phone || '', category: f.notes || f.category || '', remarks: f.notes || f.category || '', process: f.process || '',
+      enquiry_no: f.enquiryNo || '', phone: f.phone || '', category: f.category || '', remarks: f.notes || '', process: f.process || '',
       hsn: l.hsn, unit: l.unit, unit_price: l.price, total_amount: l.qty * l.price,
       receiver_name: f.receiverName || '', sender_name: f.senderName || '',
       customer_signature: f.custSignature || null, authorized_signature: f.authSignature || null,
@@ -5763,7 +5764,7 @@ export function SalesPipelinePage() {
             customerAddress: String(f.partyAddress || ''),
             customerGstin: String(f.partyGstin || ''),
             customerCode: String(f.partyCode || ''),
-            category: String(f.notes || f.category || ''),
+            category: String(f.category || ''),
             packaging: String(f.packaging || ''),
             enquiryNo: String(f.enquiryNo || ''),
             process: String(f.process || ''),
@@ -6877,16 +6878,11 @@ export function SalesPipelinePage() {
             {renderDcField("Supply Place", <input className={`${dcInput} w-[7.5rem]`} placeholder="Place of supply" value={dcForm.placeOfSupply || ''} onChange={e=>setDcForm({...dcForm, placeOfSupply: e.target.value})} />)}
             {renderDcField("Packaging", <input className={`${dcInput} w-[7.5rem]`} placeholder="Packaging details" value={dcForm.packaging || ''} onChange={e=>setDcForm({...dcForm, packaging: e.target.value})} />)}
             {renderDcField("Vehicle No", <input className={`${dcInput} w-[6.5rem]`} placeholder="Vehicle No" value={dcForm.vehicleNo || ''} onChange={e=>setDcForm({...dcForm, vehicleNo: e.target.value})} />)}
-            {renderDcField("Notes", <input className={`${dcInput} w-[9.5rem]`} placeholder="Notes..." value={dcForm.notes ?? dcForm.category ?? ''} onChange={e=>setDcForm({...dcForm, notes: e.target.value, category: e.target.value})} />)}
-            {renderDcField("Process", <input className={`${dcInput} w-[9rem]`} list="dc-process-list" placeholder="Select process" value={dcForm.process || ''} onChange={e=>setDcForm({...dcForm, process: e.target.value})} />)}
+            {renderDcField("Category", <DcOptionSelect kind="category" companyId={company?.id} className={`${dcInput} w-[9.5rem]`} value={dcForm.category || ''} onChange={(v) => setDcForm((prev: any) => ({ ...prev, category: v }))} />)}
+            {renderDcField("Process", <DcOptionSelect kind="process" companyId={company?.id} className={`${dcInput} w-[9rem]`} value={dcForm.process || ''} onChange={(v) => setDcForm((prev: any) => ({ ...prev, process: v }))} />)}
+            {renderDcField("Notes", <input className={`${dcInput} w-[9.5rem]`} placeholder="Notes..." value={dcForm.notes ?? ''} onChange={e=>setDcForm({...dcForm, notes: e.target.value})} />)}
           </div>
 
-          <datalist id="dc-category-list">
-            {(partsMaster.some((p: any) => p.category) ? Array.from(new Set(partsMaster.map((p: any) => p.category).filter(Boolean))) : ['GOODS PURCHASE', 'SERVICE PURCHASE', 'CUSTOMER DC', 'NEW PART', 'NO DC', 'EXPENSES']).map((c: string) => <option key={c} value={c} />)}
-          </datalist>
-          <datalist id="dc-process-list">
-            {processList.map((p: any) => <option key={p.id || p.process_code} value={`${p.process_code} — ${p.process_name}`} />)}
-          </datalist>
 
           {/* Row 3 - parts list */}
           <div className="space-y-1">
