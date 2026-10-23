@@ -4,6 +4,7 @@ import { CircleHelp, Loader2, Mic, Square, Volume2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { getBreadcrumbs } from '@/config/navigation';
 import { useDraggable } from '@/lib/useDraggable';
+import { rankNotes } from '../../supabase/functions/help-assistant/knowledge';
 
 // "உதவி / Help": a VOICE assistant, no chat window. Press Help and it says "yes, tell me", listens, answers out loud, then
 // listens again, until you say "stop" (or press the stop button, or stay quiet). It answers from the written ERP notes
@@ -80,6 +81,25 @@ function say(text: string, onEnd: () => void, notify?: (m: string) => void) {
   u.onend = onEnd;
   u.onerror = onEnd;
   window.speechSynthesis.speak(u);
+}
+const REFUSAL: Record<Lang, string> = {
+  ta: 'இந்த ERP-ஐ எப்படி பயன்படுத்துவது என்பது பற்றிய கேள்விகளுக்கு மட்டுமே என்னால் உதவ முடியும். ERP பற்றி கேளுங்கள்.',
+  tanglish: 'Indha ERP-ah eppadi use panradhu pathina kelvigalukku mattum dhaan help panna mudiyum. ERP pathi kelunga.',
+  en: 'I can only help with questions about using this ERP. Please ask about the ERP.',
+};
+/**
+ * Used when the help service cannot be reached (not deployed yet / no connection): the best matching written note is read out
+ * as it is. It only ever answers from the notes, and refuses anything that matches none of them.
+ */
+function offlineAnswer(question: string, page: string, lang: Lang): string {
+  const generic = /\b(page|screen)\b|இந்த|indha|intha|ithu/i.test(question);
+  const ranked = rankNotes(question, page).filter((r) => r.n.id !== 'overview' || r.kw > 0);
+  const best = ranked.find((r) => r.kw > 0) ?? (generic ? ranked.find((r) => r.total > 0) : undefined);
+  if (!best) return REFUSAL[lang];
+  const [en, ta] = best.n.body.split(/\nTA:/);
+  const english = en.replace(/^EN:\s*/, '').trim();
+  const text = lang === 'ta' && ta ? ta.trim() : english;
+  return text.length > 900 ? `${text.slice(0, 900).replace(/\s+\S*$/, '')}.` : text;
 }
 const stopSpeaking = () => {
   try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
@@ -183,8 +203,15 @@ export function HelpAssistant() {
     } catch (e) {
       failed = true;
       let msg = e instanceof Error ? e.message : String(e);
-      if (/failed to fetch|networkerror|load failed/i.test(msg)) msg = 'Could not reach the help service. It may not be deployed yet, or there is no internet.';
-      setNote(msg);
+      if (/failed to fetch|networkerror|load failed|not deployed|HTTP 404|HTTP 5\d\d/i.test(msg) && !full) {
+        // The help service is not reachable (usually: not deployed yet). Answer from the built-in notes so Help still talks.
+        setNote('The online help service is not reachable, so this answer is read from the built-in notes.');
+        full = offlineAnswer(question, pageRef.current.page, langRef.current);
+        speakReady(true);
+        history.current.push({ role: 'user', text: question }, { role: 'assistant', text: full });
+        history.current = history.current.slice(-8);
+        failed = false;
+      } else setNote(msg);
     } finally {
       streamDone = true;
       if (failed && activeRef.current) { // say so briefly, then stop (a loop of errors would only be annoying)

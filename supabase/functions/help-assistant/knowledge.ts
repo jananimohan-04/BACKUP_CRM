@@ -135,17 +135,42 @@ TA: User Management-ல் நிர்வாகி பயனர்களைச�
   },
 ];
 
-/** Notes ranked for one question: the page's own notes first, then by how many question words match. */
+const STOP = new Set(['how', 'what', 'where', 'when', 'why', 'who', 'which', 'the', 'is', 'are', 'was', 'do', 'does', 'did', 'can', 'could', 'should', 'would', 'will',
+  'to', 'of', 'in', 'on', 'at', 'for', 'and', 'or', 'a', 'an', 'my', 'me', 'you', 'your', 'we', 'our', 'it', 'this', 'that', 'there', 'please', 'tell', 'about', 'explain', 'show',
+  'make', 'add', 'create', 'new', 'use', 'using', 'page', 'screen', 'erp', 'want', 'need', 'help', 'with', 'from', 'get', 'give', 'any', 'all',
+  'eppadi', 'epdi', 'enna', 'ennada', 'yenna', 'podanum', 'podra', 'pannanum', 'panna', 'panrathu', 'pathi', 'patthi', 'solla', 'sollunga', 'irukku', 'illa', 'indha', 'intha', 'ithu', 'ah', 'la', 'ku', 'nu']);
+
+const tokens = (q: string) => q.toLowerCase().replace(/[^\p{L}\p{N}+\s]/gu, ' ').split(/\s+/).filter((w) => w.length > 1 && !STOP.has(w));
+
+/** Keyword score for one note. A whole keyword or phrase found in the question counts more than a loose word match, so "make a DC" prefers the DC note over the Inward note that merely mentions "customer DC". */
+function keywordHits(n: Note, words: string[], question: string): number {
+  const q = ` ${question.toLowerCase().replace(/[^\p{L}\p{N}+\s]/gu, ' ').replace(/\s+/g, ' ').trim()} `;
+  let hits = 0;
+  for (const k of [n.title, ...n.keywords]) {
+    const kk = k.toLowerCase().replace(/[^\p{L}\p{N}+\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+    if (kk && !STOP.has(kk) && q.includes(` ${kk} `)) hits += kk.includes(' ') ? 3 : 2;
+  }
+  const bag = new Set(`${n.title} ${n.keywords.join(' ')}`.toLowerCase().replace(/[^\p{L}\p{N}+\s]/gu, ' ').split(/\s+/).filter(Boolean));
+  for (const w of words) {
+    if (bag.has(w)) { hits += 1; continue; }
+    if (w.length >= 4) for (const b of bag) if (b.length >= 4 && (b.startsWith(w) || w.startsWith(b))) { hits += 1; break; }
+  }
+  return hits;
+}
+
+/** Notes ranked for a question, with the number of real keyword hits (kw) apart from the page bonus. */
+export function rankNotes(question: string, page: string): { n: Note; kw: number; total: number }[] {
+  const words = tokens(question);
+  return NOTES.map((n) => {
+    const kw = keywordHits(n, words, question);
+    const pageBonus = n.pages.some((p) => page === p || page.startsWith(p + '/')) ? 2 : 0;
+    return { n, kw, total: kw + pageBonus };
+  }).sort((a, b) => b.total - a.total);
+}
+
+/** The notes handed to the model for one question: the best matches, and always the overview. */
 export function pickNotes(question: string, page: string, limit = 4): Note[] {
-  const words = question.toLowerCase().replace(/[^\p{L}\p{N}+\s]/gu, ' ').split(/\s+/).filter((w) => w.length > 1);
-  const scored = NOTES.map((n) => {
-    let s = n.pages.some((p) => page === p || page.startsWith(p + '/')) ? 2 : 0;
-    const hay = `${n.title} ${n.keywords.join(' ')}`.toLowerCase();
-    for (const w of words) if (hay.includes(w)) s += 1;
-    return { n, s };
-  }).sort((a, b) => b.s - a.s);
-  const top = scored.filter((x) => x.s > 0).slice(0, limit).map((x) => x.n);
-  // Always give the overview so the model can place the answer in the whole process.
+  const top = rankNotes(question, page).filter((x) => x.total > 0).slice(0, limit).map((x) => x.n);
   if (!top.some((n) => n.id === 'overview')) top.push(NOTES[0]);
   return top;
 }
