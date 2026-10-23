@@ -207,26 +207,6 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
           className="pl-8 pr-2.5 py-1 text-xs border border-slate-300 rounded-md focus:outline-none focus:border-brand-500 bg-white shadow-sm w-36 sm:w-44"
         />
       </div>
-      <select
-        aria-label="Filter by category"
-        title="Filter by category"
-        value={categoryFilter}
-        onChange={e => setCategoryFilter(e.target.value)}
-        className="py-1 px-2 text-xs font-medium border border-slate-300 rounded-md focus:outline-none focus:border-brand-500 bg-white shadow-sm max-w-[11rem] text-slate-600"
-      >
-        <option value="All">All Categories</option>
-        {categories.map(c => <option key={c} value={c}>{c}</option>)}
-      </select>
-      <select
-        aria-label="Filter by part name"
-        title="Filter by part name"
-        value={partNameFilter}
-        onChange={e => setPartNameFilter(e.target.value)}
-        className="py-1 px-2 text-xs font-medium border border-slate-300 rounded-md focus:outline-none focus:border-brand-500 bg-white shadow-sm max-w-[11rem] text-slate-600 truncate"
-      >
-        <option value="All">All Part Names</option>
-        {partNames.map(p => <option key={p} value={p}>{p}</option>)}
-      </select>
     </div>
   );
 

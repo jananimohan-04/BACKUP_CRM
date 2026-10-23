@@ -1,3 +1,4 @@
+import { androidGoogleSignIn, isAndroidApp } from '@/lib/android/auth';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { effectiveMatrix, type PermAction, type PermMatrix } from '@/config/permissions';
@@ -169,6 +170,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // is identical to the web flow.
       try {
         await desktopGoogleSignIn();
+      } catch (err) {
+        setErrorMessage(err instanceof Error ? err.message : String(err));
+        setStatus('error');
+      }
+      return;
+    }
+    if (isAndroidApp()) {
+      // Android app: the system browser + a return link that opens this app (the page itself lives at https://localhost).
+      try {
+        await androidGoogleSignIn();
       } catch (err) {
         setErrorMessage(err instanceof Error ? err.message : String(err));
         setStatus('error');
