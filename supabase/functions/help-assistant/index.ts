@@ -14,6 +14,7 @@
 //   GROQ_API_KEY    free tier, very fast (console.groq.com).                          Optional: GROQ_MODEL
 //   GEMINI_API_KEY  free tier (aistudio.google.com).                                  Optional: GEMINI_MODEL
 //   HELP_MONTHLY_LIMIT  questions per company per month (default 1000)
+//   OPENAI_TTS_MODEL / OPENAI_TTS_VOICE   spoken-answer voice (defaults tts-1 / nova); used for Tamil on PCs with no Tamil voice
 // SUPABASE_URL and SUPABASE_ANON_KEY are provided automatically.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -149,8 +150,25 @@ Deno.serve(async (req) => {
   const { data: u } = await supa.auth.getUser();
   if (!u?.user) return json({ error: 'Please sign in again.' }, 401);
 
-  let b: { question?: string; page?: string; pageTitle?: string; lang?: string; history?: Hist };
+  let b: { question?: string; page?: string; pageTitle?: string; lang?: string; history?: Hist; tts?: string };
   try { b = await req.json(); } catch { return json({ error: 'Bad request' }, 400); }
+
+  // Text to speech: turns a short piece of text into an mp3 with OpenAI's voice, for languages (Tamil) that many PCs have
+  // no voice for. Only for signed-in users, short pieces only.
+  if (typeof b.tts === 'string') {
+    const text = b.tts.trim().slice(0, 400);
+    const key = Deno.env.get('OPENAI_API_KEY');
+    if (!text) return json({ error: 'Nothing to say.' }, 400);
+    if (!key) return json({ error: 'Voice needs OPENAI_API_KEY on the server.' }, 503);
+    const r = await fetch('https://api.openai.com/v1/audio/speech', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ model: Deno.env.get('OPENAI_TTS_MODEL') || 'tts-1', voice: Deno.env.get('OPENAI_TTS_VOICE') || 'nova', input: text, response_format: 'mp3' }),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!r.ok) return json({ error: `Voice service error (HTTP ${r.status})` }, 502);
+    return new Response(r.body, { headers: { ...cors, 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store' } });
+  }
   const question = String(b.question ?? '').trim().slice(0, 600);
   if (!question) return json({ error: 'Type or say your question.' }, 400);
   const lang = ['ta', 'en', 'tanglish', 'auto'].includes(String(b.lang)) ? String(b.lang) : 'auto';

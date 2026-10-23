@@ -47,19 +47,49 @@ function chunksOf(text: string, max = 180): string[] {
   if (cur.trim()) out.push(cur.trim());
   return out.flatMap((c) => (c.length <= max ? [c] : c.match(new RegExp('.{1,' + max + '}( |$)', 'g')) ?? [c]));
 }
-function playOnline(text: string, tl: string, onEnd: () => void) {
+let serverVoiceDown = false;   // the server voice failed once: do not keep trying it
+let tamilVoiceFailed = false;  // neither online voice worked
+async function serverVoice(text: string): Promise<HTMLAudioElement | null> {
+  if (serverVoiceDown) return null;
+  try {
+    const { data } = await supabase.auth.getSession();
+    const res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${data.session?.access_token ?? ''}`, apikey: String(import.meta.env.VITE_SUPABASE_ANON_KEY ?? ''), 'content-type': 'application/json' },
+      body: JSON.stringify({ tts: text, lang: 'ta' }),
+    });
+    if (!res.ok) { serverVoiceDown = true; return null; }
+    return new Audio(URL.createObjectURL(await res.blob()));
+  } catch { serverVoiceDown = true; return null; }
+}
+function playOnline(text: string, tl: string, onEnd: () => void, notify?: (m: string) => void) {
   const parts = chunksOf(text);
   const token = ++onlineToken;
-  const next = (i: number) => {
+  const play = (a: HTMLAudioElement) => new Promise<boolean>((resolve) => {
+    onlineAudio = a;
+    a.onended = () => resolve(true);
+    a.onerror = () => resolve(false);
+    a.play().catch(() => resolve(false));
+  });
+  const next = async (i: number) => {
     if (token !== onlineToken) return;               // stopped or replaced
     if (i >= parts.length) { onEnd(); return; }
-    const a = new Audio(`https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${tl}&q=${encodeURIComponent(parts[i].trim())}`);
-    onlineAudio = a;
-    a.onended = () => next(i + 1);
-    a.onerror = () => { if (token === onlineToken) onEnd(); };
-    void a.play().catch(() => { if (token === onlineToken) onEnd(); });
+    const piece = parts[i].trim();
+    // 1) the server's voice (needs the help function + OPENAI_API_KEY), 2) Google's online voice.
+    let ok = false;
+    const sv = await serverVoice(piece);
+    if (token !== onlineToken) return;
+    if (sv) ok = await play(sv);
+    if (!ok && token === onlineToken) ok = await play(new Audio(`https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${tl}&q=${encodeURIComponent(piece)}`));
+    if (token !== onlineToken) return;
+    if (!ok) {
+      if (!tamilVoiceFailed) { tamilVoiceFailed = true; notify?.('Tamil voice is not available on this PC. Open the ERP in Microsoft Edge (it has Tamil voices built in), or install a Tamil voice in Windows, or switch Language to English / Tanglish.'); }
+      onEnd();
+      return;
+    }
+    void next(i + 1);
   };
-  next(0);
+  void next(0);
 }
 let announcedOnline = false;
 /** Speaks one piece of text; `onEnd` runs when it has finished (or could not be spoken). */
@@ -71,7 +101,7 @@ function say(text: string, onEnd: () => void, notify?: (m: string) => void) {
   const v = voiceFor(t);
   if (tamil && !v && voices.length > 0) {
     if (!announcedOnline) { announcedOnline = true; notify?.('No Tamil voice is installed on this PC, so an online Tamil voice is used.'); }
-    playOnline(t, 'ta', onEnd);
+    playOnline(t, 'ta', onEnd, notify);
     return;
   }
   if (!('speechSynthesis' in window)) { onEnd(); return; }
