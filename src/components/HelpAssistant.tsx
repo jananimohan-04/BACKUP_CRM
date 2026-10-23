@@ -33,19 +33,60 @@ function voiceFor(text: string): SpeechSynthesisVoice | undefined {
   for (const w of want) { const v = voices.find((x) => x.lang === w) ?? voices.find((x) => x.lang.startsWith(w)); if (v) return v; }
   return undefined;
 }
+// Windows and Chrome usually have NO Tamil voice installed, so Tamil text would be silent. When no Tamil voice exists, the
+// Tamil sentences are played from an online voice instead (Google's text-to-speech web address, one small piece at a time).
+let onlineAudio: HTMLAudioElement | null = null;
+let onlineToken = 0;
+function chunksOf(text: string, max = 180): string[] {
+  const out: string[] = [];
+  let cur = '';
+  for (const part of text.split(/(?<=[.!?।,;])\s+|\n+/)) {
+    if ((cur + ' ' + part).trim().length > max && cur) { out.push(cur.trim()); cur = part; } else cur = `${cur} ${part}`;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out.flatMap((c) => (c.length <= max ? [c] : c.match(new RegExp('.{1,' + max + '}( |$)', 'g')) ?? [c]));
+}
+function playOnline(text: string, tl: string, onEnd: () => void) {
+  const parts = chunksOf(text);
+  const token = ++onlineToken;
+  const next = (i: number) => {
+    if (token !== onlineToken) return;               // stopped or replaced
+    if (i >= parts.length) { onEnd(); return; }
+    const a = new Audio(`https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${tl}&q=${encodeURIComponent(parts[i].trim())}`);
+    onlineAudio = a;
+    a.onended = () => next(i + 1);
+    a.onerror = () => { if (token === onlineToken) onEnd(); };
+    void a.play().catch(() => { if (token === onlineToken) onEnd(); });
+  };
+  next(0);
+}
+let announcedOnline = false;
 /** Speaks one piece of text; `onEnd` runs when it has finished (or could not be spoken). */
-function say(text: string, onEnd: () => void) {
+function say(text: string, onEnd: () => void, notify?: (m: string) => void) {
   const t = text.replace(/[*#_`]/g, '').trim();
-  if (!t || !('speechSynthesis' in window)) { onEnd(); return; }
-  const u = new SpeechSynthesisUtterance(t);
+  if (!t) { onEnd(); return; }
+  loadVoices();
+  const tamil = TAMIL.test(t);
   const v = voiceFor(t);
-  if (v) { u.voice = v; u.lang = v.lang; } else u.lang = TAMIL.test(t) ? 'ta-IN' : 'en-IN';
+  if (tamil && !v && voices.length > 0) {
+    if (!announcedOnline) { announcedOnline = true; notify?.('No Tamil voice is installed on this PC, so an online Tamil voice is used.'); }
+    playOnline(t, 'ta', onEnd);
+    return;
+  }
+  if (!('speechSynthesis' in window)) { onEnd(); return; }
+  const u = new SpeechSynthesisUtterance(t);
+  if (v) { u.voice = v; u.lang = v.lang; } else u.lang = tamil ? 'ta-IN' : 'en-IN';
   u.rate = 1.03;
   u.onend = onEnd;
   u.onerror = onEnd;
   window.speechSynthesis.speak(u);
 }
-const stopSpeaking = () => { try { window.speechSynthesis.cancel(); } catch { /* ignore */ } };
+const stopSpeaking = () => {
+  try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
+  onlineToken += 1;
+  try { onlineAudio?.pause(); } catch { /* ignore */ }
+  onlineAudio = null;
+};
 
 export function HelpAssistant() {
   const location = useLocation();
@@ -97,7 +138,7 @@ export function HelpAssistant() {
       if (!chunk.trim() || !activeRef.current) return;
       pending += 1;
       setPhase('speaking');
-      say(chunk, () => { pending -= 1; finish(); });
+      say(chunk, () => { pending -= 1; finish(); }, setNote);
     };
     const speakReady = (final: boolean) => {
       const rest = full.slice(spokenUpTo);
@@ -178,7 +219,7 @@ export function HelpAssistant() {
       if (!said) {
         misses.current += 1;
         if (misses.current >= 2) { endSession(true); return; }
-        say(NOT_HEARD[langRef.current], () => listenRef.current());
+        say(NOT_HEARD[langRef.current], () => listenRef.current(), setNote);
         return;
       }
       misses.current = 0;
@@ -201,7 +242,7 @@ export function HelpAssistant() {
     setNote('');
     setPhase('greeting');
     stopSpeaking();
-    say(GREETING[langRef.current], () => listenRef.current());
+    say(GREETING[langRef.current], () => listenRef.current(), setNote);
   };
 
   useEffect(() => () => { activeRef.current = false; try { recRef.current?.abort?.(); } catch { /* ignore */ } stopSpeaking(); }, []);
