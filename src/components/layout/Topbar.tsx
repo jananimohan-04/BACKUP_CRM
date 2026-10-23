@@ -78,7 +78,7 @@ export function Topbar({
       {/* Mobile Menu Toggle (side positions; top/bottom positions own their mobile menu) */}
       {!hideMobileMenu && (
         <div className="flex items-center lg:hidden">
-          <Menu size={18} className="text-slate-400 flex-shrink-0 cursor-pointer hover:text-slate-600 transition-colors" onClick={onMenuClick} />
+          <button type="button" aria-label="Open menu" onClick={onMenuClick} className="-ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 active:bg-slate-200"><Menu size={22} className="flex-shrink-0" /></button>
         </div>
       )}
 

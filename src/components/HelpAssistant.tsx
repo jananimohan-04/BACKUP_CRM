@@ -149,8 +149,16 @@ function offlineAnswer(question: string, page: string, lang: Lang): string {
   const [en, ta] = best.n.body.split(/\nTA:/);
   const english = en.replace(/^EN:\s*/, '').trim();
   const text = lang === 'ta' && ta ? ta.trim() : english;
-  return text.length > 900 ? `${text.slice(0, 900).replace(/\s+\S*$/, '')}.` : text;
+  // Only the lines that answer THIS question are read out, not the whole note: lines are scored by the question's words.
+  const lines = text.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  const qWords = question.toLowerCase().replace(/[^\p{L}\p{N}+\s]/gu, ' ').split(/\s+/).filter((w) => w.length > 2 && !OFFLINE_STOP.has(w));
+  const scored = lines.map((l, i) => ({ l, i, s: qWords.reduce((n, w) => n + (l.toLowerCase().includes(w) ? 1 : 0), 0) }));
+  const hit = scored.filter((x) => x.s > 0).sort((a, c) => c.s - a.s || a.i - c.i).slice(0, 3).sort((a, c) => a.i - c.i);
+  const pick = hit.length ? hit.map((x) => x.l) : lines.slice(0, 2);   // nothing specific: the start of the note
+  const out = pick.join(' ');
+  return out.length > 700 ? `${out.slice(0, 700).replace(/\s+\S*$/, '')}.` : out;
 }
+const OFFLINE_STOP = new Set(['how', 'what', 'where', 'when', 'why', 'the', 'and', 'for', 'this', 'that', 'with', 'eppadi', 'enna', 'podanum', 'pannanum', 'indha', 'page', 'screen', 'tell', 'about', 'explain', 'can', 'you', 'are', 'does', 'make', 'use']);
 const stopSpeaking = () => {
   try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
   onlineToken += 1;
@@ -177,6 +185,7 @@ export function HelpAssistant() {
   const misses = useRef(0);                  // times in a row nothing was heard
   const pageRef = useRef({ page: '', title: '' });
   const listenRef = useRef<() => void>(() => {});
+  const lastSpoken = useRef('');
 
   const page = location.pathname;
   const pageTitle = (() => { try { const b = getBreadcrumbs(page.replace(/^\//, '')); return b[b.length - 1]?.label ?? ''; } catch { return ''; } })();
@@ -209,6 +218,7 @@ export function HelpAssistant() {
       if (!chunk.trim() || !activeRef.current) return;
       pending += 1;
       setPhase('speaking');
+      lastSpoken.current = `${lastSpoken.current} ${chunk}`.slice(-1500);
       say(chunk, () => { pending -= 1; finish(); }, setNote);
     };
     const speakReady = (final: boolean) => {
@@ -300,14 +310,19 @@ export function HelpAssistant() {
         say(NOT_HEARD[langRef.current], () => listenRef.current(), setNote);
         return;
       }
+      // Its own voice picked up by the microphone is not a question.
+      const norm = (x: string) => x.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+      if (norm(said).length > 8 && norm(lastSpoken.current).includes(norm(said))) { listenRef.current(); return; }
       misses.current = 0;
       if (STOP_WORDS.test(said)) { endSession(true); return; }
+      lastSpoken.current = '';
       void ask(said);
     };
     recRef.current = r;
     setHeard('');
     setPhase('listening');
-    try { r.start(); } catch { endSession(false); }
+    // A short pause first, so the end of Help's own voice has died away before the microphone opens.
+    window.setTimeout(() => { if (activeRef.current && recRef.current === r) { try { r.start(); } catch { endSession(false); } } }, 600);
   }, [SR, ask, endSession]);
   listenRef.current = listen;
 

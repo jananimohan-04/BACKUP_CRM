@@ -131,7 +131,7 @@ export function splitProductAndRef(
     company = dotParts.slice(1).join(' - ').trim();
   } else {
     // Check known companies against dash separation: "Product - Company"
-    const compList = [...knownCompanies.map((c) => String(c).trim().toLowerCase()), ...registeredCompanies];
+    const compList = [...knownCompanies.map((c) => String(c).trim().toLowerCase()), ...registeredCompanies, String(defaultCompany || '').trim().toLowerCase()].filter(Boolean);
     const knownSet = new Set(compList);
     const dashParts = orig.split(/\s+-\s+/);
     if (dashParts.length >= 2) {

@@ -154,15 +154,19 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
       supabase.from('cnc_customers').select('id,name').order('name'),
       supabase.from('cnc_deliveries').select('*').order('created_at', { ascending: false }),
       financeApi.bankFilters(),
-      supabase.from('cnc_parts').select('id,part_name,part_code,hsn,unit,unit_price,gst_rate').order('part_name'),
+      supabase.from('cnc_parts').select('id,part_no,part_name,hsn,unit,unit_price,stock_qty').order('part_name'),
+      supabase.from('cnc_raw_materials').select('id,material_code,name,uom,unit_price,stock_qty').order('name'),
       supabase.from('cnc_quotations').select('id,quote_no,customer,customer_id,part_name,payment_terms,delivery_terms,terms').order('created_at', { ascending: false }),
       supabase.from('cnc_sales_orders').select('id,order_no,customer,quote_no,quotation_id,payment_terms,part_name,items').order('created_at', { ascending: false }),
-    ]).then(([c, d, b, p, q, so]) => {
+    ]).then(([c, d, b, p, rm, q, so]) => {
       if (!active) return;
       if (c.data) setCustomers(c.data as any[]);
       if (d.data) setDeliveries((d.data as any[]).filter(x => !['Billed', 'Cancelled'].includes(String(x.status))));
       setAccounts(b.accounts || []);
-      if (p.data) setPartsList(p.data as any[]);
+      // Items already in stock (not tied to any customer order) can be invoiced straight from inventory.
+      const stockParts = ((p.data as any[]) || []).map(x => ({ ...x, part_code: x.part_no, kind: 'Part' }));
+      const stockRaw = ((rm.data as any[]) || []).map(x => ({ id: `rm-${x.id}`, part_name: x.name, part_code: x.material_code, unit: x.uom, unit_price: x.unit_price, stock_qty: x.stock_qty, kind: 'Material' }));
+      setPartsList([...stockParts, ...stockRaw]);
       if (q.data) setQuotesList(q.data as any[]);
       if (so.data) setSalesOrdersList(so.data as any[]);
     }).catch(() => {});
@@ -533,10 +537,24 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
           <input className={`${invInput} w-[6.5rem]`} value={form.invoice_no||''} onChange={e=>setForm({...form,invoice_no:e.target.value})} placeholder="Auto if blank"/>
         ))}
         {renderInvField("Delivery Challan", (
-          <select className={`${invInput} w-[8.5rem]`} value={form.delivery_id||''} onChange={e=>chooseDelivery(e.target.value)}>
-            <option value="">Not linked</option>
-            {deliveries.map(d=><option key={d.id} value={d.id}>{d.delivery_no||d.id} · {d.customer_name||''}</option>)}
-          </select>
+          <>
+            <input
+              autoComplete="off"
+              list="inv-dc-list"
+              className={`${invInput} w-[8.5rem]`}
+              placeholder="Type or pick DC no"
+              value={form.dc_no||''}
+              onChange={e => {
+                const v = e.target.value;
+                const d = deliveries.find(x => String(x.delivery_no || '').trim().toLowerCase() === v.trim().toLowerCase());
+                if (d) chooseDelivery(String(d.id));
+                else setForm((prev: any) => ({ ...prev, dc_no: v, delivery_id: '' }));
+              }}
+            />
+            <datalist id="inv-dc-list">
+              {deliveries.map(d => <option key={d.id} value={d.delivery_no || String(d.id)}>{d.delivery_no || d.id} · {d.customer_name || ''}</option>)}
+            </datalist>
+          </>
         ))}
         {renderInvField("Company", (
           <select className={`${invInput} w-[8.5rem]`} value={form.customer_id||''} onChange={e=>{
@@ -686,8 +704,11 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
                   const custMatch = customers.find(c => String(c.name || '').trim().toLowerCase() === targetCust.trim().toLowerCase());
 
                   const dtRef = split.dateTime || (dMatch?.delivery_date ? formatDate(dMatch.delivery_date) : '');
-                  const fullRef = split.reference || formatFullReference(orig, targetCust, dtRef, split.qty || dMatch?.dispatch_qty || dMatch?.quantity || soMatch?.quantity);
-                  const combined = combineProductAndRef(orig, fullRef);
+                  // The product name alone: a company name left on the end of it (the customer is known now) is dropped.
+                  const tail = ` - ${targetCust.trim()}`.toLowerCase();
+                  const prodName = targetCust.trim() && orig.toLowerCase().endsWith(tail) ? orig.slice(0, orig.length - tail.length).trim() : orig;
+                  const fullRef = split.reference || formatFullReference(prodName, targetCust, dtRef, split.qty || dMatch?.dispatch_qty || dMatch?.quantity || soMatch?.quantity);
+                  const combined = combineProductAndRef(prodName, fullRef);
 
                   // Resolve quantity
                   let resolvedQty = '';
@@ -717,7 +738,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
                   // Update line items
                   setLines(lines.map((x, i) => i === index ? {
                     ...x,
-                    originalName: orig,
+                    originalName: prodName,
                     reference: fullRef,
                     description: combined,
                     hsn: resolvedHsn || x.hsn || '',
@@ -788,8 +809,8 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
           const disp = formatFullReference(s.original, so.customer, s.dateTime || so.order_no, so.quantity);
           return <option key={`so-${so.id}`} value={disp}>{disp}</option>;
         })}
-        {partsList.map((p: any) => (
-          <option key={`prt-${p.id}`} value={p.part_name}>{p.part_name}</option>
+        {partsList.filter((p: any) => Number(p.stock_qty) > 0 && p.part_name).map((p: any) => (
+          <option key={`prt-${p.id}`} value={p.part_name}>{`In stock: ${Number(p.stock_qty)} ${p.unit || ''} · ${p.kind}`}</option>
         ))}
       </datalist>
 

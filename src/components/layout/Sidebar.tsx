@@ -64,7 +64,7 @@ export function Sidebar({
       const nav = navRef.current, inner = innerRef.current;
       if (!nav || !inner) return;
       const natural = inner.getBoundingClientRect().height / fit;
-      const next = Math.max(0.6, Math.min(1, (nav.clientHeight - 20) / natural));
+      const next = window.innerWidth < 1024 ? 1 : Math.max(0.6, Math.min(1, (nav.clientHeight - 20) / natural));   // phones scroll instead of shrinking
       setFit((prev) => (Math.abs(prev - next) > 0.005 ? next : prev));
     };
     measure();
@@ -87,7 +87,7 @@ export function Sidebar({
 
   const transform = mobileOnly
     ? mobileOpen ? 'translate-x-0' : '-translate-x-full'
-    : mobileOpen ? 'translate-x-0' : closed ? (isRight ? 'translate-x-full' : '-translate-x-full') : 'translate-x-0 lg:translate-x-0';
+    : mobileOpen ? 'translate-x-0' : closed ? (isRight ? 'translate-x-full' : '-translate-x-full') : `${isRight ? 'translate-x-full' : '-translate-x-full'} lg:translate-x-0`;   // on a phone it stays hidden until the menu button opens it
 
   return (
     <>
@@ -113,9 +113,9 @@ export function Sidebar({
       <aside
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        className={`w-[360px] ${transform} ${slideClass} ${
+        className={`w-[min(360px,88vw)] ${transform} ${slideClass} ${
           mobileOnly ? 'lg:hidden' : ''
-        } fixed bg-navy-950 text-white flex flex-col overflow-x-hidden h-screen top-0 z-50 transition-transform duration-300 ease-out ${
+        } fixed bg-navy-950 text-white flex flex-col overflow-x-hidden h-[100dvh] top-0 z-50 transition-transform duration-300 ease-out ${
           isRight
             ? 'right-0 shadow-[-4px_0_24px_rgba(0,0,0,0.15)]'
             : 'left-0 shadow-[4px_0_24px_rgba(0,0,0,0.15)]'
@@ -133,7 +133,7 @@ export function Sidebar({
       </div>
 
         {/* Navigation */}
-      <nav ref={navRef} className="flex-1 overflow-hidden py-2 px-2 relative z-0"><div ref={innerRef} style={{ zoom: fit }} className="grid grid-cols-2 gap-x-2 gap-y-1 items-start">
+      <nav ref={navRef} className="flex-1 overflow-y-auto lg:overflow-hidden py-2 px-2 relative z-0"><div ref={innerRef} style={{ zoom: fit }} className="grid grid-cols-1 lg:grid-cols-2 gap-x-2 gap-y-1 items-start">
         {visibleSections.map((section) => {
           const isExpanded = expandedSections.has(section.label);
           const hasActive = isSectionActive(section, currentPage);
@@ -142,7 +142,7 @@ export function Sidebar({
               {!collapsed && (
                 <button
                   onClick={() => toggleSection(section.label)}
-                  className={`w-full flex items-center justify-between px-2.5 py-1 mb-0.5 rounded-md bg-navy-900/70 text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                  className={`w-full flex items-center justify-between px-2.5 py-2 lg:py-1 mb-0.5 rounded-md bg-navy-900/70 text-[11px] lg:text-[10px] font-bold uppercase tracking-wider transition-colors ${
                     hasActive ? 'text-brand-400 font-extrabold' : 'text-navy-400 hover:text-navy-200'
                   }`}
                 >
@@ -165,7 +165,7 @@ export function Sidebar({
                           if (onCloseMobile) onCloseMobile();
                         }}
                         title={collapsed ? item.label : undefined}
-                        className={`w-full flex items-center px-2.5 py-1 rounded-md text-sm transition-all duration-200 group relative ${
+                        className={`w-full flex items-center px-2.5 py-2.5 lg:py-1 rounded-md text-sm transition-all duration-200 group relative ${
                           active
                             ? 'bg-brand-600 text-white font-bold shadow-md shadow-brand-500/25 ring-1 ring-white/20'
                             : 'text-navy-300 hover:bg-navy-900 hover:text-white'
@@ -174,7 +174,7 @@ export function Sidebar({
                         {active && (
                            <div className={`absolute ${isRight ? 'right-0 rounded-l-full' : 'left-0 rounded-r-full'} top-1/2 -translate-y-1/2 w-1.5 h-6 bg-white shadow-sm`} />
                         )}
-                        {!collapsed && <span className="text-[12.5px] leading-tight text-left py-0.5">{item.label}</span>}
+                        {!collapsed && <span className="text-[14px] lg:text-[12.5px] leading-tight text-left py-0.5">{item.label}</span>}
                       </button>
                     );
                   })}

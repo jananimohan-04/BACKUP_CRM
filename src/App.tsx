@@ -128,7 +128,16 @@ function MainLayout() {
   const mainRef = useRef<HTMLElement>(null);
   useStickyTableHeads(mainRef, location.pathname);
   // User-chosen menu position (Left / Right / Top / Bottom) — persisted per user.
-  const { position } = useNavPosition();
+  const { position: chosenPosition } = useNavPosition();
+  // On a phone (the Android app too) the menu is always the slide-in drawer opened by the menu button, whatever position was chosen.
+  const [narrow, setNarrow] = useState(() => window.matchMedia('(max-width: 1023px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023px)');
+    const on = () => setNarrow(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  const position = narrow ? 'left' : chosenPosition;
 
   // Remove leading slash for matching with Lovable's navigation config
   const currentPage = location.pathname.substring(1) || 'sales/pipeline';
