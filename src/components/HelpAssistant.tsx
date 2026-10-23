@@ -23,17 +23,34 @@ const ENDPOINT = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/help-assista
 const STOP_WORDS = /^(stop|bye|goodbye|that'?s all|enough|exit|close|நிறுத்து|போதும்|நிறுத்தவும்|பை|nirutthu|nirutha|podhum|pothum|bye bye)\b/i;
 
 const GREETING: Record<Lang, string> = { ta: 'ஆம், சொல்லுங்கள்.', tanglish: 'Yes, sollunga.', en: 'Yes, tell me.' };
+// The first time Help is switched on in a browser session it welcomes the person.
+const WELCOME: Record<Lang, string> = {
+  ta: 'ARGUS ERP-க்கு வரவேற்கிறோம்! சொல்லுங்கள், எப்படி உதவலாம்?',
+  tanglish: 'Welcome to Argus ERP! Sollunga, eppadi help pannalam?',
+  en: 'Welcome to Argus ERP! How can I help you?',
+};
+const welcomedOnce = () => { try { return sessionStorage.getItem('argus.help.welcomed') === '1'; } catch { return false; } };
+const markWelcomed = () => { try { sessionStorage.setItem('argus.help.welcomed', '1'); } catch { /* ignore */ } };
 const GOODBYE: Record<Lang, string> = { ta: 'சரி, தேவைப்படும்போது கூப்பிடுங்கள்.', tanglish: 'Sari, venumbodhu koopidunga.', en: 'Okay, call me when you need me.' };
 const NOT_HEARD: Record<Lang, string> = { ta: 'எனக்கு கேட்கவில்லை.', tanglish: 'Enakku kekkala.', en: "I didn't hear anything." };
 
 // ---------------------------------------------------------------- speaking
 let voices: SpeechSynthesisVoice[] = [];
 const loadVoices = () => { try { voices = window.speechSynthesis.getVoices(); } catch { voices = []; } };
-function voiceFor(text: string): SpeechSynthesisVoice | undefined {
-  const want = TAMIL.test(text) ? ['ta-IN', 'ta'] : ['en-IN', 'en-GB', 'en'];
-  for (const w of want) { const v = voices.find((x) => x.lang === w) ?? voices.find((x) => x.lang.startsWith(w)); if (v) return v; }
-  return undefined;
+// The clearest voices are the "Natural" / "Neural" / online ones (Microsoft Edge has them; Chrome has Google's), so those are
+// preferred; the person can also pick a voice (it is remembered).
+const voiceScore = (v: SpeechSynthesisVoice) =>
+  (/natural|neural/i.test(v.name) ? 8 : 0) + (/online/i.test(v.name) ? 4 : 0) + (/google/i.test(v.name) ? 2 : 0) + (v.lang === 'en-IN' || v.lang === 'ta-IN' ? 1 : 0);
+function voiceList(kind: 'ta' | 'en'): SpeechSynthesisVoice[] {
+  return voices.filter((v) => v.lang.toLowerCase().startsWith(kind)).sort((x, y) => voiceScore(y) - voiceScore(x) || x.name.localeCompare(y.name));
 }
+function voiceFor(text: string): SpeechSynthesisVoice | undefined {
+  const kind = TAMIL.test(text) ? 'ta' : 'en';
+  const list = voiceList(kind);
+  const saved = store.get(`help.voice.${kind}`, '');
+  return list.find((v) => v.name === saved) ?? list[0];
+}
+
 // Windows and Chrome usually have NO Tamil voice installed, so Tamil text would be silent. When no Tamil voice exists, the
 // Tamil sentences are played from an online voice instead (Google's text-to-speech web address, one small piece at a time).
 let onlineAudio: HTMLAudioElement | null = null;
@@ -67,6 +84,7 @@ function playOnline(text: string, tl: string, onEnd: () => void, notify?: (m: st
   const token = ++onlineToken;
   const play = (a: HTMLAudioElement) => new Promise<boolean>((resolve) => {
     onlineAudio = a;
+    a.volume = 1;
     a.onended = () => resolve(true);
     a.onerror = () => resolve(false);
     a.play().catch(() => resolve(false));
@@ -107,7 +125,9 @@ function say(text: string, onEnd: () => void, notify?: (m: string) => void) {
   if (!('speechSynthesis' in window)) { onEnd(); return; }
   const u = new SpeechSynthesisUtterance(t);
   if (v) { u.voice = v; u.lang = v.lang; } else u.lang = tamil ? 'ta-IN' : 'en-IN';
-  u.rate = 1.03;
+  u.rate = 0.95;     // a little slower is clearer
+  u.pitch = 1;
+  u.volume = 1;
   u.onend = onEnd;
   u.onerror = onEnd;
   window.speechSynthesis.speak(u);
@@ -144,6 +164,7 @@ export function HelpAssistant() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [heard, setHeard] = useState('');
   const [note, setNote] = useState('');
+  const [, setVoiceTick] = useState(0);
   const [lang, setLang] = useState<Lang>(() => (store.get('help.vlang', 'ta') as Lang));
   const rootRef = useRef<HTMLDivElement>(null);
   const drag = useDraggable('argus.help.pos', rootRef);
@@ -299,7 +320,9 @@ export function HelpAssistant() {
     setNote('');
     setPhase('greeting');
     stopSpeaking();
-    say(GREETING[langRef.current], () => listenRef.current(), setNote);
+    const first = !welcomedOnce();
+    markWelcomed();
+    say(first ? WELCOME[langRef.current] : GREETING[langRef.current], () => listenRef.current(), setNote);
   };
 
   useEffect(() => () => { activeRef.current = false; try { recRef.current?.abort?.(); } catch { /* ignore */ } stopSpeaking(); }, []);
@@ -307,6 +330,15 @@ export function HelpAssistant() {
   const active = phase !== 'idle';
   const status = phase === 'greeting' ? '…' : phase === 'listening' ? 'Listening… பேசுங்கள் / speak now' : phase === 'thinking' ? 'Thinking…' : phase === 'speaking' ? 'Speaking…' : '';
   const rightSide = !!drag.pos && drag.pos.x > window.innerWidth / 2;
+  const kind: 'ta' | 'en' = lang === 'ta' ? 'ta' : 'en';
+  const choices = voiceList(kind);
+  const chosen = voiceFor(kind === 'ta' ? 'ta அ' : 'en')?.name ?? '';
+  const pickVoice = (name: string) => {
+    store.set(`help.voice.${kind}`, name);
+    setVoiceTick((n) => n + 1);
+    stopSpeaking();
+    say(kind === 'ta' ? 'ARGUS ERP-க்கு வரவேற்கிறோம்!' : 'Welcome to Argus ERP!', () => {}, setNote);
+  };
 
   return (
     <div ref={rootRef} style={drag.style} data-voice-ignore
@@ -334,6 +366,14 @@ export function HelpAssistant() {
                 <button key={l.code} type="button" onClick={() => setLang(l.code)}
                   className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${lang === l.code ? 'bg-emerald-600 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100'}`}>{l.label}</button>
               ))}
+            </div>
+          )}
+          {active && choices.length > 1 && (
+            <div className="mt-1.5 flex items-center gap-1.5" onMouseDown={(e) => e.stopPropagation()}>
+              <span className="text-[10px] font-semibold uppercase text-slate-400">Voice</span>
+              <select aria-label="Choose the voice" value={chosen} onChange={(e) => pickVoice(e.target.value)} className="h-6 max-w-[13rem] rounded border border-slate-200 bg-white px-1 text-[11px]">
+                {choices.map((v) => <option key={v.name} value={v.name}>{v.name.replace(/^(Microsoft|Google)\s+/, '$1 ')}</option>)}
+              </select>
             </div>
           )}
           {active && <p className="mt-1 text-[10px] text-slate-400">Say “stop” or “நிறுத்து” to end.</p>}
