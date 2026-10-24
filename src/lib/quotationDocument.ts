@@ -36,7 +36,8 @@ export async function buildQuotePdf(doc: QuoteDoc, withWorkings: boolean, themeI
   const W = pdf.internal.pageSize.getWidth();
   const t = calcTotals(doc.lines, doc.tax);
 
-  const sellerName = seller?.name || doc.sellerName;
+  // Each word starts with a capital letter in the header (Argus Technologies).
+  const sellerName = (seller?.name || doc.sellerName).replace(/(^|[\s.&(-])([a-z])/g, (_m, sep: string, ch: string) => sep + ch.toUpperCase());
   // An unreadable image must never stop the PDF being produced.
   // 'center': x / yy are the centre of the box the image sits in.
   const addImage = (data: string, x: number, yy: number, maxW: number, maxH: number, align: 'left' | 'right' | 'center' = 'left') => {
@@ -145,7 +146,16 @@ export async function buildQuotePdf(doc: QuoteDoc, withWorkings: boolean, themeI
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(60);
     pdf.text(`For ${sellerName}`, W - 14, yy, { align: 'right' });
     if (seller.signature) addImage(seller.signature, W - 14, yy + 2, 45, 20, 'right');
-    pdf.text('Authorised Signatory', W - 14, yy + (seller.signature ? 26 : 14), { align: 'right' });
+    // No physical signature is needed: this document is the original.
+    pdf.setFontSize(8); pdf.setTextColor(90);
+    pdf.text('No physical signature is needed. Please consider this an original.', W - 14, yy + (seller.signature ? 26 : 8), { align: 'right' });
+  }
+  // Footer on every page.
+  const pages = pdf.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) {
+    pdf.setPage(i);
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(130);
+    pdf.text('All rights powered by Argus TM', W / 2, 291, { align: 'center' });
   }
   return pdf;
 }
