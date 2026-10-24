@@ -5269,9 +5269,12 @@ export function SalesPipelinePage() {
     const target = quotationModalTarget;
     const items: any[] = Array.isArray(quoteForm.items) ? quoteForm.items : [];
     const contact = Array.isArray(quoteForm.contacts) ? quoteForm.contacts[0] : null;
+    // Address, GSTIN and phone: the enquiry may not carry them, so the company master (Add Company) fills the gaps.
+    const master = quoteForm.customer ? lookupCompanyDetails(String(quoteForm.customer)) : null;
     return {
       client: target.id === 'dummy' || !quoteForm.customer ? undefined : {
-        name: String(quoteForm.customer), email: contact?.email || '', phone: contact?.phone || '', gstin: String(target.raw?.gst || ''), address: String(target.raw?.city || ''),
+        name: String(quoteForm.customer), email: contact?.email || '', phone: contact?.phone || master?.phone || '',
+        gstin: String(target.raw?.gst || master?.gstin || ''), address: String(master?.address || target.raw?.city || ''),
       },
       lines: items.filter(i => String(i.partName || '').trim()).map(i => ({ description: String(i.partName), qty: String(i.quantity || '1') })),
       onRecord: async (doc, total) => {
