@@ -36,19 +36,9 @@ const GlobalDateContext = createContext<GlobalDateFilter | null>(null);
 
 const STORAGE_KEY = 'erp.globalDateFilter';
 
+// The date range is not remembered: a refresh (or a new visit) always starts at All Time, so old rows are never hidden by a forgotten filter.
 function loadInitial(): { from: string | null; to: string | null; preset: DatePreset } {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const p = JSON.parse(raw) as { from?: string | null; to?: string | null; preset?: DatePreset };
-      if (p && (p.from || p.to || p.preset)) {
-        if (p.from && p.to && p.from > p.to) throw new Error('bad range');
-        return { from: p.from ?? null, to: p.to ?? null, preset: p.preset ?? 'custom' };
-      }
-    }
-  } catch {
-    // Corrupt or invalid saved range: fall through to All Time.
-  }
+  try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
   return { from: null, to: null, preset: 'all' };
 }
 
