@@ -75,7 +75,8 @@ export async function buildQuotePdf(doc: QuoteDoc, withWorkings: boolean, themeI
   pdf.setFont('helvetica', 'normal');
   for (const c of doc.clients) {
     const lines = [c.name, c.address, [c.phone, c.email].filter(Boolean).join('  |  '), c.gstin && `GSTIN: ${c.gstin}`].filter(Boolean) as string[];
-    for (const l of lines) { const w = pdf.splitTextToSize(l, W - 28) as string[]; pdf.text(w, 14, y); y += 4.6 * w.length; }
+    // The issuing company's details sit in a 80 mm column on the right, so the client text wraps before it instead of running under it.
+    for (const l of lines) { const w = pdf.splitTextToSize(l, seller ? W - 28 - 84 : W - 28) as string[]; pdf.text(w, 14, y); y += 4.6 * w.length; }
     y += 2;
   }
 
