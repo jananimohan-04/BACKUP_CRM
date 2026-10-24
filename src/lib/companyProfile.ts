@@ -1,3 +1,4 @@
+import { supabase } from './supabase';
 // Organisation profile used on quotation PDFs (logo, signature, GSTIN, contacts, bank) plus
 // optional sub-companies (branches / subsidiaries). Stored in this browser, per company; there is
 // no database table for it yet.
@@ -59,6 +60,43 @@ export function loadProfileStore(companyId: string | null | undefined, defaults:
       subs: Array.isArray(v?.subs) ? v.subs.filter((x: SubCompany) => x && typeof x.id === 'string' && typeof x.name === 'string').map((x: SubCompany) => ({ id: x.id, name: x.name, gstin: s(x.gstin), address: s(x.address), phone: s(x.phone), email: s(x.email) })) : [],
     };
   } catch { return { profile: base, subs: [] }; }
+}
+
+const hasContent = (v: any): boolean => {
+  const p = v?.profile ?? {};
+  return !!(p.address || p.gstin || p.website || p.bankName || p.accountNo || p.branch || p.ifsc || p.upi || p.logo || p.signature
+    || (Array.isArray(p.phones) && p.phones.some(Boolean)) || (Array.isArray(v?.subs) && v.subs.length));
+};
+
+/**
+ * The profile is shared by everyone in the company (database), with this browser's copy kept as a cache:
+ *   - the company already has a saved profile  -> it replaces the browser copy
+ *   - it has none, but this browser has one      -> that one is uploaded, so it becomes the company's
+ * Falls back to the browser copy if the database call is not available (migration not applied, offline).
+ */
+export async function syncProfileStore(companyId: string | null | undefined, defaults: { orgName: string; email: string }): Promise<ProfileStore> {
+  if (!companyId) return loadProfileStore(companyId, defaults);
+  try {
+    const { data, error } = await supabase.rpc('erp_get_company_profile');
+    if (!error) {
+      if (data && typeof data === 'object') {
+        localStorage.setItem(key(companyId), JSON.stringify(data));
+      } else {
+        const raw = localStorage.getItem(key(companyId));
+        const local = raw ? JSON.parse(raw) : null;
+        if (local && hasContent(local)) await supabase.rpc('erp_save_company_profile', { p_data: local });
+      }
+    }
+  } catch { /* keep the browser copy */ }
+  return loadProfileStore(companyId, defaults);
+}
+
+/** Saves the profile for the whole company. Returns an error message, or null when saved. */
+export async function saveProfileRemote(st: ProfileStore): Promise<string | null> {
+  try {
+    const { error } = await supabase.rpc('erp_save_company_profile', { p_data: st });
+    return error ? error.message : null;
+  } catch (e) { return e instanceof Error ? e.message : String(e); }
 }
 
 export function saveProfileStore(companyId: string | null | undefined, st: ProfileStore): boolean {

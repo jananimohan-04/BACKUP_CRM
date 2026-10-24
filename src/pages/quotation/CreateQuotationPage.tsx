@@ -7,7 +7,7 @@ import { Modal } from '@/components/ui/Modal';
 import { QUOTE_UNITS, calcLine, calcTotals, emptyLine, validateQuote, type QuoteLine } from '@/lib/quotationCalc';
 import { loadProducts, saveProducts, newId, validateDraft, type LibraryProduct } from '@/lib/productLibrary';
 import { defaultTermsText, loadTerms, type TermsTemplate } from '@/lib/termsLibrary';
-import { loadProfileStore, resolveSeller } from '@/lib/companyProfile';
+import { loadProfileStore, resolveSeller, syncProfileStore, type ProfileStore } from '@/lib/companyProfile';
 import { newIdent, takeReuse, upsertQuote, type QuoteIdent } from '@/lib/quotationStore';
 import { HsnDatalist } from '@/components/HsnDatalist';
 import { HSN_LIST_ID } from '@/lib/hsnMaster';
@@ -61,7 +61,14 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
   const [showIssues, setShowIssues] = useState(false);
   const [busy, setBusy] = useState(false);
   // Read again whenever the company changes (it can arrive after this page opens), so the phone, address and bank details of the right company are printed.
-  const profileStore = useMemo(() => loadProfileStore(company?.id, { orgName: company?.company_name ?? '', email: authEmail ?? '' }), [company?.id, company?.company_name, authEmail]);
+  const profileDefaults = useMemo(() => ({ orgName: company?.company_name ?? '', email: authEmail ?? '' }), [company?.company_name, authEmail]);
+  const [profileStore, setProfileStore] = useState<ProfileStore>(() => loadProfileStore(company?.id, profileDefaults));
+  useEffect(() => {
+    let off = false;
+    setProfileStore(loadProfileStore(company?.id, profileDefaults));
+    void syncProfileStore(company?.id, profileDefaults).then(s => { if (!off) setProfileStore(s); });   // the company's shared profile
+    return () => { off = true; };
+  }, [company?.id, profileDefaults]);
   const [sellerRef, setSellerRef] = useState('');
   // Identity (id + number) of the quotation being worked on; assigned the first time it is saved/exported.
   const ident = useRef<QuoteIdent | null>(null);

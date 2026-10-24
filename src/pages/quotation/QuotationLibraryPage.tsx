@@ -6,7 +6,7 @@ import { formatINR } from '@/lib/format';
 import { Modal } from '@/components/ui/Modal';
 import { calcLine } from '@/lib/quotationCalc';
 import { downloadQuotePdf } from '@/lib/quotationDocument';
-import { loadProfileStore, resolveSeller } from '@/lib/companyProfile';
+import { resolveSeller, syncProfileStore } from '@/lib/companyProfile';
 import { clientNames, deleteQuote, filterQuotes, loadQuotes, mergeQuotes, noFilter, stashForReuse, type DbQuoteRow, type SavedQuote } from '@/lib/quotationStore';
 import { supabase } from '@/lib/supabase';
 
@@ -46,7 +46,7 @@ export function QuotationLibraryPage() {
     navigate('/quotation/create');
   };
   const pdf = async (q: SavedQuote, workings: boolean) => {
-    try { await downloadQuotePdf(q, workings, 'orange', resolveSeller(loadProfileStore(cid, { orgName: company?.company_name ?? '', email: authEmail ?? '' }), q.sellerRef)); } catch (e) { console.error(e); setNotice({ kind: 'err', text: `Could not create the PDF: ${(e as Error).message}` }); }
+    try { await downloadQuotePdf(q, workings, 'orange', resolveSeller(await syncProfileStore(cid, { orgName: company?.company_name ?? '', email: authEmail ?? '' }), q.sellerRef)); } catch (e) { console.error(e); setNotice({ kind: 'err', text: `Could not create the PDF: ${(e as Error).message}` }); }
   };
   const remove = () => {
     if (!toDelete) return;

@@ -1,9 +1,9 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Building2, ImageIcon, PenLine, Upload, Phone, Mail, Globe, Landmark, Plus, Check, Trash2, Pencil, X, UploadCloud } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Modal } from '@/components/ui/Modal';
 import {
-  cleanProfile, hasErrors, loadProfileStore, prepareImage, saveProfileStore, validateProfile, validateSub,
+  cleanProfile, hasErrors, loadProfileStore, prepareImage, saveProfileRemote, saveProfileStore, syncProfileStore, validateProfile, validateSub,
   type OrgProfile, type ProfileStore, type SubCompany,
 } from '@/lib/companyProfile';
 
@@ -37,9 +37,22 @@ export function CompanyProfilePage() {
   const addToList = (k: 'phones' | 'emails') => setP(x => ({ ...x, [k]: [...x[k], ''] }));
   const dropFromList = (k: 'phones' | 'emails', i: number) => setP(x => ({ ...x, [k]: x[k].length > 1 ? x[k].filter((_, j) => j !== i) : [''] }));
 
+  // Shared by everyone in the company: load the company's saved profile (or upload this browser's the first time).
+  useEffect(() => {
+    let off = false;
+    void syncProfileStore(cid, { orgName: company?.company_name ?? '', email: authEmail ?? '' }).then(s => { if (!off) { setStore(s); setP(s.profile); } });
+    return () => { off = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cid]);
+
   const persist = (next: ProfileStore, okText: string): boolean => {
     if (!saveProfileStore(cid, next)) { setNotice({ kind: 'err', text: 'Could not save: browser storage is unavailable or full. Try a smaller logo / signature.' }); return false; }
-    setStore(next); setNotice({ kind: 'ok', text: okText }); return true;
+    setStore(next); setNotice({ kind: 'ok', text: okText });
+    // ...and for the whole company, so every login under it sees the same profile.
+    void saveProfileRemote(next).then(err => setNotice(err
+      ? { kind: 'err', text: `Saved in this browser only; it is not shared with your company yet: ${err}` }
+      : { kind: 'ok', text: `${okText}. Shared with everyone in your company.` }));
+    return true;
   };
 
   const save = () => {
