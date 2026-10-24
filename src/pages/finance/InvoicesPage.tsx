@@ -157,21 +157,39 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
       supabase.from('cnc_parts').select('id,part_no,part_name,hsn,unit,unit_price,stock_qty').order('part_name'),
       supabase.from('cnc_raw_materials').select('id,material_code,name,uom,unit_price,stock_qty').order('name'),
       supabase.from('cnc_quotations').select('id,quote_no,customer,customer_id,part_name,payment_terms,delivery_terms,terms').order('created_at', { ascending: false }),
-      supabase.from('cnc_sales_orders').select('id,order_no,customer,quote_no,quotation_id,payment_terms,part_name,items').order('created_at', { ascending: false }),
-    ]).then(([c, d, b, p, rm, q, so]) => {
+      supabase.from('cnc_sales_orders').select('id,order_no,customer,quote_no,quotation_id,payment_terms,part_name,items,quantity,status').order('created_at', { ascending: false }),
+      supabase.from('cnc_invoices').select('id,sales_order_id,delivery_id,dc_no,quantity,invoice_type,cancelled'),
+    ]).then(([c, d, b, p, rm, q, so, inv]) => {
       if (!active) return;
       if (c.data) setCustomers(c.data as any[]);
-      if (d.data) setDeliveries((d.data as any[]).filter(x => !['Billed', 'Cancelled'].includes(String(x.status))));
+      // Invoices already raised (not cancelled / proforma): a credit note takes quantity back off.
+      const live = ((inv.data as any[]) || []).filter(i => !i.cancelled && String(i.invoice_type || 'Sales Invoice') !== 'Proforma Invoice');
+      const billedDc = new Set<string>();
+      const billedQty = new Map<string, number>();
+      live.forEach(i => {
+        if (i.delivery_id) billedDc.add(String(i.delivery_id));
+        if (i.dc_no) billedDc.add(String(i.dc_no));
+        if (i.sales_order_id) {
+          const sign = String(i.invoice_type) === 'Credit Note' ? -1 : 1;
+          billedQty.set(String(i.sales_order_id), (billedQty.get(String(i.sales_order_id)) || 0) + sign * (Number(i.quantity) || 0));
+        }
+      });
+      // Challans that are billed, and orders that are fully invoiced, no longer appear in the product list.
+      if (d.data) setDeliveries((d.data as any[]).filter(x => !['Billed', 'Cancelled'].includes(String(x.status)) && !billedDc.has(String(x.id)) && !billedDc.has(String(x.delivery_no))));
       setAccounts(b.accounts || []);
       // Items already in stock (not tied to any customer order) can be invoiced straight from inventory.
       const stockParts = ((p.data as any[]) || []).map(x => ({ ...x, part_code: x.part_no, kind: 'Part' }));
       const stockRaw = ((rm.data as any[]) || []).map(x => ({ id: `rm-${x.id}`, part_name: x.name, part_code: x.material_code, unit: x.uom, unit_price: x.unit_price, stock_qty: x.stock_qty, kind: 'Material' }));
       setPartsList([...stockParts, ...stockRaw]);
       if (q.data) setQuotesList(q.data as any[]);
-      if (so.data) setSalesOrdersList(so.data as any[]);
+      if (so.data) setSalesOrdersList((so.data as any[]).filter(o => {
+        if (['Billed', 'Invoiced', 'Cancelled', 'Closed'].includes(String(o.status))) return false;
+        const ordered = Number(o.quantity) || 0;
+        return !(ordered > 0 && (billedQty.get(String(o.id)) || 0) >= ordered);
+      }));
     }).catch(() => {});
     return () => { active = false; };
-  }, [company?.id]);
+  }, [company?.id, rows.length]);   // refreshed when an invoice is added, so billed items leave the list
 
   const view = async (r: InvoiceRow) => {
     setSelected(null);

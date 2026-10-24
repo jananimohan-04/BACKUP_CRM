@@ -357,7 +357,7 @@ export function HelpAssistant() {
 
   return (
     <div ref={rootRef} style={drag.style} data-voice-ignore
-      className={`fixed bottom-5 left-[5.5rem] z-[60] flex items-end gap-2 font-sans ${rightSide ? 'flex-row-reverse' : ''}`}>
+      className={`fixed bottom-5 max-lg:bottom-[4.75rem] left-[5.5rem] z-[60] flex items-end gap-2 font-sans ${rightSide ? 'flex-row-reverse' : ''}`}>
       <button type="button" {...drag.bind}
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => { if (drag.wasDragged()) return; if (active) endSession(true); else begin(); }}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, Fragment, type ReactNode } from 'react';
+import { recordDateOf } from '@/lib/globalDate';
 import { supabase } from '@/lib/supabase';
 import { Search, ArrowLeft, FileText, Download } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
@@ -6,7 +7,6 @@ import { Button } from '@/components/ui/Card';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
-import { recordDateOf } from '@/lib/globalDate';
 import { downloadBrandedDocument, viewBrandedDocument } from '@/lib/brandedDocument';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 

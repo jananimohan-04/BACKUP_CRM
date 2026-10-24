@@ -74,11 +74,11 @@ export function BottomNav({
   return (
     <div
       ref={rootRef}
-      className="relative flex-shrink-0 z-40 bg-navy-950 text-white border-t border-navy-800 shadow-[0_-4px_24px_rgba(0,0,0,0.15)] pb-[env(safe-area-inset-bottom)] animate-nav-in-bottom"
+      className="relative flex-shrink-0 z-40 bg-navy-950 text-white border-t border-navy-800 shadow-[0_-4px_24px_rgba(0,0,0,0.15)] pb-[var(--safe-area-inset-bottom,env(safe-area-inset-bottom))] animate-nav-in-bottom"
     >
       {/* Expandable panel — opens upward from the bar */}
       {panelOpen && (
-        <div className="absolute bottom-full inset-x-0 max-h-[62vh] overflow-y-auto scrollbar-dark bg-navy-950 border-t border-navy-800 rounded-t-2xl shadow-[0_-12px_32px_rgba(0,0,0,0.35)] animate-fade-in">
+        <div className="absolute bottom-full inset-x-0 max-h-[70dvh] overflow-y-auto scrollbar-dark bg-navy-950 border-t border-navy-800 rounded-t-2xl shadow-[0_-12px_32px_rgba(0,0,0,0.35)] animate-fade-in">
           <div className="flex items-center justify-between px-4 pt-3 pb-1">
             <p className="text-[10px] font-bold uppercase tracking-wider text-navy-400">All Modules</p>
             <button
@@ -98,7 +98,7 @@ export function BottomNav({
                   <button
                     onClick={() => toggleSection(section.label)}
                     aria-expanded={isExpanded}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 my-0.5 rounded-md bg-navy-900/70 text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                    className={`w-full flex items-center justify-between px-2.5 py-2.5 sm:py-1.5 my-0.5 rounded-md bg-navy-900/70 text-[11px] sm:text-[10px] font-bold uppercase tracking-wider transition-colors ${
                       hasActive ? 'text-brand-400' : 'text-navy-400 hover:text-navy-200'
                     }`}
                   >
@@ -113,14 +113,14 @@ export function BottomNav({
                           <button
                             key={item.page}
                             onClick={() => navigateAndClose(item.page)}
-                            className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm transition-all duration-200 text-left ${
+                            className={`w-full flex items-center gap-2 px-2.5 py-2.5 sm:py-1.5 rounded-md text-sm transition-all duration-200 text-left ${
                               active
                                 ? 'bg-brand-600 text-white font-bold shadow-md shadow-brand-500/25 ring-1 ring-white/20'
                                 : 'text-navy-300 hover:bg-navy-900 hover:text-white'
                             }`}
                           >
                             <item.icon size={14} className={active ? 'text-white shrink-0' : `${item.iconClass ?? 'text-navy-400'} shrink-0`} />
-                            <span className="text-[12.5px] leading-tight truncate">{item.label}</span>
+                            <span className="text-[14px] sm:text-[12.5px] leading-tight truncate">{item.label}</span>
                           </button>
                         );
                       })}
@@ -143,7 +143,7 @@ export function BottomNav({
           }`}
         >
           <LayoutGrid size={16} />
-          <span className="hidden sm:inline">All Modules</span>
+          <span>Menu</span>
           <ChevronDown size={12} className={`transition-transform duration-200 ${panelOpen ? 'rotate-180' : ''}`} />
         </button>
 

@@ -216,7 +216,7 @@ export function VoiceControl() {
   ];
 
   return (
-    <div ref={rootRef} style={drag.style} data-voice-ignore className={`fixed left-4 bottom-4 z-[70] flex items-end gap-2 font-sans ${drag.pos && drag.pos.x > window.innerWidth / 2 ? 'flex-row-reverse' : ''}`}>
+    <div ref={rootRef} style={drag.style} data-voice-ignore className={`fixed left-4 bottom-4 max-lg:bottom-[4.75rem] z-[70] flex items-end gap-2 font-sans ${drag.pos && drag.pos.x > window.innerWidth / 2 ? 'flex-row-reverse' : ''}`}>
       <button
         type="button"
         onMouseDown={(e) => e.preventDefault()}

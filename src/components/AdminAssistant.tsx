@@ -112,7 +112,7 @@ export function AdminAssistant() {
           onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp}
           onClick={() => { if (drag.current?.moved) { drag.current = null; return; } setOpen(true); }}
           style={pos ? { left: Math.min(pos.x, Math.max(0, window.innerWidth - 110)), top: Math.min(pos.y, Math.max(0, window.innerHeight - 48)) } : undefined}
-          className={`fixed ${pos ? '' : 'bottom-5 right-5'} z-40 flex items-center gap-2 h-12 pl-4 pr-5 rounded-full bg-brand-600 text-white shadow-lg hover:bg-brand-700 touch-none select-none cursor-grab active:cursor-grabbing`}>
+          className={`fixed ${pos ? '' : 'bottom-5 max-lg:bottom-[4.75rem] right-5'} z-40 flex items-center gap-2 h-12 pl-4 pr-5 rounded-full bg-brand-600 text-white shadow-lg hover:bg-brand-700 touch-none select-none cursor-grab active:cursor-grabbing`}>
           <Bot size={20} /> <span className="text-sm font-semibold">Ask AI</span>
         </button>
       )}
