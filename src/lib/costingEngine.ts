@@ -113,7 +113,7 @@ export function buildOpLines(woOps: any[], jobCards: any[], processes: any[], wo
   }, 0);
   const pushOp = (
     seq: number, p: any, machine: string, operator: string,
-    qty: number, cycleMin: number, setupMin: number, loggedHours = 0,
+    qty: number, cycleMin: number, setupMin: number, loggedHours = 0, label = '',
   ) => {
     const planned = hoursOf(setupMin, qty, cycleMin);
     const mh = planned > 0 ? planned : Math.max(0, loggedHours);
@@ -125,7 +125,8 @@ export function buildOpLines(woOps: any[], jobCards: any[], processes: any[], wo
       key: costUid(),
       seq,
       process_code: p?.process_code ?? '',
-      process_name: p?.process_name ?? '',
+      // The name the run was recorded under is kept when Process Master has no such process, so it is visible why no rate was found.
+      process_name: p?.process_name ?? label,
       machine,
       operator,
       machine_hours: mh,
@@ -156,7 +157,7 @@ export function buildOpLines(woOps: any[], jobCards: any[], processes: any[], wo
       const qty = costNum(o.completed_qty) > 0 ? costNum(o.completed_qty) : costNum(o.planned_qty);
       pushOp(costNum(o.operation_sequence), p, o.machine ?? c?.machine ?? '', o.operator ?? c?.operator ?? '',
         qty, costNum(o.est_cycle_time), costNum(o.setup_time),
-        costNum(o.actual_minutes) > 0 ? costNum(o.actual_minutes) / 60 : elapsedHours(cards));
+        costNum(o.actual_minutes) > 0 ? costNum(o.actual_minutes) / 60 : elapsedHours(cards), String(o.process_name || c?.operation || ''));
     }
   } else {
     const seen = new Set<string>();
@@ -166,7 +167,7 @@ export function buildOpLines(woOps: any[], jobCards: any[], processes: any[], wo
       seen.add(k);
       const p = procByName.get(String(c.operation ?? '').toLowerCase());
       const qty = costNum(c.qty_completed) > 0 ? costNum(c.qty_completed) : costNum(c.qty_planned);
-      pushOp(Number(c.op_no) / 10 || 0, p, c.machine ?? '', c.operator ?? '', qty, costNum(c.cycle_time), costNum(c.setup_time), elapsedHours(cardsByOp.get(k) ?? [c]));
+      pushOp(Number(c.op_no) / 10 || 0, p, c.machine ?? '', c.operator ?? '', qty, costNum(c.cycle_time), costNum(c.setup_time), elapsedHours(cardsByOp.get(k) ?? [c]), String(c.operation ?? ''));
     }
   }
   ops.sort((a, b) => a.seq - b.seq);
