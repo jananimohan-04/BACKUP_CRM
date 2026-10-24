@@ -9,6 +9,7 @@ import { downloadQuotePdf } from '@/lib/quotationDocument';
 import { resolveSeller, syncProfileStore } from '@/lib/companyProfile';
 import { clientNames, deleteQuote, filterQuotes, loadQuotes, mergeQuotes, noFilter, stashForReuse, type DbQuoteRow, type SavedQuote } from '@/lib/quotationStore';
 import { supabase } from '@/lib/supabase';
+import { fillClientDetails } from '@/lib/quoteClients';
 
 const inputCls = 'h-10 px-3 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20';
 const dmy = (iso: string) => (iso ? iso.split('-').reverse().join('-') : '—');
@@ -46,7 +47,7 @@ export function QuotationLibraryPage() {
     navigate('/quotation/create');
   };
   const pdf = async (q: SavedQuote, workings: boolean) => {
-    try { await downloadQuotePdf(q, workings, 'orange', resolveSeller(await syncProfileStore(cid, { orgName: company?.company_name ?? '', email: authEmail ?? '' }), q.sellerRef)); } catch (e) { console.error(e); setNotice({ kind: 'err', text: `Could not create the PDF: ${(e as Error).message}` }); }
+    try { await downloadQuotePdf({ ...q, clients: await fillClientDetails(q.clients, cid) }, workings, 'orange', resolveSeller(await syncProfileStore(cid, { orgName: company?.company_name ?? '', email: authEmail ?? '' }), q.sellerRef)); } catch (e) { console.error(e); setNotice({ kind: 'err', text: `Could not create the PDF: ${(e as Error).message}` }); }
   };
   const remove = () => {
     if (!toDelete) return;

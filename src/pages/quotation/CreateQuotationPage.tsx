@@ -9,6 +9,7 @@ import { loadProducts, saveProducts, newId, validateDraft, type LibraryProduct }
 import { defaultTermsText, loadTerms, type TermsTemplate } from '@/lib/termsLibrary';
 import { loadProfileStore, resolveSeller, syncProfileStore, type ProfileStore } from '@/lib/companyProfile';
 import { newIdent, takeReuse, upsertQuote, type QuoteIdent } from '@/lib/quotationStore';
+import { clientsDiffer, fillClientDetails } from '@/lib/quoteClients';
 import { HsnDatalist } from '@/components/HsnDatalist';
 import { HSN_LIST_ID } from '@/lib/hsnMaster';
 import { ProductWorkingsPage } from './ProductWorkingsPage';
@@ -135,6 +136,13 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
 
   const seller = useMemo(() => resolveSeller(profileStore, sellerRef), [profileStore, sellerRef]);
   const sellerName = seller.name || company?.company_name || 'ARGUS CNC';
+  // A client that arrived without its address / GSTIN (pipeline card, older saved quotation) gets them from the company master.
+  useEffect(() => {
+    if (!clients.some(c => c.name && (!c.address || !c.gstin || !c.phone || !c.email))) return;
+    let off = false;
+    void fillClientDetails(clients, company?.id).then(next => { if (!off && clientsDiffer(clients, next)) setClients(next); });
+    return () => { off = true; };
+  }, [clients, company?.id]);
   const buildDoc = (): QuoteDoc => ({ quoteNo: ident.current?.quoteNo ?? '', date, sellerName, sellerRef, clients, lines, tax, terms, notes });
 
   // "Reuse" from the Quotation Library: load the saved quotation and keep editing the same record.

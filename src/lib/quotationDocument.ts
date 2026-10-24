@@ -38,12 +38,13 @@ export async function buildQuotePdf(doc: QuoteDoc, withWorkings: boolean, themeI
 
   const sellerName = seller?.name || doc.sellerName;
   // An unreadable image must never stop the PDF being produced.
-  const addImage = (data: string, x: number, yy: number, maxW: number, maxH: number, align: 'left' | 'right' = 'left') => {
+  // 'center': x / yy are the centre of the box the image sits in.
+  const addImage = (data: string, x: number, yy: number, maxW: number, maxH: number, align: 'left' | 'right' | 'center' = 'left') => {
     try {
       const props = pdf.getImageProperties(data);
       const k = Math.min(maxW / props.width, maxH / props.height);
       const w = props.width * k, h = props.height * k;
-      pdf.addImage(data, props.fileType, align === 'right' ? x - w : x, yy, w, h);
+      pdf.addImage(data, props.fileType, align === 'right' ? x - w : align === 'center' ? x - w / 2 : x, align === 'center' ? yy - h / 2 : yy, w, h);
       return { w, h };
     } catch { return null; }
   };
@@ -52,7 +53,7 @@ export async function buildQuotePdf(doc: QuoteDoc, withWorkings: boolean, themeI
   let titleX = 14;
   if (seller?.logo) {
     pdf.setFillColor(255, 255, 255); pdf.roundedRect(10, 3, 30, 16, 1.5, 1.5, 'F');
-    if (addImage(seller.logo, 12, 4.5, 26, 13)) titleX = 46;
+    if (addImage(seller.logo, 25, 11, 26, 13, 'center')) titleX = 46;   // centred in the white box (x 10-40, y 3-19)
   }
   pdf.setTextColor(255); pdf.setFontSize(18); pdf.setFont('helvetica', 'bold');
   pdf.text('QUOTATION', titleX, 14);
