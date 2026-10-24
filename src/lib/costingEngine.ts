@@ -28,6 +28,8 @@ export interface ProductOption { code: string; name: string; qty: number; unitPr
 export interface CostingTotals {
   material: number; machine: number; labour: number; machineLabour: number;
   process: number; quotation: number; calculated: number;
+  /** Service purchase (outside work) actuals; only counted when a caller passes them. */
+  service: number;
 }
 
 export const costNum = (v: any): number => {
@@ -171,7 +173,7 @@ export function buildOpLines(woOps: any[], jobCards: any[], processes: any[], wo
   return ops;
 }
 
-export function computeTotals(matLines: MaterialLine[], opLines: OpLine[], quoteTotal: number): CostingTotals {
+export function computeTotals(matLines: MaterialLine[], opLines: OpLine[], quoteTotal: number, serviceTotal = 0): CostingTotals {
   const material = matLines.reduce((s, m) => s + costNum(m.total), 0);
   const machine = opLines.reduce((s, o) => s + costNum(o.machine_cost), 0);
   const labour = opLines.reduce((s, o) => s + costNum(o.labour_cost), 0);
@@ -180,7 +182,8 @@ export function computeTotals(matLines: MaterialLine[], opLines: OpLine[], quote
   // so the total adds process only once (no double count).
   const process = machine + labour + extras;
   const quotation = costNum(quoteTotal);
-  return { material, machine, labour, machineLabour: machine + labour, process, quotation, calculated: quotation + material + process };
+  const service = costNum(serviceTotal);
+  return { material, machine, labour, machineLabour: machine + labour, process, quotation, service, calculated: quotation + material + process + service };
 }
 
 export function computeWarnings(args: {

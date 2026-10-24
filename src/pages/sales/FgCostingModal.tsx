@@ -649,18 +649,19 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
     manualMaterials: effMatLines.some((m) => m.manual), manualOps: effOpLines.some((o) => o.manual),
   });
   // Effective totals include typed-but-unadded input, so values on screen always match.
-  const effTotals = computeTotals(effMatLines, effOpLines, effQuoteTotal);
+  const effTotals = computeTotals(effMatLines, effOpLines, effQuoteTotal, serviceActuals.total);
 
   const totals = useMemo(
-    () => computeTotals(effMatLines, effOpLines, effQuoteTotal),
-    [effMatLines, effOpLines, effQuoteTotal]);
+    () => computeTotals(effMatLines, effOpLines, effQuoteTotal, serviceActuals.total),
+    [effMatLines, effOpLines, effQuoteTotal, serviceActuals.total]);
   const warnings = effWarnings;
 
   const approvedNum = approvedInput.trim() === '' ? null : num(approvedInput);
   const effectiveApproved = approvedNum ?? totals.calculated;
   const adjustment = effectiveApproved - totals.calculated;
   // Comparison: quotation (quoted) vs project cost (manufacturing cost).
-  const projectCost = totals.material + totals.process;
+  // Project cost = Goods Purchase (material) + Service Purchase (outside work) + Machine Cost (in-house operations).
+  const projectCost = totals.material + totals.service + totals.process;
   const costDiff = effQuoteTotal - projectCost;
   const costDiffPct = effQuoteTotal > 0 ? (costDiff / effQuoteTotal) * 100 : null;
   // Default the approved price to the quotation's ex-GST basic value (the
@@ -1453,7 +1454,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
               {serviceActuals.rows.length > 0 && (
                 <div className="mt-2 rounded-lg border border-violet-200 bg-violet-50/60 px-3 py-2">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-violet-700">
-                    Linked service purchase (actual) — {inr(serviceActuals.total)}
+                    Linked service purchase (actual, in Project Cost) — {inr(serviceActuals.total)}
                   </p>
                   {serviceActuals.rows.slice(0, 3).map((inv: any, i: number) => (
                     <p key={i} className="text-[11px] text-slate-600 tabular-nums">
@@ -1501,7 +1502,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
               <div className="border border-slate-200 rounded-lg px-3 py-2">
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Project Cost</p>
                 <p className="font-bold tabular-nums text-lg">{inr(projectCost)}</p>
-                <p className="text-[11px] text-slate-400">Goods Purchase / Material {inr(totals.material)} + Machine Cost {inr(totals.process)}</p>
+                <p className="text-[11px] text-slate-400">Goods Purchase {inr(totals.material)} + Service Purchase {inr(totals.service)} + Machine Cost {inr(totals.process)}</p>
               </div>
               <div className={`border rounded-lg px-3 py-2 ${costDiff < 0 ? 'border-red-200 bg-red-50/50' : 'border-emerald-200 bg-emerald-50/50'}`}>
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Cost Difference</p>
