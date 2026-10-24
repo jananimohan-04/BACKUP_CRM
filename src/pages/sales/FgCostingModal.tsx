@@ -1329,7 +1329,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
             {/* 1 — process costing */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">1. Machine Cost (in-house operations)</h4>
+                <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">1. Machine Cost (In-House)</h4>
                 <button type="button" onClick={() => setEditOps((v) => !v)} className="inline-flex items-center gap-1 text-[11px] font-bold text-brand-600 hover:text-brand-800 border border-brand-200 hover:border-brand-400 rounded px-2 py-0.5 bg-brand-50/50">
                   <Pencil size={11} />{editOps ? 'Done' : 'Edit'}
                 </button>
@@ -1361,67 +1361,10 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
               </div>
             </div>
 
-            {/* 2 — material cost */}
-            <div>
+            {/* 1b — machine hours and labour (part of Machine Cost) */}
+            <div className="border-t border-dashed border-slate-200 pt-3">
               <div className="flex items-center justify-between mb-2">
-                <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">2. Material Cost</h4>
-                <button type="button" onClick={() => setEditMats((v) => !v)} className="inline-flex items-center gap-1 text-[11px] font-bold text-brand-600 hover:text-brand-800 border border-brand-200 hover:border-brand-400 rounded px-2 py-0.5 bg-brand-50/50">
-                  <Pencil size={11} />{editMats ? 'Done' : 'Edit'}
-                </button>
-              </div>
-              <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                <table className="w-full text-xs">
-                  <thead className="bg-slate-50"><tr><th className={cellTh}>Material</th><th className={cellTh}>Req Qty</th><th className={cellTh}>Unit</th><th className={cellTh}>Unit Cost</th><th className={`${cellTh} text-right`}>Total</th>{editMats && <th className={cellTh} />}</tr></thead>
-                  <tbody>
-                    {effMatLines.length === 0 && (<tr><td colSpan={6} className="py-3 text-center text-slate-400">No material lines yet — add one below.</td></tr>)}
-                    {effMatLines.map((m) => (
-                      <tr key={m.key} className="border-t border-slate-100">
-                        <td className={`${cellTd} font-medium text-slate-700`}>{m.material_name || '—'}{m.manual && <ManualTag />}</td>
-                        <td className={cellTd}>{editMats ? <EditNum aria="Required qty" value={m.req_qty} onChange={(v) => patchMat(m.key, { req_qty: v })} /> : m.req_qty}</td>
-                        <td className={cellTd}>{m.unit}</td>
-                        <td className={cellTd}>{editMats ? <EditNum aria="Unit cost" value={m.unit_cost} onChange={(v) => patchMat(m.key, { unit_cost: v })} /> : inr(m.unit_cost)}</td>
-                        <td className={`${cellTd} text-right font-bold`}>{inr(m.total)}</td>
-                        {editMats && (
-                          <td className={cellTd}>
-                            {extraMats.some((x) => x.key === m.key) && (
-                              <button onClick={() => setExtraMats((ls) => ls.filter((x) => x.key !== m.key))} className="text-slate-400 hover:text-red-600" title="Remove"><Trash2 size={13} /></button>
-                            )}
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="flex items-center justify-between mt-1.5 text-sm">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Material Cost</span>
-                <span className="font-bold tabular-nums">{inr(totals.material)}</span>
-              </div>
-              {goodsActuals.rows.length > 0 && !goodsLoaded && (
-                <button
-                  type="button"
-                  onClick={loadGoodsActuals}
-                  className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-brand-700 hover:text-brand-900 border border-brand-200 hover:border-brand-400 rounded-lg px-2.5 py-1.5 bg-brand-50/50"
-                >
-                  <Plus size={13} /> Load purchase actuals: {goodsActuals.rows.length} line{goodsActuals.rows.length === 1 ? '' : 's'} ({inr(goodsActuals.total)})
-                </button>
-              )}
-              <div className="border border-dashed border-slate-300 rounded-lg p-2.5 mt-2">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Add material line</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <input value={newMat.name} onChange={(e) => setNewMat({ ...newMat, name: e.target.value })} placeholder="Material name *" className={`${inputClass} text-xs`} />
-                  <input value={newMat.code} onChange={(e) => setNewMat({ ...newMat, code: e.target.value })} placeholder="Code" className={`${inputClass} text-xs`} />
-                  <input type="number" min="0" value={newMat.qty} onChange={(e) => setNewMat({ ...newMat, qty: e.target.value })} placeholder="Qty *" className={`${inputClass} text-xs`} />
-                  <input type="number" min="0" value={newMat.rate} onChange={(e) => setNewMat({ ...newMat, rate: e.target.value })} placeholder="Unit cost ₹" className={`${inputClass} text-xs`} />
-                </div>
-                <Button size="sm" variant="secondary" icon={<Plus size={13} />} onClick={addManualMat} className="mt-2">Add material to costing</Button>
-              </div>
-            </div>
-
-            {/* 3 — machine & labour */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">3. Machine &amp; Labour</h4>
+                <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">Machine hours &amp; labour (part of Machine Cost)</h4>
                 <button type="button" onClick={() => setEditOps((v) => !v)} className="inline-flex items-center gap-1 text-[11px] font-bold text-brand-600 hover:text-brand-800 border border-brand-200 hover:border-brand-400 rounded px-2 py-0.5 bg-brand-50/50">
                   <Pencil size={11} />{editOps ? 'Done' : 'Edit'}
                 </button>
@@ -1451,19 +1394,6 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                 <div className="flex items-center justify-between"><span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Labour Cost</span><span className="font-bold tabular-nums">{inr(totals.labour)}</span></div>
                 <div className="flex items-center justify-between border-t border-slate-200 pt-1"><span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">Total Machine &amp; Labour Cost</span><span className="font-bold tabular-nums">{inr(totals.machineLabour)}</span></div>
               </div>
-              {serviceActuals.rows.length > 0 && (
-                <div className="mt-2 rounded-lg border border-violet-200 bg-violet-50/60 px-3 py-2">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-violet-700">
-                    Linked service purchase (actual, in Project Cost) — {inr(serviceActuals.total)}
-                  </p>
-                  {serviceActuals.rows.slice(0, 3).map((inv: any, i: number) => (
-                    <p key={i} className="text-[11px] text-slate-600 tabular-nums">
-                      {inv.inward_no} · {inv.part_name || inv.product_name || 'Service'} · {Number(inv.quantity) || 0} pcs × {inr(Number(inv.price) || 0)}
-                    </p>
-                  ))}
-                  <p className="text-[11px] text-slate-400 mt-0.5">Recorded cost from Project Costing — reference only, the estimate above is unchanged.</p>
-                </div>
-              )}
               <div className="border border-dashed border-slate-300 rounded-lg p-2.5 mt-2">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Add operation line</p>
                 <div className="grid grid-cols-2 gap-2">
@@ -1488,6 +1418,107 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                 </div>
               )}
             </div>
+
+            {/* 2 — material cost */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">2. Goods Purchase</h4>
+                <button type="button" onClick={() => setEditMats((v) => !v)} className="inline-flex items-center gap-1 text-[11px] font-bold text-brand-600 hover:text-brand-800 border border-brand-200 hover:border-brand-400 rounded px-2 py-0.5 bg-brand-50/50">
+                  <Pencil size={11} />{editMats ? 'Done' : 'Edit'}
+                </button>
+              </div>
+              <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50"><tr><th className={cellTh}>Material</th><th className={cellTh}>Req Qty</th><th className={cellTh}>Unit</th><th className={cellTh}>Unit Cost</th><th className={`${cellTh} text-right`}>Total</th>{editMats && <th className={cellTh} />}</tr></thead>
+                  <tbody>
+                    {effMatLines.length === 0 && (<tr><td colSpan={6} className="py-3 text-center text-slate-400">No material lines yet — add one below.</td></tr>)}
+                    {effMatLines.map((m) => (
+                      <tr key={m.key} className="border-t border-slate-100">
+                        <td className={`${cellTd} font-medium text-slate-700`}>{m.material_name || '—'}{m.manual && <ManualTag />}</td>
+                        <td className={cellTd}>{editMats ? <EditNum aria="Required qty" value={m.req_qty} onChange={(v) => patchMat(m.key, { req_qty: v })} /> : m.req_qty}</td>
+                        <td className={cellTd}>{m.unit}</td>
+                        <td className={cellTd}>{editMats ? <EditNum aria="Unit cost" value={m.unit_cost} onChange={(v) => patchMat(m.key, { unit_cost: v })} /> : inr(m.unit_cost)}</td>
+                        <td className={`${cellTd} text-right font-bold`}>{inr(m.total)}</td>
+                        {editMats && (
+                          <td className={cellTd}>
+                            {extraMats.some((x) => x.key === m.key) && (
+                              <button onClick={() => setExtraMats((ls) => ls.filter((x) => x.key !== m.key))} className="text-slate-400 hover:text-red-600" title="Remove"><Trash2 size={13} /></button>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center justify-between mt-1.5 text-sm">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Goods Purchase</span>
+                <span className="font-bold tabular-nums">{inr(totals.material)}</span>
+              </div>
+              {goodsActuals.rows.length > 0 && !goodsLoaded && (
+                <button
+                  type="button"
+                  onClick={loadGoodsActuals}
+                  className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-brand-700 hover:text-brand-900 border border-brand-200 hover:border-brand-400 rounded-lg px-2.5 py-1.5 bg-brand-50/50"
+                >
+                  <Plus size={13} /> Load purchase actuals: {goodsActuals.rows.length} line{goodsActuals.rows.length === 1 ? '' : 's'} ({inr(goodsActuals.total)})
+                </button>
+              )}
+              <div className="border border-dashed border-slate-300 rounded-lg p-2.5 mt-2">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Add goods purchase line</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={newMat.name} onChange={(e) => setNewMat({ ...newMat, name: e.target.value })} placeholder="Material name *" className={`${inputClass} text-xs`} />
+                  <input value={newMat.code} onChange={(e) => setNewMat({ ...newMat, code: e.target.value })} placeholder="Code" className={`${inputClass} text-xs`} />
+                  <input type="number" min="0" value={newMat.qty} onChange={(e) => setNewMat({ ...newMat, qty: e.target.value })} placeholder="Qty *" className={`${inputClass} text-xs`} />
+                  <input type="number" min="0" value={newMat.rate} onChange={(e) => setNewMat({ ...newMat, rate: e.target.value })} placeholder="Unit cost ₹" className={`${inputClass} text-xs`} />
+                </div>
+                <Button size="sm" variant="secondary" icon={<Plus size={13} />} onClick={addManualMat} className="mt-2">Add goods purchase to costing</Button>
+              </div>
+            </div>
+
+            {/* 3 — service purchase (outsourcing) */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">3. Service Purchase (Outsourcing)</h4>
+              </div>
+              <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50"><tr><th className={cellTh}>Inward</th><th className={cellTh}>Service</th><th className={cellTh}>Company</th><th className={cellTh}>Qty</th><th className={cellTh}>Rate</th><th className={`${cellTh} text-right`}>Amount</th></tr></thead>
+                  <tbody>
+                    {serviceActuals.rows.length === 0 && (<tr><td colSpan={6} className="py-3 text-center text-slate-400">No service purchase inward linked to this order yet.</td></tr>)}
+                    {serviceActuals.rows.map((inv: any, i: number) => {
+                      const q = Number(inv.quantity) || 0;
+                      return (
+                        <tr key={i} className="border-t border-slate-100">
+                          <td className={cellTd}>{inv.inward_no || '—'}</td>
+                          <td className={`${cellTd} font-medium text-slate-700`}>{inv.part_name || inv.product_name || 'Service'}</td>
+                          <td className={cellTd}>{inv.party_name || '—'}</td>
+                          <td className={cellTd}>{q}</td>
+                          <td className={cellTd}>{inr(Number(inv.price) || 0)}</td>
+                          <td className={`${cellTd} text-right font-bold`}>{inr(Number(inv.total_amount) || q * (Number(inv.price) || 0))}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center justify-between mt-1.5 text-sm">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Service Purchase</span>
+                <span className="font-bold tabular-nums">{inr(totals.service)}</span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">Taken from the Service Purchase inward entries linked to this order. Add them under Inward, category SERVICE PURCHASE.</p>
+            </div>
+
+            {/* actual cost = the three heads */}
+            <div className="rounded-lg border border-brand-200 bg-brand-50/40 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-brand-700 mb-1.5">Actual cost = Machine Cost + Goods Purchase + Service Purchase</p>
+              <div className="space-y-0.5 text-sm">
+                <div className="flex items-center justify-between"><span className="text-slate-600">Machine Cost (in-house)</span><span className="font-semibold tabular-nums">{inr(totals.process)}</span></div>
+                <div className="flex items-center justify-between"><span className="text-slate-600">Goods Purchase</span><span className="font-semibold tabular-nums">{inr(totals.material)}</span></div>
+                <div className="flex items-center justify-between"><span className="text-slate-600">Service Purchase (outsourcing)</span><span className="font-semibold tabular-nums">{inr(totals.service)}</span></div>
+                <div className="flex items-center justify-between border-t border-brand-200 pt-1.5 mt-1"><span className="text-[11px] font-bold uppercase tracking-wider text-slate-800">Total Actual Cost</span><span className="text-lg font-bold tabular-nums">{inr(projectCost)}</span></div>
+              </div>
+            </div>
           </div>
           </div>
 
@@ -1500,9 +1531,9 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                 <p className="font-bold tabular-nums text-lg">{inr(effQuoteTotal)}</p>
               </div>
               <div className="border border-slate-200 rounded-lg px-3 py-2">
-                <p className="text-[10px] uppercase tracking-wider text-slate-400">Project Cost</p>
+                <p className="text-[10px] uppercase tracking-wider text-slate-400">Actual Cost (Project Cost)</p>
                 <p className="font-bold tabular-nums text-lg">{inr(projectCost)}</p>
-                <p className="text-[11px] text-slate-400">Goods Purchase {inr(totals.material)} + Service Purchase {inr(totals.service)} + Machine Cost {inr(totals.process)}</p>
+                <p className="text-[11px] text-slate-400">Machine Cost {inr(totals.process)} + Goods Purchase {inr(totals.material)} + Service Purchase {inr(totals.service)}</p>
               </div>
               <div className={`border rounded-lg px-3 py-2 ${costDiff < 0 ? 'border-red-200 bg-red-50/50' : 'border-emerald-200 bg-emerald-50/50'}`}>
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Cost Difference</p>
@@ -1511,7 +1542,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
               </div>
             </div>
             <p className="text-[11px] text-slate-400 mt-2">
-              {effMatLines.length} material line(s) · {effOpLines.length} operation(s)
+              {effMatLines.length} goods purchase line(s) · {effOpLines.length} operation(s) · {serviceActuals.rows.length} service purchase line(s)
               {versions[0] ? ` · Latest saved version V${versions[0].version} (${versions[0].status})` : ' · Not saved yet'}
             </p>
           </div>
