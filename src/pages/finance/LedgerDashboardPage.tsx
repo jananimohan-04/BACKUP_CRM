@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { BookOpen, BookText, RefreshCw, Landmark, FileText, PackageOpen, Search, Filter, ArrowUp, ArrowDown, ArrowUpDown, Inbox, AlertTriangle, FileDown, FileSpreadsheet, ChevronLeft, ChevronRight, X, MoreVertical, Printer, Eye, Upload } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
@@ -11,7 +12,7 @@ import { formatINR, todayISO } from '@/lib/format';
 import { exportCsv, escapeHtml, printHtml } from '@/lib/reportExport';
 import { addRoundedLogo } from '@/lib/brandedDocument';
 import {
-  dmy, drCr, filterLines, fromBank, fromInvoices, fromInwards, sortLines, statementFor, summarizeByParty, receivablePayable, settleDocuments, nameKey, stripStamp,
+  dmy, drCr, filterLines, fromBank, fromInvoices, fromInwards, fromOpening, sortLines, statementFor, summarizeByParty, receivablePayable, settleDocuments, nameKey, stripStamp,
   type LedgerLine, type LedgerSource, type SortKey,
 } from '@/lib/ledgerDashboard';
 
@@ -40,12 +41,15 @@ const COLS: { key: SortKey; label: string; align?: 'right' }[] = [
 export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { company } = useAuth();
   const cid = company?.id ?? null;
-  const [src, setSrc] = useState<Record<LedgerSource, SourceState>>({ Bank: emptySource(), Invoice: emptySource(), Inward: emptySource() });
+  const [src, setSrc] = useState<Record<LedgerSource, SourceState>>({ Bank: emptySource(), Invoice: emptySource(), Inward: emptySource(), Opening: emptySource() });
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [part, setPart] = useState('');
-  const [party, setParty] = useState('');
-  const [applied, setApplied] = useState({ from: '', to: '', part: '', party: '' });
+  // ?party=Name (from Opening Balances > View Ledger) opens the ledger already filtered to that company.
+  const [urlParams] = useSearchParams();
+  const initParty = urlParams.get('party') ?? '';
+  const [party, setParty] = useState(initParty);
+  const [applied, setApplied] = useState({ from: '', to: '', part: '', party: initParty });
   const [search, setSearch] = useState('');
   const [pageSize, setPageSize] = useState(100);
   const [page, setPage] = useState(1);
@@ -72,6 +76,10 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
           all.push(...r.rows); if (all.length >= r.total || !r.rows.length) break;
         }
         rows = fromInvoices(all);
+      } else if (which === 'Opening') {
+        // Opening balances are optional: until the Opening Balances migration is applied the table is missing and this source stays empty.
+        const r = await supabase.from('cnc_opening_entries').select('*').eq('status', 'Posted').in('entry_type', ['CUSTOMER', 'SUPPLIER']).limit(MAX_ROWS);
+        rows = r.error ? [] : fromOpening((r.data ?? []) as Record<string, unknown>[]);
       } else {
         const r = await supabase.from('cnc_inwards').select('*').neq('status', 'Deleted').limit(MAX_ROWS);
         if (r.error) throw new Error(r.error.message);
@@ -85,7 +93,7 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
     }
   }, []);
 
-  const refreshAll = useCallback(async () => { await Promise.all((['Bank', 'Invoice', 'Inward'] as LedgerSource[]).map(load)); }, [load]);
+  const refreshAll = useCallback(async () => { await Promise.all((['Bank', 'Invoice', 'Inward', 'Opening'] as LedgerSource[]).map(load)); }, [load]);
   useEffect(() => { void refreshAll(); }, [refreshAll, cid]);
   const updateOne = async (which: LedgerSource) => {
     const n = await load(which);
@@ -127,8 +135,8 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
     })().catch(() => { /* references stay as document numbers */ });
     return () => { off = true; };
   }, [cid]);
-  const all = useMemo(() => [...src.Bank.rows, ...src.Invoice.rows, ...src.Inward.rows].map(l => {
-    if (l.source === 'Bank') return l;
+  const all = useMemo(() => [...src.Bank.rows, ...src.Invoice.rows, ...src.Inward.rows, ...src.Opening.rows].map(l => {
+    if (l.source === 'Bank' || l.source === 'Opening') return l;
     let id = '';
     for (const k of l.links ?? []) { id = ids.bySo.get(k) || ids.byDc.get(k) || ids.byBase.get(k.toUpperCase()) || ids.byBase.get(stripStamp(k)) || ''; if (id) break; }
     id = (id || ids.byName.get(nameKey(l.party)) || '').toUpperCase();
@@ -301,6 +309,7 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
                   {srcBtn('Bank', <Landmark size={14} />, 'Update Bank')}
                   {srcBtn('Invoice', <FileText size={14} />, 'Update Invoice')}
                   {srcBtn('Inward', <PackageOpen size={14} />, 'Update Inward')}
+                  {srcBtn('Opening', <BookText size={14} />, 'Update Opening')}
                   <div className="my-1 border-t border-slate-100" />
                   <button role="menuitem" className={item} onClick={() => { setMenuOpen(false); setStmtParty(applied.party || parties[0] || ''); setModal('statement'); }}><BookOpen size={14} />Ledger Statement</button>
                   <button role="menuitem" className={`${item} !text-orange-800`} onClick={() => { setMenuOpen(false); setModal('book'); }}><BookText size={14} />Ledger Book</button>

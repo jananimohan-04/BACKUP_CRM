@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FolderOpen, Search, Hash, Eye, Pencil, FileDown, Trash2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -7,7 +7,8 @@ import { Modal } from '@/components/ui/Modal';
 import { calcLine, calcTotals } from '@/lib/quotationCalc';
 import { downloadQuotePdf } from '@/lib/quotationDocument';
 import { loadProfileStore, resolveSeller } from '@/lib/companyProfile';
-import { clientNames, deleteQuote, filterQuotes, loadQuotes, noFilter, stashForReuse, type SavedQuote } from '@/lib/quotationStore';
+import { clientNames, deleteQuote, filterQuotes, loadQuotes, mergeQuotes, noFilter, stashForReuse, type DbQuoteRow, type SavedQuote } from '@/lib/quotationStore';
+import { supabase } from '@/lib/supabase';
 
 const inputCls = 'h-10 px-3 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20';
 const dmy = (iso: string) => (iso ? iso.split('-').reverse().join('-') : '—');
@@ -19,13 +20,25 @@ export function QuotationLibraryPage() {
   const cid = company?.id ?? null;
   const navigate = useNavigate();
   const [quotes, setQuotes] = useState<SavedQuote[]>(() => loadQuotes(cid));
+  // Quotations are kept in this browser per company, and the ones recorded in the sales pipeline live in the database.
+  // Both are listed; reload whenever the company changes (it can arrive after the page opens).
+  const [dbRows, setDbRows] = useState<DbQuoteRow[]>([]);
+  useEffect(() => {
+    let off = false;
+    setQuotes(loadQuotes(cid));
+    supabase.from('cnc_quotations').select('id,quote_no,customer,phone,email,description,total_value,date,created_at,remarks,gst_percent,part_name')
+      .order('created_at', { ascending: false }).limit(1000)
+      .then(({ data, error }) => { if (!off && !error) setDbRows((data ?? []) as DbQuoteRow[]); });
+    return () => { off = true; };
+  }, [cid]);
+  const all = useMemo(() => mergeQuotes(quotes, dbRows), [quotes, dbRows]);
   const [f, setF] = useState(noFilter);
   const [view, setView] = useState<SavedQuote | null>(null);
   const [toDelete, setToDelete] = useState<SavedQuote | null>(null);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
-  const shown = useMemo(() => filterQuotes(quotes, f), [quotes, f]);
-  const names = useMemo(() => clientNames(quotes), [quotes]);
+  const shown = useMemo(() => filterQuotes(all, f), [all, f]);
+  const names = useMemo(() => clientNames(all), [all]);
   const set = (patch: Partial<typeof f>) => setF(p => ({ ...p, ...patch }));
   const filtered = JSON.stringify(f) !== JSON.stringify(noFilter);
 
@@ -76,7 +89,7 @@ export function QuotationLibraryPage() {
           </div>
           {filtered && <button onClick={() => setF(noFilter)} className="text-xs font-semibold text-orange-600 underline">Clear filters</button>}
           <span data-testid="count" className="ml-auto text-sm font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-4 h-10 flex items-center">
-            {quotes.length} Saved {quotes.length === 1 ? 'Quote' : 'Quotes'}{filtered && ` · ${shown.length} shown`}
+            {all.length} Saved {all.length === 1 ? 'Quote' : 'Quotes'}{filtered && ` · ${shown.length} shown`}
           </span>
         </div>
 
@@ -100,7 +113,9 @@ export function QuotationLibraryPage() {
                         <button aria-label={`View #${q.seq}`} title="View" onClick={() => setView(q)} className={`${iconBtn} hover:text-blue-600`}><Eye size={15} /></button>
                         <button aria-label={`Reuse #${q.seq}`} title="Open in Create Quotation" onClick={() => reuse(q)} className={`${iconBtn} hover:text-orange-600`}><Pencil size={15} /></button>
                         <button aria-label={`Download PDF #${q.seq}`} title="Download PDF" onClick={() => pdf(q, false)} className={`${iconBtn} hover:text-emerald-600`}><FileDown size={15} /></button>
-                        <button aria-label={`Delete #${q.seq}`} title="Delete" onClick={() => setToDelete(q)} className={`${iconBtn} hover:text-red-600`}><Trash2 size={15} /></button>
+                        {q.id.startsWith('db-')
+                          ? <span title="Recorded in the sales pipeline; delete it there" className="ml-1 text-[10px] font-bold uppercase text-slate-400 border border-slate-200 rounded px-1.5 py-0.5">Pipeline</span>
+                          : <button aria-label={`Delete #${q.seq}`} title="Delete" onClick={() => setToDelete(q)} className={`${iconBtn} hover:text-red-600`}><Trash2 size={15} /></button>}
                       </div>
                     </td>
                   </tr>
@@ -111,8 +126,8 @@ export function QuotationLibraryPage() {
           {shown.length === 0 && (
             <div className="flex flex-col items-center py-14 text-center">
               <FolderOpen size={28} className="text-slate-300 mb-2" />
-              <p className="text-sm font-semibold text-slate-800">{quotes.length ? 'No quotations match your filters.' : 'No saved quotations in directory.'}</p>
-              <p className="text-xs text-slate-500 mt-1">{quotes.length ? 'Change or clear the filters.' : <>Every quotation you <b>Save</b>, export or send from Create Quotation is listed here, numbered #1, #2, #3…</>}</p>
+              <p className="text-sm font-semibold text-slate-800">{all.length ? 'No quotations match your filters.' : 'No saved quotations in directory.'}</p>
+              <p className="text-xs text-slate-500 mt-1">{all.length ? 'Change or clear the filters.' : <>Every quotation you <b>Save</b>, export or send from Create Quotation is listed here, numbered #1, #2, #3…</>}</p>
             </div>
           )}
         </div>

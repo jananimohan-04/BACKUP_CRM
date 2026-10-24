@@ -51,6 +51,7 @@ import {
 
 import { DeliveriesPage } from './pages/operations/OperationsPages';
 import { BalanceSheetPage } from './pages/accounts/BalanceSheetPage';
+import { OpeningBalancesPage } from './pages/accounts/OpeningBalancesPage';
 import { InventoryPage } from './pages/inventory/InventoryPage';
 import { LedgerPage } from './pages/accounts/LedgerPage';
 import {
@@ -284,6 +285,7 @@ function MainLayout() {
             <Route path="/accounts/trial-balance" element={<TrialBalancePage />} />
             <Route path="/accounts/profit-loss" element={<ProfitLossPage />} />
             <Route path="/accounts/balance-sheet" element={<BalanceSheetPage />} />
+            <Route path="/accounts/opening-balances" element={<OpeningBalancesPage />} />
 
             {/* Reports */}
             <Route path="/reports/production" element={<ProductionReportsPage />} />

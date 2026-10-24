@@ -11,6 +11,7 @@ import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { fromInwards } from '@/lib/ledgerDashboard';
 import { exportCsv } from '@/lib/reportExport';
 import { todayISO } from '@/lib/format';
+import { fetchPartyOpenings, openingKey, sideLabel } from '@/lib/openingBalances';
 
 export function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -18,7 +19,11 @@ export function SuppliersPage() {
   const [showModal, setShowModal] = useState(false);
   const [viewTarget, setViewTarget] = useState<any>(null);
   const [editId, setEditId] = useState<string | null>(null);
-  
+  // Posted opening balances (Opening Balances page) by supplier name: credit = we owed the supplier this when we started.
+  const [openings, setOpenings] = useState<Map<string, number>>(new Map());
+  useEffect(() => { void fetchPartyOpenings('SUPPLIER').then(setOpenings); }, []);
+  const openingText = (name: string) => { const v = openings.get(openingKey(name)); return v ? `₹${Math.abs(v).toLocaleString('en-IN')} ${sideLabel(v)}` : ''; };
+
   // Tabs for details view
   const [activeTab, setActiveTab] = useState('Profile');
 
@@ -73,6 +78,7 @@ export function SuppliersPage() {
   const columns: Column<any>[] = [
     { key: 'code', label: 'Code', sortable: true, render: (r) => <span className="font-mono text-xs font-semibold text-brand-700">{r.code}</span> },
     { key: 'name', label: 'Supplier Name', sortable: true, render: (r) => <span className="font-medium text-slate-800">{r.name}</span> },
+    { key: 'opening', label: 'Opening Balance', align: 'right', render: (r) => { const t = openingText(r.name); return t ? <span className="font-medium text-slate-700 whitespace-nowrap">{t}</span> : <span className="text-slate-300">—</span>; } },
     { key: 'category', label: 'Category', sortable: true, render: (r) => <Badge variant="neutral">{r.category}</Badge> },
     { key: 'contact', label: 'Contact', render: (r) => <div><p className="text-sm font-medium">{r.contact_person || 'N/A'}</p><p className="text-xs text-slate-500">{r.phone || r.email || ''}</p></div> },
     { key: 'status', label: 'Status', sortable: true, render: (r) => <Badge variant={r.status === 'Active' ? 'success' : 'neutral'} dot>{r.status}</Badge> },
@@ -178,6 +184,10 @@ export function SuppliersPage() {
                         <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                            <p className="text-xs text-slate-500 font-semibold mb-1">Category</p>
                            <p className="font-semibold text-slate-800">{viewTarget.category || 'N/A'}</p>
+                        </div>
+                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                           <p className="text-xs text-slate-500 font-semibold mb-1">Opening Balance</p>
+                           <p className="font-semibold text-slate-800">{openingText(viewTarget.name) || 'None'}</p>
                         </div>
                         <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                            <p className="text-xs text-slate-500 font-semibold mb-1">Payment Terms</p>

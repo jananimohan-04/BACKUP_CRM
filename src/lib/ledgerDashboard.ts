@@ -8,7 +8,7 @@
 
 import type { BankRow, InvoiceRow } from './finance';
 
-export type LedgerSource = 'Bank' | 'Invoice' | 'Inward';
+export type LedgerSource = 'Bank' | 'Invoice' | 'Inward' | 'Opening';
 
 export interface LedgerLine {
   id: string;
@@ -80,6 +80,23 @@ export function fromInwards(rows: Record<string, unknown>[]): LedgerLine[] {
       narration: String(r.part_name || r.product_name || ''), debit: 0, credit: bill ? r2(amount) : 0,
       party: String(r.party_name ?? ''), ledgerType: bill ? 'Supplier' : 'Customer', due: bill ? r2(amount) : undefined,
       links: [r.sales_order_ref, r.project_name].filter(x => !!x).map(String),
+    };
+  });
+}
+
+/** Posted opening balances (Opening Balances page): the brought-forward line at the top of a customer's or supplier's ledger.
+ *  A customer receivable is a debit, a supplier payable a credit; a credit balance / debit balance reverses it.
+ *  It is a bill (`due`) so receipts and payments that are not tied to an invoice settle it first (oldest). */
+export function fromOpening(rows: Record<string, unknown>[]): LedgerLine[] {
+  return rows.filter(r => String(r.status ?? '') === 'Posted' && (r.entry_type === 'CUSTOMER' || r.entry_type === 'SUPPLIER')).map(r => {
+    const amount = r2(num(r.amount));
+    const dr = r.side === 'DR';
+    const customer = r.entry_type === 'CUSTOMER';
+    return {
+      id: `open:${String(r.id)}`, source: 'Opening' as const, date: day(r.opening_date), ref: String(r.invoice_ref || r.entry_no || ''),
+      particulars: 'Opening Balance', narration: String(r.remarks || r.balance_type || ''),
+      debit: dr ? amount : 0, credit: dr ? 0 : amount, party: String(r.party_name ?? ''), ledgerType: customer ? 'Customer' : 'Supplier',
+      due: (customer ? dr : !dr) ? amount : undefined,
     };
   });
 }
@@ -172,13 +189,14 @@ export function settleDocuments(lines: LedgerLine[], today: string): Map<string,
     const key = l.ledgerType === 'Customer' && l.credit > 0 ? `C|${nameKey(l.party)}` : l.ledgerType === 'Supplier' && l.debit > 0 ? `S|${nameKey(l.party)}` : '';
     if (key) pool.set(key, r2((pool.get(key) ?? 0) + (l.credit || l.debit)));
   }
-  const bills = lines.filter(l => l.due !== undefined && (l.source === 'Invoice' || l.source === 'Inward'))
+  const bills = lines.filter(l => l.due !== undefined && (l.source === 'Invoice' || l.source === 'Inward' || l.source === 'Opening'))
     .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   const now = dayNumber(today);
   for (const b of bills) {
-    const amount = b.source === 'Invoice' ? b.debit : b.credit;
+    const owedToUs = b.source === 'Invoice' || (b.source === 'Opening' && b.ledgerType === 'Customer');
+    const amount = owedToUs ? b.debit : b.credit;
     let left = r2(b.due ?? 0);
-    const key = `${b.source === 'Invoice' ? 'C' : 'S'}|${nameKey(b.party)}`;
+    const key = `${owedToUs ? 'C' : 'S'}|${nameKey(b.party)}`;
     const avail = pool.get(key) ?? 0;
     if (left > 0.005 && avail > 0) { const use = Math.min(avail, left); pool.set(key, r2(avail - use)); left = r2(left - use); }
     const paid = r2(Math.max(0, amount - left));

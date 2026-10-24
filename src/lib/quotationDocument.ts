@@ -63,7 +63,7 @@ export async function buildQuotePdf(doc: QuoteDoc, withWorkings: boolean, themeI
   pdf.setTextColor(30); let y = 32;
   let sellerEnd = 0;
   if (seller) {
-    const lines = [seller.address, seller.gstin && `GSTIN: ${seller.gstin}`, seller.phones.join(', '), seller.emails.join(', '), seller.website].filter(Boolean) as string[];
+    const lines = [seller.address, seller.gstin && `GSTIN: ${seller.gstin}`, seller.phones.join(', '), seller.website].filter(Boolean) as string[];
     pdf.setFontSize(8.5); pdf.setTextColor(90);
     let sy = 29;
     for (const l of lines) { const w = pdf.splitTextToSize(l, 80) as string[]; pdf.text(w, W - 14, sy, { align: 'right' }); sy += 4 * w.length; }

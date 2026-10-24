@@ -54,6 +54,7 @@ export const MODULE_CATALOG: ModuleDef[] = [
   { key: 'bank-entry', label: 'Bank Entry', category: 'Finance', actions: [...VCEDX], pages: ['finance/bank-entries', 'finance/bank-entry'] },
   { key: 'ledger', label: 'Ledger', category: 'Finance', actions: [...VCEDX], pages: ['accounts/ledger', 'accounts/trial-balance', 'accounts/profit-loss', 'accounts/balance-sheet', 'finance/ledger-dashboard'] },
   { key: 'petty-cash', label: 'Petty Cash', category: 'Finance', actions: [...VCEDX], pages: ['finance/petty-cash'] },
+  { key: 'opening-balances', label: 'Opening Balances', category: 'Finance', actions: [...VCEDX], pages: ['accounts/opening-balances'] },
   { key: 'project-costing', label: 'Project Costing', category: 'Finance', actions: ['view', 'create', 'edit', 'delete', 'approve', 'export'], pages: ['costing/job-costing', 'costing/job_costing'] },
   { key: 'product-costing', label: 'Product Costing', category: 'Finance', actions: ['view', 'create', 'edit', 'delete', 'approve', 'export'], pages: ['costing/material', 'costing/machine', 'costing/labour', 'costing/tooling', 'costing/overhead', 'costing/quote-costing'] },
 

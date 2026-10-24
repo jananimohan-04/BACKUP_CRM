@@ -8,6 +8,7 @@ import { Badge, Button, StatCard, statusToVariant } from '@/components/ui/Card';
 import { Modal, ConfirmDialog, FormField, inputClass } from '@/components/ui/Modal';
 import { tint } from '@/lib/entryTints';
 import { compactInput } from '@/lib/compactFields';
+import { fetchPartyOpenings, openingKey, sideLabel } from '@/lib/openingBalances';
 import type { Quotation, SalesOrder, Customer } from '@/data/mockData';
 
 export { LeadsPage } from './LeadsPage';
@@ -23,6 +24,10 @@ export function CustomersPage() {
   const [customersData, setCustomersData] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
+  // Posted opening balances (Opening Balances page) by company name: debit = the company owed us this when we started.
+  const [openings, setOpenings] = useState<Map<string, number>>(new Map());
+  useEffect(() => { void fetchPartyOpenings('CUSTOMER').then(setOpenings); }, []);
+  const openingText = (name: string) => { const v = openings.get(openingKey(name)); return v ? `₹${Math.abs(v).toLocaleString('en-IN')} ${sideLabel(v)}` : ''; };
 
   const resetForm = () => ({
     name: '', industry: 'Aerospace', contact: '', email: '', phone: '', city: '', status: 'Active'
@@ -127,6 +132,7 @@ export function CustomersPage() {
 
   const columns: Column<Customer>[] = [
     { key: 'name', label: 'Company', sortable: true, render: (r) => <span className="font-semibold text-slate-800">{r.name}</span> },
+    { key: 'opening', label: 'Opening Balance', align: 'right', render: (r) => { const t = openingText(r.name); return t ? <span className="font-medium text-slate-700 whitespace-nowrap">{t}</span> : <span className="text-slate-300">—</span>; } },
     { key: 'industry', label: 'Industry', sortable: true, render: (r) => <Badge variant="neutral">{r.industry}</Badge> },
     { key: 'contact', label: 'Contact Person', render: (r) => <div><p className="text-sm text-slate-700">{r.contact}</p><p className="text-xs text-slate-400">{r.city}</p></div> },
     { key: 'totalOrders', label: 'Orders', sortable: true, align: 'right' },
@@ -189,6 +195,7 @@ export function CustomersPage() {
             <div><p className="text-slate-500 mb-1">Status</p><Badge variant={statusToVariant(viewTarget.status)} dot>{viewTarget.status}</Badge></div>
             <div><p className="text-slate-500 mb-1">Contact</p><p className="font-medium text-slate-800">{viewTarget.contact}</p></div>
             <div><p className="text-slate-500 mb-1">Address</p><p className="font-medium text-slate-800">{viewTarget.city}</p></div>
+            <div><p className="text-slate-500 mb-1">Opening Balance</p><p className="font-medium text-slate-800">{openingText(viewTarget.name) || 'None'}</p></div>
             <div><p className="text-slate-500 mb-1">Total Orders</p><p className="text-slate-800">{viewTarget.totalOrders}</p></div>
             <div><p className="text-slate-500 mb-1">Total Value</p><p className="font-semibold text-slate-800">₹{viewTarget.totalValue.toLocaleString('en-IN')}</p></div>
             <div><p className="text-slate-500 mb-1">Outstanding</p><p className={viewTarget.outstanding > 0 ? 'text-orange-600 font-medium' : 'text-slate-800'}>₹{viewTarget.outstanding.toLocaleString('en-IN')}</p></div>

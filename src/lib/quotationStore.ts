@@ -77,6 +77,38 @@ export function takeReuse(companyId: string | null | undefined): SavedQuote | nu
   } catch { return null; }
 }
 
+/** A quotation recorded in the sales pipeline (cnc_quotations), shown in the library next to the ones saved in this browser. */
+export interface DbQuoteRow {
+  id: string; quote_no: string | null; customer: string | null; phone: string | null; email: string | null; description: string | null;
+  total_value: number | string | null; date: string | null; created_at: string | null; remarks: string | null; gst_percent: number | string | null; part_name: string | null;
+}
+
+/** Rebuilds a library entry from a database quotation. `seq` continues after the browser-saved numbers. Terms / seller are not kept in the database. */
+export function quoteFromDb(r: DbQuoteRow, seq: number): SavedQuote {
+  let items: Record<string, unknown>[] = [];
+  try { const v = JSON.parse(r.description || '[]'); if (Array.isArray(v)) items = v; } catch { /* description is plain text: no line items */ }
+  const half = String((Number(r.gst_percent) || 0) / 2);
+  const lines = items.map((i, n) => ({
+    id: `db${r.id}-${n}`, hsn: '', description: String(i.partName ?? ''), qty: String(i.quantity ?? '1'), unit: 'Nos', unitPrice: String(i.unitPrice ?? ''),
+    discount: String(i.discount ?? '0'), ...(i.workings ? { workings: i.workings as never } : {}),
+  }));
+  const name = String(r.customer ?? '').trim();
+  const date = String(r.date ?? r.created_at ?? '').slice(0, 10);
+  return {
+    id: `db-${r.id}`, seq, quoteNo: r.quote_no || `QT-${r.id.slice(0, 6)}`, date, sellerName: '', clients: name ? [{ key: name.toLowerCase(), name, email: r.email ?? '', phone: r.phone ?? '', address: '', gstin: '' }] : [],
+    lines: lines.length ? lines : [{ id: `db${r.id}-0`, hsn: '', description: String(r.part_name ?? ''), qty: '1', unit: 'Nos', unitPrice: String(Number(r.total_value) || 0), discount: '0' }],
+    tax: { cgst: half, sgst: half, igst: '0' }, terms: '', notes: r.remarks ?? '', savedAt: String(r.created_at ?? new Date(0).toISOString()), total: Number(r.total_value) || 0,
+  };
+}
+
+/** Browser-saved quotations plus pipeline quotations that are not already among them (matched by quote number). */
+export function mergeQuotes(local: SavedQuote[], db: DbQuoteRow[]): SavedQuote[] {
+  const have = new Set(local.map(q => q.quoteNo));
+  let seq = nextSeq(local);
+  const extra = [...db].filter(r => !have.has(r.quote_no ?? '')).sort((a, b) => String(a.created_at ?? '').localeCompare(String(b.created_at ?? ''))).map(r => quoteFromDb(r, seq++));
+  return [...local, ...extra].sort((a, b) => b.seq - a.seq);
+}
+
 export interface QuoteFilter { text: string; quoteNo: string; client: string; from: string; to: string }
 export const noFilter: QuoteFilter = { text: '', quoteNo: '', client: '', from: '', to: '' };
 

@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
-import { Plus, Trash2, Eye, UploadCloud, Edit2, Download, FileText, RefreshCcw, Copy, Calculator, Users as UsersIcon, Package as PackageIcon, ScrollText, FolderOpen, Building2, ArrowLeft, ChevronDown, Printer } from 'lucide-react';
+import { Plus, Trash2, Eye, UploadCloud, Edit2, Download, FileText, RefreshCcw, Copy, Calculator, Package as PackageIcon, ScrollText, FolderOpen, Building2, ArrowLeft, ChevronDown, Printer } from 'lucide-react';
 import { uploadOrderFile } from '@/lib/orderFiles';
 import { MetalCalculatorPage, ClientLibraryPage, ProductLibraryPage, TermsLibraryPage, QuotationLibraryPage, CompanyProfilePage } from '../quotation/QuotationToolPages';
 import { setMockImage, getMockImage } from '@/lib/mockStorage';
@@ -7514,7 +7514,6 @@ export function SalesPipelinePage() {
       {([
         ['Metal Calculator', 'Calculator', '/quotation/metal-calculator', Calculator, 'text-orange-500'],
         ['Create Quotation', 'Create', '/quotation/create', FileText, 'text-sky-500'],
-        ['Client Library', 'Clients', '/quotation/client-library', UsersIcon, 'text-cyan-500'],
         ['Product Library', 'Products', '/quotation/product-library', PackageIcon, 'text-emerald-500'],
         ['Terms Library', 'Terms', '/quotation/terms-library', ScrollText, 'text-amber-500'],
         ['Quotation Library', 'History', '/quotation/library', FolderOpen, 'text-violet-500'],

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
 import { ArrowLeftRight, CheckCircle2, ChevronLeft, ChevronRight, Upload, Plus, RefreshCw, Search, X } from 'lucide-react';
 import { Badge, Button, Card, statusToVariant } from '@/components/ui/Card';
 import { FormField, inputClass, Modal } from '@/components/ui/Modal';
@@ -20,6 +21,9 @@ export function BankCashPage(){
   const {company}=useAuth();
   const navigate=useNavigate();
   const [tab,setTab]=useState('');
+  // Posted opening balance per bank / cash account (Opening Balances page); it is already inside the balance shown.
+  const [openingBy,setOpeningBy]=useState<Record<string,number>>({});
+  useEffect(()=>{supabase.from('cnc_opening_entries').select('account_id,side,amount').eq('entry_type','BANK').eq('status','Posted').then(r=>{const m:Record<string,number>={};for(const x of (r.data??[]) as {account_id:string;side:string;amount:number}[])m[x.account_id]=(m[x.account_id]??0)+(x.side==='CR'?-1:1)*Number(x.amount);setOpeningBy(m);});},[]);
   const [draft,setDraft]=useState({from:monthStart(),to:todayISO(),account:'',type:'',party:'',search:''});
   const [filters,setFilters]=useState(draft);
   const [data,setData]=useState<BankRow[]>([]);
@@ -131,7 +135,7 @@ export function BankCashPage(){
       {!loading&&!data.length&&<tr><td colSpan={13} className="p-6 text-center text-slate-500">No transactions found for these filters.</td></tr>}
     </tbody></table></div><div className="flex justify-between p-2 border-t text-xs text-slate-500"><span>{total?((page-1)*PAGE+1):0}-{Math.min(page*PAGE,total)} of {total}</span><div className="flex gap-2"><button disabled={page<=1} onClick={()=>void reload(page-1)}><ChevronLeft size={16}/></button>{page}/{pageCount}<button disabled={page>=pageCount} onClick={()=>void reload(page+1)}><ChevronRight size={16}/></button></div></div></Card>
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-      <Card className="p-4"><h3 className="font-bold text-sm mb-3">Account Balances</h3>{summary.accounts.map(a=><div key={a.id} className="flex justify-between border-b py-2 text-xs"><span>{a.name}<small className="block text-slate-400">{a.type}</small></span><b>{cash(a.balance)}</b></div>)}<div className="flex justify-between pt-2 text-xs font-bold"><span>Total</span><span>{cash(Number(summary.total_bank)+Number(summary.total_cash))}</span></div></Card>
+      <Card className="p-4"><h3 className="font-bold text-sm mb-3">Account Balances</h3>{summary.accounts.map(a=><div key={a.id} className="flex justify-between border-b py-2 text-xs"><span>{a.name}<small className="block text-slate-400">{a.type}{openingBy[a.id]?` · opening ${cash(openingBy[a.id])}`:''}</small></span><b>{cash(a.balance)}</b></div>)}<div className="flex justify-between pt-2 text-xs font-bold"><span>Total</span><span>{cash(Number(summary.total_bank)+Number(summary.total_cash))}</span></div></Card>
       <Card className="p-4"><h3 className="font-bold text-sm mb-3">Receipts vs Payments</h3><div className="flex gap-2 items-end h-36 border-b">{summary.receipts_vs_payments.length?summary.receipts_vs_payments.map(x=><div key={x.week} className="flex-1 h-full flex items-end justify-center gap-1" title={formatDate(x.week)}><div className="w-3 bg-emerald-500 rounded-t" style={{height:Math.max(2,Number(x.receipts)/maxChart*120)}}/><div className="w-3 bg-rose-400 rounded-t" style={{height:Math.max(2,Number(x.payments)/maxChart*120)}}/></div>):<span className="w-full self-center text-center text-xs text-slate-400">No transaction data.</span>}</div><div className="flex gap-3 mt-2 text-[10px]"><span className="text-emerald-700">Receipts</span><span className="text-rose-700">Payments</span></div></Card>
       <Card className="p-4"><h3 className="font-bold text-sm mb-3">Expense by Category</h3>{summary.expense_by_category.length?summary.expense_by_category.slice(0,6).map((x,i)=><div key={x.name} className="mb-2"><div className="flex justify-between text-xs"><span>{x.name}</span><b>{cash(x.value)}</b></div><div className="h-1.5 bg-slate-100 rounded mt-1"><div className={'h-full rounded '+['bg-blue-500','bg-amber-400','bg-emerald-500','bg-violet-500','bg-rose-500','bg-cyan-500'][i]} style={{width:(Math.max(0,Number(x.value))/Math.max(1,...summary.expense_by_category.map(y=>Number(y.value)))*100)+'%'}}/></div></div>):<div className="text-xs text-slate-400">No classified expense transactions.</div>}</Card>
     </div>

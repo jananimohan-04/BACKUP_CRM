@@ -17,6 +17,7 @@ import {
   Landmark,
   Wallet,
   LifeBuoy,
+  Archive,
   type LucideIcon,
 } from 'lucide-react';
 import type { ErpRole } from '@/contexts/AuthContext';
@@ -81,6 +82,7 @@ export const navSections: NavSection[] = [
       { label: 'Trial Balance', icon: Scale, page: 'accounts/trial-balance', iconClass: 'text-purple-300', module: 'ledger' },
       { label: 'Profit & Loss', icon: BarChart3, page: 'accounts/profit-loss', iconClass: 'text-blue-400', module: 'ledger' },
       { label: 'Balance Sheet', icon: Landmark, page: 'accounts/balance-sheet', iconClass: 'text-slate-300', module: 'ledger' },
+      { label: 'Opening Balances', icon: Archive, page: 'accounts/opening-balances', iconClass: 'text-rose-300', module: 'opening-balances' },
     ],
   },
   {
@@ -181,6 +183,7 @@ export const pageTitles: Record<string, string> = {
   'finance/bank-entry': 'Bank Entry',
   'finance/petty-cash': 'Petty Cash Entry',
   'finance/ledger-dashboard': 'Ledger Dashboard',
+  'accounts/opening-balances': 'Opening Balances',
   'admin/users': 'User Management',
   'admin/companies': 'Company Management',
   'admin/roles': 'Roles',
