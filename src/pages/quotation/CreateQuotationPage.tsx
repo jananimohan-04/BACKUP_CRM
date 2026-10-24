@@ -60,7 +60,8 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [showIssues, setShowIssues] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [profileStore] = useState(() => loadProfileStore(company?.id, { orgName: company?.company_name ?? '', email: authEmail ?? '' }));
+  // Read again whenever the company changes (it can arrive after this page opens), so the phone, address and bank details of the right company are printed.
+  const profileStore = useMemo(() => loadProfileStore(company?.id, { orgName: company?.company_name ?? '', email: authEmail ?? '' }), [company?.id, company?.company_name, authEmail]);
   const [sellerRef, setSellerRef] = useState('');
   // Identity (id + number) of the quotation being worked on; assigned the first time it is saved/exported.
   const ident = useRef<QuoteIdent | null>(null);

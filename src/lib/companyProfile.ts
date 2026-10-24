@@ -70,6 +70,7 @@ export const GSTIN_RE = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 export const IFSC_RE = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const UPI_RE = /^[\w.-]{2,}@[A-Za-z][A-Za-z0-9]{1,}$/;
+const UPI_NUMBER_RE = /^\d{10,15}$/;   // a UPI number (the mobile number linked to UPI) is accepted as well
 
 export interface ProfileErrors {
   orgName?: string; gstin?: string; website?: string; accountNo?: string; ifsc?: string; upi?: string;
@@ -85,7 +86,7 @@ export function validateProfile(p: OrgProfile): ProfileErrors {
   if (p.website.trim()) { try { const u = new URL(normaliseWebsite(p.website)); if (!u.hostname.includes('.')) throw new Error('x'); } catch { e.website = 'Enter a valid website address'; } }
   if (p.accountNo.trim() && !/^\d{9,18}$/.test(p.accountNo.trim())) e.accountNo = 'Account number must be 9 to 18 digits';
   if (p.ifsc.trim() && !IFSC_RE.test(p.ifsc.trim().toUpperCase())) e.ifsc = 'IFSC must be 11 characters, e.g. SBIN0001234';
-  if (p.upi.trim() && !UPI_RE.test(p.upi.trim())) e.upi = 'UPI ID looks like name@bank';
+  if (p.upi.trim() && !UPI_RE.test(p.upi.trim()) && !UPI_NUMBER_RE.test(p.upi.trim().replace(/[\s-]/g, ''))) e.upi = 'Enter a UPI ID like name@bank or a UPI number (10 to 15 digits)';
   p.phones.forEach((ph, i) => { const d = ph.replace(/\D/g, ''); if (ph.trim() && (d.length < 7 || d.length > 15 || /[^\d\s+()-]/.test(ph))) e.phones[i] = 'Enter a valid phone number'; });
   p.emails.forEach((em, i) => { if (em.trim() && !EMAIL_RE.test(em.trim())) e.emails[i] = 'Enter a valid email address'; });
   return e;

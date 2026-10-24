@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FolderOpen, Search, Hash, Eye, Pencil, FileDown, Trash2 } from 'lucide-react';
+import { FolderOpen, Search, Hash, Eye, FileDown, Trash2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatINR } from '@/lib/format';
 import { Modal } from '@/components/ui/Modal';
-import { calcLine, calcTotals } from '@/lib/quotationCalc';
+import { calcLine } from '@/lib/quotationCalc';
 import { downloadQuotePdf } from '@/lib/quotationDocument';
 import { loadProfileStore, resolveSeller } from '@/lib/companyProfile';
 import { clientNames, deleteQuote, filterQuotes, loadQuotes, mergeQuotes, noFilter, stashForReuse, type DbQuoteRow, type SavedQuote } from '@/lib/quotationStore';
@@ -33,7 +33,6 @@ export function QuotationLibraryPage() {
   }, [cid]);
   const all = useMemo(() => mergeQuotes(quotes, dbRows), [quotes, dbRows]);
   const [f, setF] = useState(noFilter);
-  const [view, setView] = useState<SavedQuote | null>(null);
   const [toDelete, setToDelete] = useState<SavedQuote | null>(null);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
@@ -110,8 +109,7 @@ export function QuotationLibraryPage() {
                     <td className="px-4 py-2 text-right font-mono font-semibold">{money(q.total)}</td>
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-0.5">
-                        <button aria-label={`View #${q.seq}`} title="View" onClick={() => setView(q)} className={`${iconBtn} hover:text-blue-600`}><Eye size={15} /></button>
-                        <button aria-label={`Reuse #${q.seq}`} title="Open in Create Quotation" onClick={() => reuse(q)} className={`${iconBtn} hover:text-orange-600`}><Pencil size={15} /></button>
+                        <button aria-label={`View #${q.seq}`} title="View / edit in Create Quotation" onClick={() => reuse(q)} className={`${iconBtn} hover:text-blue-600`}><Eye size={15} /></button>
                         <button aria-label={`Download PDF #${q.seq}`} title="Download PDF" onClick={() => pdf(q, false)} className={`${iconBtn} hover:text-emerald-600`}><FileDown size={15} /></button>
                         {q.id.startsWith('db-')
                           ? <span title="Recorded in the sales pipeline; delete it there" className="ml-1 text-[10px] font-bold uppercase text-slate-400 border border-slate-200 rounded px-1.5 py-0.5">Pipeline</span>
@@ -132,39 +130,6 @@ export function QuotationLibraryPage() {
           )}
         </div>
       </div>
-
-      <Modal open={!!view} onClose={() => setView(null)} size="lg" title={view ? `Quotation #${view.seq}` : ''} subtitle={view ? `${view.quoteNo} · ${dmy(view.date)}` : ''}>
-        {view && (() => {
-          const t = calcTotals(view.lines, view.tax);
-          return (
-            <div className="space-y-4 text-sm">
-              <div><p className="text-[11px] font-bold uppercase text-slate-500 mb-1">Clients</p>
-                {view.clients.map(c => <p key={c.key}><span className="font-semibold">{c.name}</span><span className="text-slate-500">{[c.address, c.phone, c.email, c.gstin && `GSTIN ${c.gstin}`].filter(Boolean).map(x => ` · ${x}`).join('')}</span></p>)}
-              </div>
-              <table className="w-full text-xs border border-slate-200">
-                <thead className="bg-slate-50 text-slate-500 uppercase"><tr>{['Item', 'Qty', 'Rate', 'Disc.', 'Amount'].map(h => <th key={h} className="text-left px-2 py-1.5">{h}</th>)}</tr></thead>
-                <tbody>{view.lines.filter(l => calcLine(l).active).map(l => { const r = calcLine(l); return (
-                  <tr key={l.id} className="border-t border-slate-100"><td className="px-2 py-1.5">{l.description}</td><td className="px-2 py-1.5">{l.qty} {l.unit}</td><td className="px-2 py-1.5">{l.unitPrice}</td><td className="px-2 py-1.5">{l.discount ? `${l.discount}%` : '—'}</td><td className="px-2 py-1.5 font-mono">{money(r.amount)}</td></tr>
-                ); })}</tbody>
-              </table>
-              <div className="ml-auto w-64 space-y-1">
-                <p className="flex justify-between"><span>Before tax</span><span className="font-mono">{money(t.subtotal)}</span></p>
-                {t.cgst > 0 && <p className="flex justify-between"><span>CGST {view.tax.cgst}%</span><span className="font-mono">{money(t.cgst)}</span></p>}
-                {t.sgst > 0 && <p className="flex justify-between"><span>SGST {view.tax.sgst}%</span><span className="font-mono">{money(t.sgst)}</span></p>}
-                {t.igst > 0 && <p className="flex justify-between"><span>IGST {view.tax.igst}%</span><span className="font-mono">{money(t.igst)}</span></p>}
-                <p className="flex justify-between font-bold border-t border-slate-200 pt-1"><span>Total</span><span className="font-mono text-orange-600">{money(t.total)}</span></p>
-              </div>
-              {view.terms && <div><p className="text-[11px] font-bold uppercase text-slate-500 mb-1">Terms &amp; Conditions</p><pre className="whitespace-pre-wrap font-sans text-xs text-slate-600">{view.terms}</pre></div>}
-              {view.notes && <div><p className="text-[11px] font-bold uppercase text-slate-500 mb-1">Notes</p><p className="text-xs text-slate-600 whitespace-pre-wrap">{view.notes}</p></div>}
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-                <button onClick={() => pdf(view, true)} className="h-9 px-3 text-sm font-semibold border border-slate-200 rounded-lg">PDF with Workings</button>
-                <button onClick={() => pdf(view, false)} className="h-9 px-3 text-sm font-semibold text-white bg-orange-500 rounded-lg">PDF</button>
-                <button onClick={() => reuse(view)} className="h-9 px-3 text-sm font-semibold text-white bg-blue-600 rounded-lg">Open in Create Quotation</button>
-              </div>
-            </div>
-          );
-        })()}
-      </Modal>
 
       <Modal open={!!toDelete} onClose={() => setToDelete(null)} size="sm" title="Delete quotation?">
         <p className="text-sm text-slate-600">Quotation #{toDelete?.seq} ({toDelete?.clients.map(c => c.name).join(', ')}) will be permanently removed.</p>
