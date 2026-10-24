@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { formatDate, formatINR, todayISO } from '@/lib/format';
 import { exportCsv, escapeHtml, printHtml } from '@/lib/reportExport';
 import { supabase } from '@/lib/supabase';
+import { machineCostTotal, quoteNameKey, spanMinutes, valueOperations } from '@/lib/projectCosting';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 
@@ -96,10 +97,12 @@ type CostingDetail = {
 const money = (v: string | number | null | undefined) =>
   v == null || v === '' ? '—' : formatINR(v, { decimals: 'auto' });
 
+// The three cost heads are named as they are booked: Service Purchase (outside work), Goods Purchase (material bought) and
+// Machine Cost (in-house operations valued with Process Master rates and the hours scheduled / run).
 const tabs = [
-  'Process Costing',
-  'Material Cost',
-  'Machine & Labour',
+  'Service Purchase',
+  'Goods Purchase',
+  'Machine Cost',
   'Expenses',
 ];
 
@@ -140,7 +143,9 @@ async function loadQuoteLookup() {
       if (q && !seen.has(String(q.id))) { seen.add(String(q.id)); sum += totalOf(q); }
     }
     if (sum > 0) return sum;
-    const byParty = quoteList.filter((q: any) => lc(q.customer) === lc(party) && lc(q.part_name) === lc(part));
+    // No sales-order link: customer + product, comparing the product without its date / company suffix.
+    const wantPart = quoteNameKey(part);
+    const byParty = quoteList.filter((q: any) => lc(q.customer) === lc(party) && (lc(q.part_name) === lc(part) || (!!wantPart && quoteNameKey(q.part_name) === wantPart)));
     const latest = byParty[byParty.length - 1];
     return latest && totalOf(latest) > 0 ? totalOf(latest) : null;
   };
@@ -203,7 +208,7 @@ export function ProjectCostingPage() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<ProjectRow | null>(null);
   const [report, setReport] = useState<CostingDetail | null>(null);
-  const [tab, setTab] = useState('Material Cost');
+  const [tab, setTab] = useState('Goods Purchase');
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
@@ -541,9 +546,8 @@ export function ProjectCostingPage() {
         if (spanErr) console.error('Project costing: job card run times unavailable', spanErr);
         const minutesById = new Map<string, number>();
         for (const j of spans ?? []) {
-          const st = j.actual_start ? new Date(j.actual_start).getTime() : NaN;
-          const en = j.completed_at ? new Date(j.completed_at).getTime() : Date.now();
-          if (Number.isFinite(st) && en > st) minutesById.set(String(j.id), Math.round((en - st) / 60000));
+          const m = spanMinutes(j.actual_start, j.completed_at);
+          if (m != null) minutesById.set(String(j.id), m);
         }
         mergedOps = mergedOps.map((o: any) => (minutesById.has(String(o.id)) ? { ...o, actual_minutes: String(minutesById.get(String(o.id))) } : o));
       }
@@ -728,43 +732,16 @@ export function ProjectCostingPage() {
   // Production operations valued with live Process Master rates (process costing
   // = production operations). Operations without a matching master rate show
   // hours only and are excluded from the total.
-  const processOps = useMemo(() => {
-    // Names are compared ignoring case and extra spaces; a process code also counts as a match.
-    const norm = (v: unknown) => String(v ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
-    const byName = new Map<string, any>();
-    for (const p of procRates ?? []) {
-      if (norm(p.process_code)) byName.set(norm(p.process_code), p);
-    }
-    for (const p of procRates ?? []) byName.set(norm(p.process_name), p);
-    return (report?.operations || []).map((x: any) => {
-      const p = byName.get(norm(x.operation));
-      const qty = Number(x.qty_completed) > 0 ? Number(x.qty_completed) : Number(x.qty_planned) || 0;
-      // Logged machine minutes win over the estimate when the operation has been run.
-      const logged = Number(x.actual_minutes) || 0;
-      const hours = Math.max(0, (logged > 0 ? logged : (Number(x.setup_time) || 0) + qty * (Number(x.cycle_time) || 0)) / 60);
-      const rate = Number(p?.cost_per_hour) || 0;
-      const compSetup = (Number(p?.cost_per_component) || 0) + (Number(p?.setup_cost) || 0);
-      return {
-        ...x,
-        hours: Math.round(hours * 100) / 100,
-        rate,
-        compSetup,
-        cost: hours * rate + compSetup,
-        matched: !!p && rate > 0,
-      };
-    });
-  }, [report?.operations, procRates]);
+  const processOps = useMemo(() => valueOperations(report?.operations || [], procRates ?? []), [report?.operations, procRates]);
 
-  const processOpsTotal = useMemo(() => {
-    return processOps.reduce((sum, x) => sum + (x.matched ? x.cost : 0), 0);
-  }, [processOps]);
+  const processOpsTotal = useMemo(() => machineCostTotal(processOps), [processOps]);
 
   return (
     <div className="p-2 sm:p-4 lg:px-6 lg:pt-2 lg:pb-6 space-y-3 bg-slate-50 min-h-full">
       <div className="lg:hidden">
         <PageHeader
           title="Project Costing"
-          description="Cost analysis from existing project costs, production records, inventory movements, goods purchase inwards (material) and service purchase inwards (machine & labour)."
+          description="Cost analysis from existing project costs, production records, inventory movements, goods purchase inwards, service purchase inwards and machine cost."
           actions={
             <>
               <Button variant="secondary" size="sm" icon={<Upload size={14} />} onClick={exportReport} disabled={!report}>
@@ -900,8 +877,8 @@ export function ProjectCostingPage() {
                       <div className="text-[10px] uppercase tracking-wide text-slate-500">Planned Cost</div>
                       <div className="text-sm font-bold">{money(project?.planned_cost)}</div>
                     </div>
-                    <div title="Operations x Process Master rates (logged minutes when recorded, else estimated from cycle time)">
-                      <div className="text-[10px] uppercase tracking-wide text-slate-500">Machine Cost (Est.)</div>
+                    <div title="In-house operations: hours run in Scheduling (or setup + qty x cycle time) x the Process Master cost per hour">
+                      <div className="text-[10px] uppercase tracking-wide text-slate-500">Machine Cost</div>
                       <div className="text-sm font-bold">{processOpsTotal > 0 ? money(processOpsTotal) : '—'}</div>
                     </div>
                     <div title={project?.cost_source || 'No cost source recorded'}>
@@ -965,18 +942,19 @@ export function ProjectCostingPage() {
                 <Card className="p-12 text-center text-sm text-slate-500">Loading costing records...</Card>
               ) : (
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                  {tab === 'Process Costing' && (
+                  {tab === 'Service Purchase' && (
+                    <>
                     <Card className="overflow-hidden xl:col-span-2">
                       <div className="p-3 border-b bg-slate-50 flex flex-wrap items-center justify-between gap-2">
                         <div>
-                          <h3 className="font-bold text-sm">Process Costing</h3>
+                          <h3 className="font-bold text-sm">Service Purchase</h3>
                           <p className="text-[10px] text-slate-500">
-                            Outside processes are the costs recorded for this project. In-house operations come from job cards, valued with live Process Master rates: (Time x Cost/Hour) + Cost/Component + Setup Cost.
+                            Work done outside for this project: the process costs recorded against it. In-house work is under Machine Cost.
                           </p>
                         </div>
-                        {(processOpsTotal > 0 || (report?.processes?.length ?? 0) > 0) && (
+                        {(report?.processes?.length ?? 0) > 0 && (
                           <Badge variant="success" className="font-mono text-xs font-semibold px-2 py-0.5">
-                            Total Process: {money((processOpsTotal + (report?.processes || []).reduce((n, x) => n + (Number(x.amount) || 0), 0)).toFixed(2))}
+                            Total Service Purchase: {money((report?.processes || []).reduce((n, x) => n + (Number(x.amount) || 0), 0).toFixed(2))}
                           </Badge>
                         )}
                       </div>
@@ -985,59 +963,98 @@ export function ProjectCostingPage() {
                           <thead>
                             <tr className="bg-slate-50 text-slate-500">
                               <th className="p-2 text-left">Type</th>
-                              <th className="p-2 text-left">Process / Operation</th>
-                              <th className="p-2 text-left">Company / Machine</th>
-                              <th className="p-2 text-right">Qty / Hours</th>
+                              <th className="p-2 text-left">Process</th>
+                              <th className="p-2 text-left">Company</th>
+                              <th className="p-2 text-right">Qty / Duration</th>
                               <th className="p-2 text-right">Rate</th>
                               <th className="p-2 text-right">Cost</th>
                               <th className="p-2 text-left">Date</th>
-                              <th className="p-2 text-left">Status</th>
                             </tr>
                           </thead>
                           <tbody>
                             {(report?.processes || []).map((x) => (
                               <tr key={`p-${x.id}`} className="border-t hover:bg-slate-50/70">
-                                <td className="p-2"><span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">Outside</span></td>
+                                <td className="p-2"><span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200">Service Purchase</span></td>
                                 <td className="p-2 font-medium text-slate-800">{x.process}</td>
                                 <td className="p-2">{x.supplier || '—'}</td>
                                 <td className="p-2 text-right">{x.quantity || x.duration || '—'}</td>
                                 <td className="p-2 text-right">{money(x.rate)}</td>
                                 <td className="p-2 text-right font-semibold text-slate-900">{money(x.amount)}</td>
                                 <td className="p-2">{formatDate(x.created_at)}</td>
-                                <td className="p-2">—</td>
                               </tr>
                             ))}
-                            {processOps.map((x) => (
-                              <tr key={`o-${x.id}`} className="border-t hover:bg-slate-50/70">
-                                <td className="p-2"><span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">In-house</span></td>
-                                <td className="p-2 font-medium text-slate-800">
-                                  {x.operation || '—'}
-                                  {!x.matched && (
-                                    <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
-                                      title="Costing needs an operation name that matches a process in Process Master with a cost per hour">
-                                      {x.operation ? 'Not in Process Master' : 'No operation name'}
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="p-2">{x.machine} / {x.operator || '—'}</td>
-                                <td className="p-2 text-right">{x.hours} h</td>
-                                <td className="p-2 text-right">{x.matched ? money(x.rate) : '—'}</td>
-                                <td className="p-2 text-right font-semibold text-slate-900">{x.matched ? money(x.cost) : '—'}</td>
-                                <td className="p-2">—</td>
-                                <td className="p-2">{x.status || '—'}</td>
-                              </tr>
-                            ))}
-                            {!report?.processes?.length && !processOps.length && (
+                            {!report?.processes?.length && (
                               <tr>
-                                <td colSpan={8} className="p-8 text-center text-slate-500">
-                                  No process cost or job card records for this project.
-                                </td>
+                                <td colSpan={7} className="p-6 text-center text-slate-500">No outside process cost recorded for this project.</td>
                               </tr>
                             )}
                           </tbody>
                         </table>
                       </div>
                     </Card>
+                    <Card className="overflow-hidden xl:col-span-2">
+                      <div className="p-3 border-b bg-slate-50 flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h3 className="font-bold text-sm">Service Purchase Inwards</h3>
+                          <p className="text-[10px] text-slate-500">
+                            Source: Service Purchase inward entries linked to this project or work order.
+                          </p>
+                        </div>
+                        {report?.services && report.services.length > 0 && (
+                          <Badge variant="success" className="font-mono text-xs font-semibold px-2 py-0.5">
+                            Total Service Purchase: {money(totalServiceAmount.toFixed(2))}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="overflow-auto">
+                        <table className="w-full min-w-[700px] text-xs">
+                          <thead>
+                            <tr className="bg-slate-50 text-slate-500">
+                              <th className="p-2 text-left">Date</th>
+                              <th className="p-2 text-left">Item / Service</th>
+                              <th className="p-2 text-left">Source</th>
+                              <th className="p-2 text-left">Inward / Request Ref</th>
+                              <th className="p-2 text-right">Quantity</th>
+                              <th className="p-2 text-center">Unit</th>
+                              <th className="p-2 text-right">Rate</th>
+                              <th className="p-2 text-right">Amount</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(report?.services || []).map((x) => (
+                              <tr key={x.id} className="border-t hover:bg-slate-50/70">
+                                <td className="p-2">{formatDate(x.date)}</td>
+                                <td className="p-2 font-medium text-slate-800">{x.item}</td>
+                                <td className="p-2">
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200">
+                                    Service Purchase
+                                  </span>
+                                </td>
+                                <td className="p-2 font-mono text-[11px] text-slate-600">{x.reference || x.request_no}</td>
+                                <td className="p-2 text-right font-medium">{x.quantity}</td>
+                                <td className="p-2 text-center text-slate-500">{x.unit || 'pcs'}</td>
+                                <td className="p-2 text-right">{money(x.rate)}</td>
+                                <td className="p-2 text-right font-semibold text-slate-900">{money(x.amount)}</td>
+                              </tr>
+                            ))}
+                            {!report?.services?.length && (
+                              <tr>
+                                <td colSpan={8} className="p-6 text-center text-slate-500">No linked service purchase inward records.</td>
+                              </tr>
+                            )}
+                          </tbody>
+                          {report?.services && report.services.length > 0 && (
+                            <tfoot>
+                              <tr className="border-t bg-slate-50/90 font-bold">
+                                <td colSpan={7} className="p-2.5 text-right text-slate-700 uppercase tracking-wide text-[11px]">Total Service Purchase</td>
+                                <td className="p-2.5 text-right font-mono text-emerald-700 text-sm">{money(totalServiceAmount.toFixed(2))}</td>
+                              </tr>
+                            </tfoot>
+                          )}
+                        </table>
+                      </div>
+                    </Card>
+                    </>
                   )}
 {tab === 'Expenses' && (
                     <Card className="overflow-hidden xl:col-span-2">
@@ -1087,18 +1104,18 @@ export function ProjectCostingPage() {
                       </div>
                     </Card>
                   )}
-{tab === 'Material Cost' && (
+{tab === 'Goods Purchase' && (
                     <Card className="overflow-hidden xl:col-span-2">
                       <div className="p-3 border-b bg-slate-50 flex flex-wrap items-center justify-between gap-2">
                         <div>
-                          <h3 className="font-bold text-sm">Material Cost from Goods Purchase & Inventory Issues</h3>
+                          <h3 className="font-bold text-sm">Goods Purchase</h3>
                           <p className="text-[10px] text-slate-500">
-                            Source: Goods Purchase inward entries and posted stock movements linked to this project or work order.
+                            Source: Goods Purchase inward entries (and material issued from stock) linked to this project or work order.
                           </p>
                         </div>
                         {report?.materials && report.materials.length > 0 && (
                           <Badge variant="success" className="font-mono text-xs font-semibold px-2 py-0.5">
-                            Total Material: {money(totalMaterialsAmount.toFixed(2))}
+                            Total Goods Purchase: {money(totalMaterialsAmount.toFixed(2))}
                           </Badge>
                         )}
                       </div>
@@ -1144,7 +1161,7 @@ export function ProjectCostingPage() {
                             {!report?.materials?.length && (
                               <tr>
                                 <td colSpan={8} className="p-8 text-center text-slate-500">
-                                  No linked material cost or goods purchase inward records.
+                                  No linked goods purchase inward records.
                                 </td>
                               </tr>
                             )}
@@ -1153,7 +1170,7 @@ export function ProjectCostingPage() {
                             <tfoot>
                               <tr className="border-t bg-slate-50/90 font-bold">
                                 <td colSpan={7} className="p-2.5 text-right text-slate-700 uppercase tracking-wide text-[11px]">
-                                  Total Material Cost
+                                  Total Goods Purchase
                                 </td>
                                 <td className="p-2.5 text-right font-mono text-emerald-700 text-sm">
                                   {money(totalMaterialsAmount.toFixed(2))}
@@ -1166,71 +1183,68 @@ export function ProjectCostingPage() {
                     </Card>
                   )}
 
-                  {tab === 'Machine & Labour' && (
+                  {tab === 'Machine Cost' && (
                     <Card className="overflow-hidden xl:col-span-2">
                       <div className="p-3 border-b bg-slate-50 flex flex-wrap items-center justify-between gap-2">
                         <div>
-                          <h3 className="font-bold text-sm">Service Purchase Cost</h3>
+                          <h3 className="font-bold text-sm">Machine Cost</h3>
                           <p className="text-[10px] text-slate-500">
-                            Source: Service Purchase inward entries linked to this project or work order.
+                            In-house operations of this project. Hours are the time run in Scheduling (actual start to end); if none were recorded, setup + qty x cycle time.
+                            Cost = hours x the cost per hour of that process in Process Master, plus cost per component and setup cost.
                           </p>
                         </div>
-                        {report?.services && report.services.length > 0 && (
+                        {processOpsTotal > 0 && (
                           <Badge variant="success" className="font-mono text-xs font-semibold px-2 py-0.5">
-                            Total Service: {money(totalServiceAmount.toFixed(2))}
+                            Total Machine Cost: {money(processOpsTotal.toFixed(2))}
                           </Badge>
                         )}
                       </div>
                       <div className="overflow-auto">
-                        <table className="w-full min-w-[700px] text-xs">
+                        <table className="w-full text-xs">
                           <thead>
                             <tr className="bg-slate-50 text-slate-500">
-                              <th className="p-2 text-left">Date</th>
-                              <th className="p-2 text-left">Item / Service</th>
-                              <th className="p-2 text-left">Source</th>
-                              <th className="p-2 text-left">Inward / Request Ref</th>
-                              <th className="p-2 text-right">Quantity</th>
-                              <th className="p-2 text-center">Unit</th>
-                              <th className="p-2 text-right">Rate</th>
-                              <th className="p-2 text-right">Amount</th>
+                              <th className="p-2 text-left">Process / Operation</th>
+                              <th className="p-2 text-left">Machine / Operator</th>
+                              <th className="p-2 text-right">Hours</th>
+                              <th className="p-2 text-right">Rate / hour</th>
+                              <th className="p-2 text-right">Cost</th>
+                              <th className="p-2 text-left">Status</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {(report?.services || []).map((x) => (
-                              <tr key={x.id} className="border-t hover:bg-slate-50/70">
-                                <td className="p-2">{formatDate(x.date)}</td>
-                                <td className="p-2 font-medium text-slate-800">{x.item}</td>
-                                <td className="p-2">
-                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200">
-                                    {x.type || 'Service'}
-                                  </span>
+                            {processOps.map((x: any) => (
+                              <tr key={`o-${x.id}`} className="border-t hover:bg-slate-50/70">
+                                <td className="p-2 font-medium text-slate-800">
+                                  {x.operation || '—'}
+                                  {!x.matched && (
+                                    <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                                      title="Machine cost needs an operation name that matches a process in Process Master with a cost per hour">
+                                      {x.operation ? 'Not in Process Master' : 'No operation name'}
+                                    </span>
+                                  )}
                                 </td>
-                                <td className="p-2 font-mono text-[11px] text-slate-600">
-                                  {x.reference || x.request_no}
-                                </td>
-                                <td className="p-2 text-right font-medium">{x.quantity}</td>
-                                <td className="p-2 text-center text-slate-500">{x.unit || 'pcs'}</td>
-                                <td className="p-2 text-right">{money(x.rate)}</td>
-                                <td className="p-2 text-right font-semibold text-slate-900">{money(x.amount)}</td>
+                                <td className="p-2">{x.machine || '—'} / {x.operator || '—'}</td>
+                                <td className="p-2 text-right">{x.hours} h</td>
+                                <td className="p-2 text-right">{x.matched ? money(x.rate) : '—'}</td>
+                                <td className="p-2 text-right font-semibold text-slate-900">{x.matched ? money(x.cost) : '—'}</td>
+                                <td className="p-2">{x.status || '—'}</td>
                               </tr>
                             ))}
-                            {!report?.services?.length && (
+                            {!processOps.length && (
                               <tr>
-                                <td colSpan={8} className="p-8 text-center text-slate-500">
-                                  No linked service purchase inward records.
+                                <td colSpan={6} className="p-8 text-center text-slate-500">
+                                  No in-house operations for this project yet. Record the runs under Scheduling, Actual, Add runs for this part,
+                                  and set the cost per hour of the process in Process Master.
                                 </td>
                               </tr>
                             )}
                           </tbody>
-                          {report?.services && report.services.length > 0 && (
+                          {processOps.length > 0 && (
                             <tfoot>
                               <tr className="border-t bg-slate-50/90 font-bold">
-                                <td colSpan={7} className="p-2.5 text-right text-slate-700 uppercase tracking-wide text-[11px]">
-                                  Total Service Cost
-                                </td>
-                                <td className="p-2.5 text-right font-mono text-emerald-700 text-sm">
-                                  {money(totalServiceAmount.toFixed(2))}
-                                </td>
+                                <td colSpan={4} className="p-2.5 text-right text-slate-700 uppercase tracking-wide text-[11px]">Total Machine Cost</td>
+                                <td className="p-2.5 text-right font-mono text-emerald-700 text-sm">{money(processOpsTotal.toFixed(2))}</td>
+                                <td />
                               </tr>
                             </tfoot>
                           )}
@@ -1238,8 +1252,6 @@ export function ProjectCostingPage() {
                       </div>
                     </Card>
                   )}
-
-                  
 
                 </div>
               )}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { CircleHelp, Loader2, Mic, Square, Volume2 } from 'lucide-react';
+import { CircleHelp, Compass, Loader2, Mic, Square, Volume2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { getBreadcrumbs } from '@/config/navigation';
 import { useDraggable } from '@/lib/useDraggable';
@@ -20,6 +20,8 @@ const store = {
 };
 const TAMIL = /[஀-௿]/;
 const ENDPOINT = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/help-assistant`;
+// "Guide me": starts the on-screen walkthrough of the current screen (GuideCoach) instead of answering by voice.
+const GUIDE_WORDS = /(guide me|walk me through|walkthrough|show me how|step by step|guide pannu|guide pannunga|vazhi ?kaattu)|வழிகாட்டு|வழி காட்டு|வழிகாட்டுங்கள்/i;
 const STOP_WORDS = /^(stop|bye|goodbye|that'?s all|enough|exit|close|நிறுத்து|போதும்|நிறுத்தவும்|பை|nirutthu|nirutha|podhum|pothum|bye bye)\b/i;
 
 const GREETING: Record<Lang, string> = { ta: 'ஆம், சொல்லுங்கள்.', tanglish: 'Yes, sollunga.', en: 'Yes, tell me.' };
@@ -111,7 +113,7 @@ function playOnline(text: string, tl: string, onEnd: () => void, notify?: (m: st
 }
 let announcedOnline = false;
 /** Speaks one piece of text; `onEnd` runs when it has finished (or could not be spoken). */
-function say(text: string, onEnd: () => void, notify?: (m: string) => void) {
+export function say(text: string, onEnd: () => void, notify?: (m: string) => void) {
   const t = text.replace(/[*#_`]/g, '').trim();
   if (!t) { onEnd(); return; }
   loadVoices();
@@ -159,7 +161,7 @@ function offlineAnswer(question: string, page: string, lang: Lang): string {
   return out.length > 700 ? `${out.slice(0, 700).replace(/\s+\S*$/, '')}.` : out;
 }
 const OFFLINE_STOP = new Set(['how', 'what', 'where', 'when', 'why', 'the', 'and', 'for', 'this', 'that', 'with', 'eppadi', 'enna', 'podanum', 'pannanum', 'indha', 'page', 'screen', 'tell', 'about', 'explain', 'can', 'you', 'are', 'does', 'make', 'use']);
-const stopSpeaking = () => {
+export const stopSpeaking = () => {
   try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
   onlineToken += 1;
   try { onlineAudio?.pause(); } catch { /* ignore */ }
@@ -315,6 +317,7 @@ export function HelpAssistant() {
       if (norm(said).length > 8 && norm(lastSpoken.current).includes(norm(said))) { listenRef.current(); return; }
       misses.current = 0;
       if (STOP_WORDS.test(said)) { endSession(true); return; }
+      if (GUIDE_WORDS.test(said)) { endSession(false); window.dispatchEvent(new CustomEvent('argus:guide')); return; }
       lastSpoken.current = '';
       void ask(said);
     };
@@ -368,6 +371,11 @@ export function HelpAssistant() {
           {!active ? <CircleHelp size={20} /> : phase === 'listening' ? <Mic size={20} /> : phase === 'thinking' ? <Loader2 size={20} className="animate-spin" /> : phase === 'speaking' ? <Volume2 size={20} /> : <Square size={18} />}
         </span>
         <span className="relative text-sm font-semibold">{active ? 'Stop' : 'உதவி · Help'}</span>
+      </button>
+      <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { endSession(false); window.dispatchEvent(new CustomEvent('argus:guide')); }}
+        aria-label="Guide me" title="Guide me: step by step on this screen (what to enter, why, where it is saved)"
+        className="flex h-12 w-12 items-center justify-center rounded-full bg-orange-600 text-white shadow-lg hover:bg-orange-700">
+        <Compass size={20} />
       </button>
       {(active || note) && (
         <div role="status" className="max-w-[20rem] rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur">

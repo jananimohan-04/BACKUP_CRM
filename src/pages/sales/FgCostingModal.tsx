@@ -1328,7 +1328,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
             {/* 1 — process costing */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">1. Process Costing</h4>
+                <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">1. Machine Cost (in-house operations)</h4>
                 <button type="button" onClick={() => setEditOps((v) => !v)} className="inline-flex items-center gap-1 text-[11px] font-bold text-brand-600 hover:text-brand-800 border border-brand-200 hover:border-brand-400 rounded px-2 py-0.5 bg-brand-50/50">
                   <Pencil size={11} />{editOps ? 'Done' : 'Edit'}
                 </button>
@@ -1355,7 +1355,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                 </table>
               </div>
               <div className="flex items-center justify-between mt-1.5 text-sm">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Process Cost</span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Machine Cost (operations)</span>
                 <span className="font-bold tabular-nums">{inr(totals.process)}</span>
               </div>
             </div>
@@ -1501,7 +1501,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
               <div className="border border-slate-200 rounded-lg px-3 py-2">
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Project Cost</p>
                 <p className="font-bold tabular-nums text-lg">{inr(projectCost)}</p>
-                <p className="text-[11px] text-slate-400">Material {inr(totals.material)} + Process {inr(totals.process)}</p>
+                <p className="text-[11px] text-slate-400">Goods Purchase / Material {inr(totals.material)} + Machine Cost {inr(totals.process)}</p>
               </div>
               <div className={`border rounded-lg px-3 py-2 ${costDiff < 0 ? 'border-red-200 bg-red-50/50' : 'border-emerald-200 bg-emerald-50/50'}`}>
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Cost Difference</p>
