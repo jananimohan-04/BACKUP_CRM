@@ -26,6 +26,67 @@ const GUIDE_WORDS = /(guide me|walk me through|walkthrough|show me how|step by 
 const STOP_WORDS = /^(stop|bye|goodbye|that'?s all|enough|exit|close|நிறுத்து|போதும்|நிறுத்தவும்|பை|nirutthu|nirutha|podhum|pothum|bye bye)\b/i;
 
 const GREETING: Record<Lang, string> = { ta: 'ஆம், சொல்லுங்கள்.', tanglish: 'Yes, sollunga.', en: 'Yes, tell me.' };
+
+// Proactive suggestions for each page (Adviser mode)
+const PAGE_SUGGESTIONS: Record<string, { en: string; ta: string }[]> = {
+  '/sales/pipeline': [
+    { en: 'Add a new enquiry by clicking "+ New Enquiry"', ta: '"+ New Enquiry" கிளிக் செய்து புதிய விசாரணை சேர்க்கவும்' },
+    { en: 'Drag enquiries between columns to change status', ta: 'நிலையை மாற்ற விசாரணைகளை நெடுவரிசைகளுக்கு இடையே இழுக்கவும்' },
+    { en: 'Click an enquiry card to view or edit details', ta: 'விவரங்களைப் பார்க்க விசாரணை அட்டையைக் கிளிக் செய்யவும்' },
+    { en: 'Create quotation from an enquiry using the "Quote" button', ta: '"Quote" பட்டனைப் பயன்படுத்தி விசாரணையிலிருந்து quote உருவாக்கவும்' },
+  ],
+  '/production/scheduling': [
+    { en: 'Drag jobs to schedule them on machines', ta: 'இயந்திரங்களில் திட்டமிட வேலைகளை இழுக்கவும்' },
+    { en: 'Double-click a scheduled block to edit it', ta: 'திட்டமிடப்பட்ட தொகுதியைத் திருத்த இருமுறை கிளிக் செய்யவும்' },
+    { en: 'Use filters to show specific machines or date ranges', ta: 'குறிப்பிட்ட இயந்திரங்கள் அல்லது தேதி வரம்புகளைக் காட்ட வடிப்பான்களைப் பயன்படுத்தவும்' },
+  ],
+  '/production/planning': [
+    { en: 'View all production orders and their status', ta: 'அனைத்து உற்பத்தி ஆர்டர்களையும் அவற்றின் நிலையையும் பாருங்கள்' },
+    { en: 'Create job cards for each operation', ta: 'ஒவ்வொரு செயல்பாட்டிற்கும் ஜாப் கார்டுகளை உருவாக்கவும்' },
+    { en: 'Track work order progress in real-time', ta: 'வேலை ஆர்டர் முன்னேற்றத்தை நிகழ்நேரத்தில் கண்காணிக்கவும்' },
+  ],
+  '/finance/invoices': [
+    { en: 'Create invoice from a delivery challan', ta: 'டெலிவரி சலானிலிருந்து இன்வாய்ஸ் உருவாக்கவும்' },
+    { en: 'Record payment by clicking "Record Receipt"', ta: '"Record Receipt" கிளிக் செய்து பணம் செலுத்துதலைப் பதிவு செய்யவும்' },
+    { en: 'Print or download invoice as PDF', ta: 'இன்வாய்ஸை PDF ஆக பிரிண்ட் அல்லது டவுன்லோட் செய்யவும்' },
+  ],
+  '/finance/bank-entry': [
+    { en: 'Record bank deposits and withdrawals', ta: 'வங்கி வைப்புகள் மற்றும் பணம் எடுத்தலைப் பதிவு செய்யவும்' },
+    { en: 'Import bank statement to reconcile transactions', ta: 'பரிவர்த்தனைகளைச் சரிசெய்ய வங்கி அறிக்கையை இறக்குமதி செய்யவும்' },
+  ],
+  '/accounts/ledger': [
+    { en: 'View account transactions by selecting an account', ta: 'கணக்கைத் தேர்ந்தெடுத்து பரிவர்த்தனைகளைப் பாருங்கள்' },
+    { en: 'Export ledger as PDF or Excel', ta: 'லெட்ஜரை PDF அல்லது Excel ஆக ஏற்றுமதி செய்யவும்' },
+    { en: 'Filter by date range to see specific periods', ta: 'குறிப்பிட்ட காலங்களைப் பார்க்க தேதி வரம்பு மூலம் வடிகட்டவும்' },
+  ],
+  '/accounts/trial-balance': [
+    { en: 'View debit and credit balances of all accounts', ta: 'அனைத்து கணக்குகளின் டெபிட் மற்றும் கிரெடிட் இருப்புகளைப் பாருங்கள்' },
+    { en: 'Export trial balance for auditing', ta: 'தணிக்கைக்கு trial balance ஐ ஏற்றுமதி செய்யவும்' },
+  ],
+  '/inventory/stock': [
+    { en: 'Check low stock alerts in the alerts tab', ta: 'குறைந்த ஸ்டாக் எச்சரிக்கைகளை அலர்ட் டேபில் பாருங்கள்' },
+    { en: 'Add stock movement to track inventory changes', ta: 'சரக்கு மாற்றங்களைக் கண்காணிக்க ஸ்டாக் நகர்வைச் சேர்க்கவும்' },
+    { en: 'View stock value and quantity at a glance', ta: 'ஸ்டாக் மதிப்பு மற்றும் அளவை ஒரே பார்வையில் பாருங்கள்' },
+  ],
+  '/purchasing/orders': [
+    { en: 'Create purchase orders for suppliers', ta: 'சப்ளையர்களுக்கு purchase orders உருவாக்கவும்' },
+    { en: 'Track order status and delivery dates', ta: 'ஆர்டர் நிலை மற்றும் டெலிவரி தேதிகளைக் கண்காணிக்கவும்' },
+  ],
+  '/dashboard': [
+    { en: 'View key performance indicators at a glance', ta: 'முக்கிய செயல்திறன் குறிகாட்டிகளை ஒரே பார்வையில் பாருங்கள்' },
+    { en: 'Click on any metric to drill down into details', ta: 'விவரங்களுக்கு எந்த மெட்ரிக் மீதும் கிளிக் செய்யவும்' },
+    { en: 'Use date filters to change the reporting period', ta: 'அறிக்கை காலத்தை மாற்ற தேதி வடிப்பான்களைப் பயன்படுத்தவும்' },
+  ],
+  '/costing/job-costing': [
+    { en: 'View project-wise cost breakdown', ta: 'திட்டம் வாரியான செலவு விவரங்களைப் பாருங்கள்' },
+    { en: 'Compare estimated vs actual costs', ta: 'மதிப்பிடப்பட்ட vs உண்மையான செலவுகளை ஒப்பிடவும்' },
+  ],
+  '/engineering/cnc-vault': [
+    { en: 'Upload drawings and technical documents', ta: 'வரைபடங்கள் மற்றும் தொழில்நுட்ப ஆவணங்களை பதிவேற்றவும்' },
+    { en: 'Link products to their drawings and BOMs', ta: 'தயாரிப்புகளை அவற்றின் வரைபடங்கள் மற்றும் BOM-களுடன் இணைக்கவும்' },
+  ],
+};
+
 // The first time Help is switched on in a browser session it welcomes the person.
 const WELCOME: Record<Lang, string> = {
   ta: 'ARGUS ERP-க்கு வரவேற்கிறோம்! சொல்லுங்கள், எப்படி உதவலாம்?',
@@ -181,6 +242,7 @@ export function HelpAssistant() {
   const drag = useDraggable('argus.help.pos', rootRef);
   const [menu, setMenu] = useState(false);
   const [modes, setModes] = useState({ teaching: false, coworker: false });
+  const [showSuggestions, setShowSuggestions] = useState(false);  // Proactive suggestions panel
 
   const activeRef = useRef(false);          // a help conversation is going on
   const langRef = useRef(lang);
@@ -195,6 +257,9 @@ export function HelpAssistant() {
   const page = location.pathname;
   const pageTitle = (() => { try { const b = getBreadcrumbs(page.replace(/^\//, '')); return b[b.length - 1]?.label ?? ''; } catch { return ''; } })();
   pageRef.current = { page, title: pageTitle };
+  
+  // Get suggestions for current page
+  const suggestions = PAGE_SUGGESTIONS[page] || [];
 
   useEffect(() => { loadVoices(); try { window.speechSynthesis.onvoiceschanged = loadVoices; } catch { /* no speech */ } }, []);
   useEffect(() => { store.set('help.vlang', lang); }, [lang]);
@@ -440,9 +505,9 @@ export function HelpAssistant() {
         <div role="menu" aria-label="AI modes" data-voice-ignore onMouseDown={(e) => e.stopPropagation()}
           className={`absolute bottom-14 ${rightSide ? 'right-0' : 'left-0'} w-72 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl`}>
           {([
-            { id: 'teaching', icon: GraduationCap, color: 'bg-orange-100 text-orange-600', title: 'Teaching', sub: 'Teaches this screen by itself, with animation and voice', keys: 'Ctrl + Shift', on: modes.teaching },
-            { id: 'coworker', icon: Bot, color: 'bg-violet-100 text-violet-600', title: 'Co-worker', sub: 'Type or say what to do: add enquiry, add company…', keys: 'Ctrl + Tab', on: modes.coworker },
-            { id: 'adviser', icon: Lightbulb, color: 'bg-emerald-100 text-emerald-600', title: 'Adviser', sub: 'Ask by voice what to do and how to do it', keys: 'Ctrl + Enter', on: active },
+            { id: 'teaching', icon: GraduationCap, color: 'bg-orange-100 text-orange-600', title: 'Teaching', sub: 'Learn the entire ERP page by page with voice narration & animations', keys: 'Ctrl + Shift', on: modes.teaching },
+            { id: 'coworker', icon: Bot, color: 'bg-violet-100 text-violet-600', title: 'Co-worker', sub: 'Type or speak commands — I\'ll do them: "add enquiry for ABC"', keys: 'Ctrl + Tab', on: modes.coworker },
+            { id: 'adviser', icon: Lightbulb, color: 'bg-emerald-100 text-emerald-600', title: 'Adviser', sub: 'Get suggestions & ask questions — answers with animations', keys: 'Ctrl + Enter', on: active },
           ] as const).map((m) => (
             <button key={m.id} type="button" role="menuitem" onClick={() => { setMenu(false); toggleMode(m.id); }}
               className={`mb-1 flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left last:mb-0 ${m.on ? 'border-red-300 bg-red-50' : 'border-transparent hover:bg-slate-50'}`}>
@@ -479,7 +544,42 @@ export function HelpAssistant() {
               </select>
             </div>
           )}
-          {active && <p className="mt-1 text-[10px] text-slate-400">Say “stop” or “நிறுத்து” to end.</p>}
+          {active && <p className="mt-1 text-[10px] text-slate-400">Say "stop" or "நிறுத்து" to end.</p>}
+          {active && suggestions.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-slate-100">
+              <button type="button" onClick={() => setShowSuggestions(v => !v)} className="flex items-center gap-1 text-[10px] font-semibold text-emerald-600 hover:text-emerald-700">
+                <Lightbulb size={12} /> {showSuggestions ? 'Hide suggestions' : 'Show suggestions'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* Proactive Suggestions Panel (Adviser mode) */}
+      {active && showSuggestions && suggestions.length > 0 && (
+        <div className="max-w-[20rem] rounded-xl border border-emerald-200 bg-emerald-50 p-3 shadow-lg" style={{ animation: 'fadeIn .3s ease-out' }}>
+          <div className="flex items-center gap-2 mb-2">
+            <Lightbulb size={16} className="text-emerald-600" />
+            <span className="text-xs font-bold text-emerald-800">{lang === 'ta' ? 'பரிந்துரைகள்' : 'Suggestions'}</span>
+          </div>
+          <ul className="space-y-1.5">
+            {suggestions.map((s, i) => (
+              <li key={i} className="flex items-start gap-2 text-xs text-emerald-900">
+                <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />
+                <span>{lang === 'ta' ? s.ta : s.en}</span>
+              </li>
+            ))}
+          </ul>
+          <button 
+            type="button" 
+            onClick={() => {
+              const text = suggestions.map(s => lang === 'ta' ? s.ta : s.en).join('. ');
+              say(text, () => {}, setNote);
+            }}
+            className="mt-2 flex items-center gap-1 text-[10px] font-semibold text-emerald-600 hover:text-emerald-700"
+          >
+            <Volume2 size={12} /> {lang === 'ta' ? 'படித்துக் காட்டு' : 'Read aloud'}
+          </button>
         </div>
       )}
     </div>
