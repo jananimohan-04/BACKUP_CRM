@@ -5,8 +5,6 @@ import { PortalApp } from './pages/portal/PortalApp';
 import { LoginScreen } from './components/LoginScreen';
 import { AccessDenied } from './components/AccessDenied';
 import { AuthProvider, useAuth, type ErpRole } from './contexts/AuthContext';
-import { AdminAssistant } from './components/AdminAssistant';
-import { VoiceControl } from './components/VoiceControl';
 import { SavedProductsDatalist } from './lib/savedProducts';
 import { Time24Normalizer } from './components/Time24Normalizer';
 import { DatalistOpenAll } from './components/DatalistOpenAll';
@@ -342,11 +340,9 @@ function MainLayout() {
           onCloseMobile={() => setMobileMenuOpen(false)}
         />
       )}
-      <AdminAssistant />
       <HelpAssistant />
       <GuideCoach />
       <Copilot />
-      <VoiceControl />
       <SavedProductsDatalist />
       <Time24Normalizer />
       <DatalistOpenAll />

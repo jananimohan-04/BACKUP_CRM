@@ -96,10 +96,11 @@ export function Copilot() {
   const ctx: ActionCtx = useMemo(() => ({ companyId: company?.id ?? null, canDo: canDo as ActionCtx['canDo'] }), [company?.id, canDo]);
 
   useEffect(() => {
-    const on = () => setOpen((o) => !o);
+    const on = (e: Event) => { const want = (e as CustomEvent<{ on?: boolean }>).detail?.on; setOpen((o) => (typeof want === 'boolean' ? want : !o)); };
     window.addEventListener('argus:copilot', on);
     return () => window.removeEventListener('argus:copilot', on);
   }, []);
+  useEffect(() => { window.dispatchEvent(new CustomEvent('argus:mode', { detail: { mode: 'coworker', on: open } })); }, [open]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [msgs, awaiting, busy]);
   useEffect(() => { if (!open) { stopSpeaking(); try { recRef.current?.abort?.(); } catch { /* ignore */ } setListening(false); } }, [open]);
   useEffect(() => () => { stopSpeaking(); try { recRef.current?.abort?.(); } catch { /* ignore */ } }, []);

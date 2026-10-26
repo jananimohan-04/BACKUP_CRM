@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Compass, Database, HelpCircle, Languages, Volume2, VolumeX, X } from 'lucide-react';
 import { GUIDES } from '@/lib/guides';
 import { dialogTitle, findTarget, guidesFor, pick, stepSpeech, topDialog, type Guide, type GuideLang, type GuideStep } from '@/lib/guides/engine';
-import { say, stopSpeaking } from '@/components/HelpAssistant';
+import { offlineAnswer, say, stopSpeaking } from '@/components/HelpAssistant';
 
 // Walkthrough coach: shows what to enter in each field, why, and where it is saved, with a spotlight on the field, a pointer,
 // spoken narration (the Help voice) and, after the real Save, a glowing dot that flies to the menu / tab holding the record.
@@ -40,6 +40,12 @@ export function GuideCoach() {
   const [auto, setAuto] = useState(() => ls.get('argus.guide.auto', '0') === '1');
   const [rect, setRect] = useState<Rect | null>(null);
   const [toast, setToast] = useState('');
+  const [teaching, setTeaching] = useState(false);   // Teaching mode: the walkthrough plays itself, narrated
+  const teachRef = useRef(false);
+  const queueRef = useRef<Guide[]>([]);
+  const fallbackRef = useRef(false);
+  const stepToken = useRef(0);
+  const nextRef = useRef<() => void>(() => {});
   const [flight, setFlight] = useState<{ key: number; from: { x: number; y: number }; to: Rect | null; caption: string; arrived: boolean } | null>(null);
   const targetEl = useRef<HTMLElement | null>(null);
   const autoShown = useRef('');
@@ -59,7 +65,7 @@ export function GuideCoach() {
     return () => { mo.disconnect(); window.clearTimeout(t); };
   }, [path]);
 
-  const close = useCallback(() => { stopSpeaking(); setActive(null); setPicker(null); setFlight(null); setRect(null); targetEl.current = null; }, []);
+  const close = useCallback(() => { teachRef.current = false; fallbackRef.current = false; queueRef.current = []; stepToken.current += 1; setTeaching(false); stopSpeaking(); setActive(null); setPicker(null); setFlight(null); setRect(null); targetEl.current = null; }, []);
   const start = useCallback((g: Guide) => {
     window.dispatchEvent(new Event('argus:voice-pause'));
     setOffer(null); setPicker(null); setFlight(null); setActive({ guide: g, i: 0 });
@@ -109,10 +115,17 @@ export function GuideCoach() {
       const el = findTarget(step.target);
       targetEl.current = el;
       if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      if (voice) say(stepSpeech(step, lang), () => {}, undefined);
+      const token = ++stepToken.current;
+      // Teaching mode moves on by itself once the narration has finished (or after a pause when it is muted).
+      const advance = () => {
+        if (!teachRef.current || stepToken.current !== token) return;
+        window.setTimeout(() => { if (teachRef.current && stepToken.current === token) nextRef.current(); }, 1500);
+      };
+      if (voice) say(stepSpeech(step, lang), advance, undefined);
+      else if (teachRef.current) window.setTimeout(advance, 5000);
     };
     void go();
-    return () => { off = true; stopSpeaking(); };
+    return () => { off = true; stepToken.current += 1; stopSpeaking(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.guide.id, active?.i, lang, voice]);
 
@@ -134,7 +147,35 @@ export function GuideCoach() {
     setFlight(null);
     setActive(a => (a && a.i < a.guide.steps.length - 1 ? { ...a, i: a.i + 1 } : null));
   }, []);
+  nextRef.current = next;
   const back = () => { setFlight(null); setActive(a => (a && a.i > 0 ? { ...a, i: a.i - 1 } : a)); };
+
+  // Teaching mode (Ctrl+Shift): teach this screen by itself, one walkthrough after another, then switch off.
+  useEffect(() => {
+    const on = (e: Event) => {
+      const want = (e as CustomEvent<{ on?: boolean }>).detail?.on;
+      const turnOn = typeof want === 'boolean' ? want : !teachRef.current;
+      if (!turnOn) { close(); return; }
+      window.dispatchEvent(new Event('argus:voice-pause'));
+      teachRef.current = true; setTeaching(true);
+      if (offers.length) { fallbackRef.current = false; queueRef.current = offers.slice(1); start(offers[0]); return; }
+      // No walkthrough for this screen: read out what the written notes say about it.
+      fallbackRef.current = true;
+      const token = ++stepToken.current;
+      const text = offlineAnswer('explain this page', path, lang);
+      setToast(text.length > 220 ? `${text.slice(0, 220)}…` : text);
+      say(text, () => { if (stepToken.current === token) { teachRef.current = false; fallbackRef.current = false; setTeaching(false); setToast(''); } }, undefined);
+    };
+    window.addEventListener('argus:teach', on);
+    return () => window.removeEventListener('argus:teach', on);
+  }, [offers, start, close, lang, path]);
+  useEffect(() => { window.dispatchEvent(new CustomEvent('argus:mode', { detail: { mode: 'teaching', on: teaching } })); }, [teaching]);
+  // A walkthrough ended while teaching: carry on with the next one for this screen, or stop.
+  useEffect(() => {
+    if (!teaching || active || fallbackRef.current) return;
+    const q = queueRef.current.shift();
+    if (q) start(q); else { teachRef.current = false; setTeaching(false); }
+  }, [teaching, active, start]);
 
   // The step waits for the real Save: then the dot flies to where the record now lives.
   useEffect(() => {
@@ -268,7 +309,7 @@ export function GuideCoach() {
             <div className="flex items-center gap-2 border-b border-slate-100 px-3.5 py-2.5">
               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-orange-100 text-orange-600"><Compass size={15} /></span>
               <div className="min-w-0 flex-1"><p className="truncate text-[11px] font-bold uppercase tracking-wider text-slate-500">{pick(active.guide.title, lang)}</p>
-                <p className="text-[10px] text-slate-400">{L('Step', 'படி')} {active.i + 1} / {active.guide.steps.length}</p></div>
+                <p className="text-[10px] text-slate-400">{teaching ? L('Teaching mode · Ctrl+Shift to stop · ', 'கற்பித்தல் · நிறுத்த Ctrl+Shift · ') : ''}{L('Step', 'படி')} {active.i + 1} / {active.guide.steps.length}</p></div>
               <button type="button" aria-label={voice ? 'Mute narration' : 'Read aloud'} title={voice ? 'Mute' : 'Read aloud'} onClick={toggleVoice} className="rounded p-1.5 text-slate-400 hover:bg-slate-100">{voice ? <Volume2 size={15} /> : <VolumeX size={15} />}</button>
               <button type="button" aria-label="Language" title="தமிழ் / English" onClick={toggleLang} className="flex items-center gap-1 rounded p-1.5 text-[11px] font-bold text-slate-500 hover:bg-slate-100"><Languages size={14} />{ta ? 'EN' : 'தமிழ்'}</button>
               <button type="button" aria-label="Close walkthrough" onClick={close} className="rounded p-1.5 text-slate-400 hover:bg-slate-100"><X size={15} /></button>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
-import { Bot, CheckCircle2, CircleHelp, Compass, Loader2, Mic, Square, Volume2, X } from 'lucide-react';
+import { Bot, CheckCircle2, GraduationCap, Lightbulb, Loader2, Mic, Sparkles, Volume2, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { getBreadcrumbs } from '@/config/navigation';
 import { useDraggable } from '@/lib/useDraggable';
@@ -179,6 +179,8 @@ export function HelpAssistant() {
   const [lang, setLang] = useState<Lang>(() => (store.get('help.vlang', 'ta') as Lang));
   const rootRef = useRef<HTMLDivElement>(null);
   const drag = useDraggable('argus.help.pos', rootRef);
+  const [menu, setMenu] = useState(false);
+  const [modes, setModes] = useState({ teaching: false, coworker: false });
 
   const activeRef = useRef(false);          // a help conversation is going on
   const langRef = useRef(lang);
@@ -329,6 +331,63 @@ export function HelpAssistant() {
     window.setTimeout(() => { if (activeRef.current && recRef.current === r) { try { r.start(); } catch { endSession(false); } } }, 600);
   }, [SR, ask, endSession]);
   listenRef.current = listen;
+  const beginRef = useRef<() => void>(() => {});
+
+
+  // ------------------------------------------------ the three modes and their keyboard shortcuts
+  useEffect(() => {
+    const on = (e: Event) => { const d = (e as CustomEvent<{ mode: 'teaching' | 'coworker'; on: boolean }>).detail; if (d) setModes((m) => ({ ...m, [d.mode]: d.on })); };
+    window.addEventListener('argus:mode', on);
+    return () => window.removeEventListener('argus:mode', on);
+  }, []);
+  const modesRef = useRef(modes);
+  modesRef.current = modes;
+  const toggleMode = useCallback((id: 'teaching' | 'coworker' | 'adviser') => {
+    const m = modesRef.current;
+    const adviserOn = activeRef.current;
+    const wasOn = id === 'teaching' ? m.teaching : id === 'coworker' ? m.coworker : adviserOn;
+    // one mode at a time: the other two are switched off first
+    if (id !== 'teaching' && m.teaching) window.dispatchEvent(new CustomEvent('argus:teach', { detail: { on: false } }));
+    if (id !== 'coworker' && m.coworker) window.dispatchEvent(new CustomEvent('argus:copilot', { detail: { on: false } }));
+    if (id !== 'adviser' && adviserOn) endSession(false);
+    if (id === 'teaching') window.dispatchEvent(new CustomEvent('argus:teach', { detail: { on: !wasOn } }));
+    else if (id === 'coworker') window.dispatchEvent(new CustomEvent('argus:copilot', { detail: { on: !wasOn } }));
+    else if (wasOn) endSession(true); else beginRef.current();
+  }, [endSession]);
+  const toggleRef = useRef(toggleMode);
+  toggleRef.current = toggleMode;
+  useEffect(() => {
+    // Ctrl+Shift (pressed and released on their own) = Teaching; Ctrl+Tab = Co-worker; Ctrl+Enter or Ctrl+CapsLock = Adviser.
+    let armed = false; let dirty = false;
+    const down = (e: KeyboardEvent) => {
+      const k = e.key;
+      if (k === 'Control' || k === 'Shift') { if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && !dirty) armed = true; return; }
+      dirty = true; armed = false;
+      if (e.repeat) return;
+      const ctrlOnly = e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey;
+      const altShift = e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey;
+      let id: 'teaching' | 'coworker' | 'adviser' | '' = '';
+      if (ctrlOnly && k === 'Tab') id = 'coworker';
+      else if (ctrlOnly && (k === 'Enter' || k === 'CapsLock')) id = 'adviser';
+      else if (altShift && e.code === 'KeyT') id = 'teaching';
+      else if (altShift && e.code === 'KeyC') id = 'coworker';
+      else if (altShift && e.code === 'KeyA') id = 'adviser';
+      if (id) { e.preventDefault(); e.stopPropagation(); toggleRef.current(id); }
+    };
+    const up = (e: KeyboardEvent) => {
+      if ((e.key === 'Control' || e.key === 'Shift') && armed) { armed = false; dirty = true; toggleRef.current('teaching'); return; }
+      if (!e.ctrlKey && !e.shiftKey) { dirty = false; armed = false; }
+    };
+    window.addEventListener('keydown', down, true);
+    window.addEventListener('keyup', up, true);
+    return () => { window.removeEventListener('keydown', down, true); window.removeEventListener('keyup', up, true); };
+  }, []);
+  useEffect(() => {
+    if (!menu) return;
+    const out = (e: MouseEvent) => { if (!rootRef.current?.contains(e.target as Node)) setMenu(false); };
+    document.addEventListener('mousedown', out);
+    return () => document.removeEventListener('mousedown', out);
+  }, [menu]);
 
   const begin = () => {
     if (!SR) { setNote('Voice help needs Chrome or Edge on a computer.'); return; }
@@ -344,9 +403,11 @@ export function HelpAssistant() {
     say(first ? WELCOME[langRef.current] : GREETING[langRef.current], () => listenRef.current(), setNote);
   };
 
+  beginRef.current = begin;
   useEffect(() => () => { activeRef.current = false; try { recRef.current?.abort?.(); } catch { /* ignore */ } stopSpeaking(); }, []);
 
   const active = phase !== 'idle';
+  const anyOn = active || modes.teaching || modes.coworker;
   const status = phase === 'greeting' ? '…' : phase === 'listening' ? 'Listening… பேசுங்கள் / speak now' : phase === 'thinking' ? 'Thinking…' : phase === 'speaking' ? 'Speaking…' : '';
   const rightSide = !!drag.pos && drag.pos.x > window.innerWidth / 2;
   const kind: 'ta' | 'en' = lang === 'ta' ? 'ta' : 'en';
@@ -366,25 +427,36 @@ export function HelpAssistant() {
       className={`fixed bottom-5 max-lg:bottom-[4.75rem] left-[5.5rem] z-[60] flex items-end gap-2 font-sans ${rightSide ? 'flex-row-reverse' : ''}`}>
       <button type="button" {...drag.bind}
         onMouseDown={(e) => e.preventDefault()}
-        onClick={() => { if (drag.wasDragged()) return; if (active) endSession(true); else begin(); }}
-        aria-label={active ? 'Stop help' : 'Help'} title={active ? 'Click to stop · drag to move' : 'Ask for help by voice · drag to move'}
-        className={`relative flex h-12 touch-none cursor-grab select-none items-center gap-2 rounded-full pl-4 pr-5 text-white shadow-lg active:cursor-grabbing ${active ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+        onClick={() => { if (drag.wasDragged()) return; setMenu((m) => !m); }}
+        aria-label="AI assistant" aria-expanded={menu} title="AI assistant: Teaching, Co-worker, Adviser · drag to move"
+        className={`relative flex h-12 touch-none cursor-grab select-none items-center gap-2 rounded-full pl-4 pr-5 text-white shadow-lg active:cursor-grabbing ${anyOn ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
         {active && phase === 'listening' && <span className="absolute inset-0 animate-ping rounded-full bg-red-500/30" />}
         <span className="relative">
-          {!active ? <CircleHelp size={20} /> : phase === 'listening' ? <Mic size={20} /> : phase === 'thinking' ? <Loader2 size={20} className="animate-spin" /> : phase === 'speaking' ? <Volume2 size={20} /> : <Square size={18} />}
+          {active && phase === 'listening' ? <Mic size={20} /> : active && phase === 'thinking' ? <Loader2 size={20} className="animate-spin" /> : active && phase === 'speaking' ? <Volume2 size={20} /> : <Sparkles size={20} />}
         </span>
-        <span className="relative text-sm font-semibold">{active ? 'Stop' : 'உதவி · Help'}</span>
+        <span className="relative text-sm font-semibold">{modes.teaching ? 'Teaching' : modes.coworker ? 'Co-worker' : active ? 'Adviser' : 'AI · உதவி'}</span>
       </button>
-      <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { endSession(false); window.dispatchEvent(new CustomEvent('argus:guide')); }}
-        aria-label="Guide me" title="Guide me: step by step on this screen (what to enter, why, where it is saved)"
-        className="flex h-12 w-12 items-center justify-center rounded-full bg-orange-600 text-white shadow-lg hover:bg-orange-700">
-        <Compass size={20} />
-      </button>
-      <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { endSession(false); window.dispatchEvent(new CustomEvent('argus:copilot')); }}
-        aria-label="Copilot" title="Copilot: type or say what you want done, for example add enquiry for ABC"
-        className="flex h-12 w-12 items-center justify-center rounded-full bg-violet-600 text-white shadow-lg hover:bg-violet-700">
-        <Bot size={20} />
-      </button>
+      {menu && (
+        <div role="menu" aria-label="AI modes" data-voice-ignore onMouseDown={(e) => e.stopPropagation()}
+          className={`absolute bottom-14 ${rightSide ? 'right-0' : 'left-0'} w-72 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl`}>
+          {([
+            { id: 'teaching', icon: GraduationCap, color: 'bg-orange-100 text-orange-600', title: 'Teaching', sub: 'Teaches this screen by itself, with animation and voice', keys: 'Ctrl + Shift', on: modes.teaching },
+            { id: 'coworker', icon: Bot, color: 'bg-violet-100 text-violet-600', title: 'Co-worker', sub: 'Type or say what to do: add enquiry, add company…', keys: 'Ctrl + Tab', on: modes.coworker },
+            { id: 'adviser', icon: Lightbulb, color: 'bg-emerald-100 text-emerald-600', title: 'Adviser', sub: 'Ask by voice what to do and how to do it', keys: 'Ctrl + Enter', on: active },
+          ] as const).map((m) => (
+            <button key={m.id} type="button" role="menuitem" onClick={() => { setMenu(false); toggleMode(m.id); }}
+              className={`mb-1 flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left last:mb-0 ${m.on ? 'border-red-300 bg-red-50' : 'border-transparent hover:bg-slate-50'}`}>
+              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${m.color}`}><m.icon size={18} /></span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2 text-sm font-bold text-slate-800">{m.title}{m.on && <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white">On · click to stop</span>}</span>
+                <span className="block text-[11px] leading-snug text-slate-500">{m.sub}</span>
+                <kbd className="mt-0.5 inline-block rounded border border-slate-200 bg-slate-50 px-1.5 text-[10px] font-semibold text-slate-500">{m.keys}</kbd>
+              </span>
+            </button>
+          ))}
+          <p className="px-2 pt-1 text-[10px] text-slate-400">Press the same keys again to switch it off. Alt + Shift + T / C / A also work.</p>
+        </div>
+      )}
       {(active || note) && (
         <div role="status" className="max-w-[20rem] rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
           {active && <p className="font-semibold text-red-600">{status}</p>}
