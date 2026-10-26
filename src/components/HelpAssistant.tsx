@@ -422,24 +422,30 @@ export function HelpAssistant() {
   const toggleRef = useRef(toggleMode);
   toggleRef.current = toggleMode;
   useEffect(() => {
-    // Ctrl+Shift (pressed and released on their own) = Teaching; Ctrl+Tab = Co-worker; Ctrl+Enter or Ctrl+CapsLock = Adviser.
+    // Keyboard shortcuts: Ctrl+Shift = Teaching; Ctrl+CapsLock = Co-worker; Ctrl+Alt = Adviser
     let armed = false; let dirty = false;
     const down = (e: KeyboardEvent) => {
       const k = e.key;
+      // Ctrl+Shift (pressed and released together) = Teaching
       if (k === 'Control' || k === 'Shift') { if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && !dirty) armed = true; return; }
       dirty = true; armed = false;
       if (e.repeat) return;
       const ctrlOnly = e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey;
+      const ctrlAlt = e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey;
       const altShift = e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey;
       let id: 'teaching' | 'coworker' | 'adviser' | '' = '';
-      if (ctrlOnly && k === 'Tab') id = 'coworker';
-      else if (ctrlOnly && (k === 'Enter' || k === 'CapsLock')) id = 'adviser';
+      // Ctrl+CapsLock = Co-worker
+      if (ctrlOnly && k === 'CapsLock') id = 'coworker';
+      // Ctrl+Alt (any key while both held, or just releasing) = Adviser
+      else if (ctrlAlt && (k === 'Alt' || k === 'Control' || k.length === 1)) id = 'adviser';
+      // Alt+Shift shortcuts still work as fallback
       else if (altShift && e.code === 'KeyT') id = 'teaching';
       else if (altShift && e.code === 'KeyC') id = 'coworker';
       else if (altShift && e.code === 'KeyA') id = 'adviser';
       if (id) { e.preventDefault(); e.stopPropagation(); toggleRef.current(id); }
     };
     const up = (e: KeyboardEvent) => {
+      // Ctrl+Shift released = Teaching
       if ((e.key === 'Control' || e.key === 'Shift') && armed) { armed = false; dirty = true; toggleRef.current('teaching'); return; }
       if (!e.ctrlKey && !e.shiftKey) { dirty = false; armed = false; }
     };
@@ -506,8 +512,8 @@ export function HelpAssistant() {
           className={`absolute bottom-14 ${rightSide ? 'right-0' : 'left-0'} w-72 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl`}>
           {([
             { id: 'teaching', icon: GraduationCap, color: 'bg-orange-100 text-orange-600', title: 'Teaching', sub: 'Learn the entire ERP page by page with voice narration & animations', keys: 'Ctrl + Shift', on: modes.teaching },
-            { id: 'coworker', icon: Bot, color: 'bg-violet-100 text-violet-600', title: 'Co-worker', sub: 'Type or speak commands — I\'ll do them: "add enquiry for ABC"', keys: 'Ctrl + Tab', on: modes.coworker },
-            { id: 'adviser', icon: Lightbulb, color: 'bg-emerald-100 text-emerald-600', title: 'Adviser', sub: 'Get suggestions & ask questions — answers with animations', keys: 'Ctrl + Enter', on: active },
+            { id: 'coworker', icon: Bot, color: 'bg-violet-100 text-violet-600', title: 'Co-worker', sub: 'Type or speak commands — I\'ll do them: "add enquiry for ABC"', keys: 'Ctrl + CapsLock', on: modes.coworker },
+            { id: 'adviser', icon: Lightbulb, color: 'bg-emerald-100 text-emerald-600', title: 'Adviser', sub: 'Get suggestions & ask questions — answers with animations', keys: 'Ctrl + Alt', on: active },
           ] as const).map((m) => (
             <button key={m.id} type="button" role="menuitem" onClick={() => { setMenu(false); toggleMode(m.id); }}
               className={`mb-1 flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left last:mb-0 ${m.on ? 'border-red-300 bg-red-50' : 'border-transparent hover:bg-slate-50'}`}>

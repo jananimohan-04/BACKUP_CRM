@@ -506,20 +506,18 @@ export function GuideCoach() {
     return () => window.removeEventListener('argus:guide', on);
   }, [offers, start, lang]);
 
-  // A guided form opened: offer a walkthrough once, or start it straight away when Auto-guide is on.
+  // A guided form opened: only start if Auto-guide is explicitly on (user must turn it on).
+  // No auto-offer popup - user must manually click to start a guide.
   useEffect(() => {
     if (active) return;
     const g = offers[0];
     if (!g) { autoShown.current = ''; setOffer(null); return; }
     if (autoShown.current === g.id) return;
     autoShown.current = g.id;
+    // Only auto-start if Auto-guide is explicitly enabled by user
     if (auto) { start(g); return; }
-    let seen: string[] = []; try { seen = JSON.parse(ls.get('argus.guide.seen', '[]')); } catch { /* none */ }
-    if (seen.includes(g.id)) return;
-    ls.set('argus.guide.seen', JSON.stringify([...seen, g.id]));
-    setOffer(g);
-    const t = window.setTimeout(() => setOffer(o => (o?.id === g.id ? null : o)), 10000);
-    return () => window.clearTimeout(t);
+    // Don't show offer popup automatically - user must use keyboard shortcuts or menu
+    setOffer(null);
   }, [offers, active, auto, start]);
 
   // Entering a step: open what it needs, find the field, scroll to it, read it out.
