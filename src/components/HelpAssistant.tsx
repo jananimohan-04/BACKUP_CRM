@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
-import { CircleHelp, Compass, Loader2, Mic, Square, Volume2 } from 'lucide-react';
+import { CheckCircle2, CircleHelp, Compass, Loader2, Mic, Square, Volume2, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { getBreadcrumbs } from '@/config/navigation';
 import { useDraggable } from '@/lib/useDraggable';
@@ -359,6 +360,8 @@ export function HelpAssistant() {
   };
 
   return (
+    <>
+    <TamilVoiceNotice lang={lang} />
     <div ref={rootRef} style={drag.style} data-voice-ignore
       className={`fixed bottom-5 max-lg:bottom-[4.75rem] left-[5.5rem] z-[60] flex items-end gap-2 font-sans ${rightSide ? 'flex-row-reverse' : ''}`}>
       <button type="button" {...drag.bind}
@@ -403,5 +406,131 @@ export function HelpAssistant() {
         </div>
       )}
     </div>
+    </>
   );
 }
+
+// ------------------------------------------------------------------------------------------------
+// "Tamil voice is not installed": a bar at the top, and the steps to install it for this device.
+// A website cannot install a voice itself; it can notice the voice is missing, guide the person through the install, and check again.
+// ------------------------------------------------------------------------------------------------
+const NOTICE_KEY = 'help.tamilNoticeHiddenUntil';
+type Platform = 'windows' | 'android' | 'ios' | 'mac' | 'other';
+const detectPlatform = (): Platform => {
+  const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent;
+  if (/Android/i.test(ua)) return 'android';
+  if (/iPhone|iPad|iPod/i.test(ua)) return 'ios';
+  if (/Windows/i.test(ua)) return 'windows';
+  if (/Mac/i.test(ua)) return 'mac';
+  return 'other';
+};
+const tamilVoices = () => { loadVoices(); return voiceList('ta'); };
+
+function TamilVoiceNotice({ lang }: { lang: Lang }) {
+  const [missing, setMissing] = useState(false);
+  const [hidden, setHidden] = useState(() => Number(store.get(NOTICE_KEY, '0')) > Date.now());
+  const [open, setOpen] = useState(false);
+  const [checked, setChecked] = useState<'' | 'found' | 'missing'>('');
+  const [found, setFound] = useState('');
+  const platform = detectPlatform();
+
+  // Voices load a moment after the page does, so look a few times before deciding the voice is missing.
+  useEffect(() => {
+    if (!('speechSynthesis' in window)) return;
+    const look = () => setMissing(tamilVoices().length === 0);
+    look();
+    try { window.speechSynthesis.addEventListener('voiceschanged', look); } catch { /* ignore */ }
+    const timers = [800, 2500, 6000].map((ms) => window.setTimeout(look, ms));
+    return () => { timers.forEach(window.clearTimeout); try { window.speechSynthesis.removeEventListener('voiceschanged', look); } catch { /* ignore */ } };
+  }, []);
+
+  const hide = () => { store.set(NOTICE_KEY, String(Date.now() + 7 * 24 * 3600 * 1000)); setHidden(true); };   // asked again in a week
+  const recheck = () => {
+    const v = tamilVoices();
+    setMissing(v.length === 0);
+    setChecked(v.length ? 'found' : 'missing');
+    setFound(v[0]?.name ?? '');
+    if (v.length) { setVoiceTickGlobal(); say('வணக்கம்! தமிழ் குரல் தயாராக உள்ளது.', () => {}); }
+  };
+
+  const steps: Record<Platform, { title: string; items: string[]; link?: { href: string; label: string } }> = {
+    windows: {
+      title: 'Windows (Chrome or Edge)',
+      items: [
+        'Open Windows Settings → Time & language → Language & region. (Use the button below to open it.)',
+        'Click “Add a language”, choose Tamil (தமிழ்), press Next, and keep “Text-to-speech” ticked. Press Install.',
+        'Wait for the install to finish (a few minutes). Then close ALL Chrome windows and open Chrome again.',
+        'Open the ERP, press Help, and press “Check again” here.',
+      ],
+      link: { href: 'ms-settings:regionlanguage', label: 'Open Windows language settings' },
+    },
+    android: {
+      title: 'Android',
+      items: [
+        'Open Settings → System → Languages → Text-to-speech output.',
+        'Choose “Google Text-to-speech Engine” → Settings → Install voice data → Tamil (India).',
+        'Update the Google Text-to-speech app in Play Store if Tamil is not listed. Then reopen Chrome and press “Check again”.',
+      ],
+    },
+    ios: {
+      title: 'iPhone / iPad',
+      items: ['Open Settings → Accessibility → Spoken Content → Voices → Tamil, and download a voice.', 'Reopen the browser and press “Check again”.'],
+    },
+    mac: {
+      title: 'Mac',
+      items: ['Open System Settings → Accessibility → Spoken Content → System voice → Manage Voices → Tamil, and download a voice.', 'Restart the browser and press “Check again”.'],
+    },
+    other: { title: 'Your device', items: ['Install a Tamil text-to-speech voice in your system settings, restart the browser, and press “Check again”.'] },
+  };
+  const st = steps[platform];
+
+  if (!missing && !open) return null;
+  if (typeof document === 'undefined') return null;
+  const bar = missing && !hidden && lang === 'ta' && !open;
+  return createPortal(
+    <>
+      {bar && (
+        <div role="status" className="fixed inset-x-0 top-0 z-[96] flex items-center justify-center gap-3 bg-amber-500 px-4 py-2 text-sm font-semibold text-white shadow-lg" data-voice-ignore>
+          <span>Tamil voice is not installed on this device, so Help cannot speak Tamil.</span>
+          <button type="button" onClick={() => setOpen(true)} className="rounded-md bg-white px-3 py-1 text-xs font-bold text-amber-700 hover:bg-amber-50">How to install</button>
+          <button type="button" aria-label="Hide for a week" title="Hide for a week" onClick={hide} className="rounded p-1 hover:bg-amber-600"><X size={16} /></button>
+        </div>
+      )}
+      {open && (
+        <div className="fixed inset-0 z-[97] flex items-center justify-center bg-slate-900/50 p-4" data-voice-ignore onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
+          <div role="dialog" aria-label="Install the Tamil voice" className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Install the Tamil voice</h2>
+                <p className="text-xs text-slate-500">{st.title}. One-time setup; after that every Tamil answer is spoken.</p>
+              </div>
+              <button type="button" aria-label="Close" onClick={() => setOpen(false)} className="rounded p-1 text-slate-400 hover:bg-slate-100"><X size={18} /></button>
+            </div>
+            <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-700">
+              {st.items.map((i) => <li key={i}>{i}</li>)}
+            </ol>
+            {st.link && (
+              <a href={st.link.href} className="mt-3 inline-flex rounded-lg bg-orange-600 px-3.5 py-2 text-sm font-bold text-white hover:bg-orange-700">{st.link.label}</a>
+            )}
+            <p className="mt-3 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-900">
+              Faster option: open the ERP in <b>Microsoft Edge</b>. It already includes natural Tamil voices, so nothing needs to be installed.
+            </p>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs">
+                {checked === 'found' && <span className="inline-flex items-center gap-1 font-semibold text-emerald-700"><CheckCircle2 size={14} />Tamil voice found{found ? `: ${found}` : ''}. You can close this.</span>}
+                {checked === 'missing' && <span className="font-semibold text-amber-700">Not found yet. After installing, close every browser window and open it again.</span>}
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={recheck} className="rounded-lg border border-slate-300 px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Check again</button>
+                <button type="button" onClick={() => { setOpen(false); hide(); }} className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100">Remind me later</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>,
+    document.body,
+  );
+}
+// Tells the rest of the page the voice list changed (the Voice dropdown re-reads it).
+const setVoiceTickGlobal = () => { try { window.dispatchEvent(new Event('voiceschanged')); } catch { /* ignore */ } };
