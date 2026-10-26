@@ -65,6 +65,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
   // open. The popup is only used when *editing* an existing invoice (editId set).
   const [formOpen, setFormOpen] = useState(true);
   const [savedNote, setSavedNote] = useState('');
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [editId, setEditId] = useState('');
   const [form, setForm] = useState<any>({ invoice_type: 'Sales Invoice', invoice_date: todayISO(), customer_name: '', customer_id: '', due_days: '', po_no: '', dc_no: '', delivery_id: '', payment_terms: '' });
@@ -110,7 +111,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
       financeApi.invoice(linkedInvoiceId),
       supabase.from('cnc_invoice_items').select('id,description,hsn,quantity,unit,rate,gst_rate,discount_pct,amount').eq('invoice_id', linkedInvoiceId).order('line_no'),
     ]).then(([detail, itemResult]) => {
-      if (active) setSelected({ ...detail, items: itemResult.data?.length ? itemResult.data as InvoiceDetail['items'] : detail.items });
+      if (active) { setSelected({ ...detail, items: itemResult.data?.length ? itemResult.data as InvoiceDetail['items'] : detail.items }); setPreviewOpen(true); }
     }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Unable to open linked invoice.'); });
     return () => { active = false; };
   }, [linkedInvoiceId, company?.id]);
@@ -264,6 +265,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
         supabase.from('cnc_invoice_items').select('id,description,hsn,quantity,unit,rate,gst_rate,discount_pct,amount').eq('invoice_id', r.id).order('line_no'),
       ]);
       setSelected({ ...detail, items: itemResult.data?.length ? itemResult.data as InvoiceDetail['items'] : detail.items });
+      setPreviewOpen(true);
     }
     catch (e) { setError(e instanceof Error ? e.message : 'Unable to open invoice.'); }
   };
@@ -1300,7 +1302,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
       </section>
     )}
  
-    <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_330px] gap-4 items-start">
+        <div className="w-full">
       <Card className="overflow-hidden">
         <div className="overflow-auto">
           <table className="w-full min-w-[1000px] text-left">
@@ -1383,15 +1385,269 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
         </div>
         <div className="flex justify-between p-2 border-t text-xs text-slate-500"><span>{total?((page-1)*PAGE+1):0}-{Math.min(page*PAGE,total)} of {total}</span><div className="flex gap-2"><button disabled={page<=1} onClick={()=>void reload(page-1)}><ChevronLeft size={16}/></button>{page}/{pageCount}<button disabled={page>=pageCount} onClick={()=>void reload(page+1)}><ChevronRight size={16}/></button></div></div>
       </Card>
-      <Card className="overflow-hidden"><div className="p-3 border-b bg-slate-50"><h3 className="font-bold text-sm">Invoice Preview</h3><p className="text-[10px] text-slate-500">Selected database record</p></div>{!selected?<div className="p-10 text-center text-sm text-slate-500">Select an invoice.</div>:<div className="p-4 space-y-3 text-xs">
-        <div className="flex justify-between"><b className="text-lg">ARGUS CNC</b><Badge variant={statusToVariant(selected.status)}>{selected.status}</Badge></div>
-        <div className="grid grid-cols-2 gap-y-1 border-y py-2"><span>Invoice No</span><b>{selected.invoice_no}</b><span>Date</span><b>{formatDate(selected.invoice_date)}</b><span>Company</span><b>{selected.customer_name}</b><span>PO / DC</span><b>{selected.po_no||'-'} / {selected.dc_no||'-'}</b></div>
-        <table className="w-full"><thead><tr className="bg-slate-50"><th className="p-1 text-left">Product</th><th className="p-1 text-right">Qty</th><th className="p-1 text-right">Rate</th><th className="p-1 text-right">Amount</th></tr></thead><tbody>{(selected.items||[]).map(i=><tr key={i.id} className="border-t"><td className="p-1">{i.description}</td><td className="p-1 text-right">{i.quantity} {i.unit||''}</td><td className="p-1 text-right">{cash(i.rate)}</td><td className="p-1 text-right">{cash(i.amount)}</td></tr>)}</tbody></table>
-        <Total label="Basic Value" value={cash(selected.basic_value)}/><Total label="CGST / SGST / IGST" value={cash(selected.cgst)+' / '+cash(selected.sgst)+' / '+cash(selected.igst)}/><Total label="Received" value={cash(selected.received)}/><Total label="Balance" value={cash(selected.balance)} bold/><Total label="Total" value={cash(selected.total)} bold/>
-        <div className="flex flex-wrap gap-1.5 border-t pt-3"><Button size="sm" variant="secondary" onClick={()=>void downloadInvoice()} disabled={!canExportInv} title={!canExportInv ? 'Invoice export permission is required' : undefined}><Download size={13}/> Download PDF</Button><Button size="sm" variant="secondary" onClick={printInvoice}><Printer size={13}/> Print</Button><Button size="sm" onClick={()=>void recordReceipt()} disabled={Number(selected.balance)<=0||selected.cancelled}><CreditCard size={13}/> Receipt</Button><Button size="sm" variant="secondary" onClick={startEdit} disabled={Number(selected.received)!==0||selected.cancelled||selected.invoice_type==='Credit Note'||!canEditInv} title={!canEditInv ? 'Invoice edit permission is required' : undefined}>Edit</Button>{selected.invoice_type==='Sales Invoice'&&!selected.cancelled&&(<><Button size="sm" variant="secondary" onClick={()=>void createCreditNote()}>Credit Note</Button><Button size="sm" variant="danger" onClick={()=>void cancelInvoice()}>Cancel</Button></>)}</div>
-      </div>}</Card>
     </div>
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4"><Card className="p-4"><h3 className="font-bold text-sm mb-3">Invoice Activity</h3><div className="h-24 flex items-end gap-1 border-b">{stats.monthly.length?stats.monthly.map(x=><div key={x.day} title={formatDate(x.day)+' '+cash(x.invoiced)} className="flex-1 bg-blue-500 rounded-t" style={{height:Math.max(3,Number(x.invoiced)/Math.max(1,...stats.monthly.map(y=>Number(y.invoiced)))*90)}}/>):<span className="w-full text-center text-xs text-slate-400">No invoice activity.</span>}</div><p className="text-[10px] text-slate-500 mt-2">Actual invoice amounts from the selected date range</p></Card><Card className="p-4"><h3 className="font-bold text-sm mb-2">Outstanding by Ageing</h3><Total label="0-30 days" value={cash(stats.ageing.current)}/><Total label="31-60 days" value={cash(stats.ageing.d31_60)}/><Total label="61-90 days" value={cash(stats.ageing.d61_90)}/><Total label="Over 90 days" value={cash(stats.ageing.d90_plus)}/></Card><Card className="p-4"><h3 className="font-bold text-sm mb-2">Invoice Status</h3><div className="grid grid-cols-2 gap-2">{['Paid','Partially Paid','Overdue','Credit Note','Cancelled'].map(x=><div key={x} className="border rounded p-2 flex justify-between text-xs">{x}<b>{stats.by_status?.[x]||0}</b></div>)}</div><h4 className="font-semibold text-xs mt-3">Top Companies</h4>{stats.top_customers?.slice(0,4).map(x=><Total key={x.customer} label={x.customer} value={cash(x.value)}/>)}</Card></div>
+
+        {/* Original Invoice Preview Popup Modal */}
+    <Modal
+      open={previewOpen && !!selected}
+      onClose={() => setPreviewOpen(false)}
+      title={
+        selected ? (
+          <div className="flex items-center justify-between w-full pr-6">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-base text-slate-800">
+                {selected.invoice_type || 'Sales Invoice'} #{selected.invoice_no}
+              </span>
+              <Badge variant={statusToVariant(selected.status)}>{selected.status}</Badge>
+            </div>
+            <span className="text-xs text-slate-500 font-normal">
+              {formatDate(selected.invoice_date)}
+            </span>
+          </div>
+        ) : ''
+      }
+      size="xl"
+      footer={
+        selected ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 w-full">
+            <div className="flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => void downloadInvoice()}
+                disabled={!canExportInv}
+                title={!canExportInv ? 'Invoice export permission is required' : undefined}
+                className="flex items-center gap-1"
+              >
+                <Download size={13} /> Download PDF
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={printInvoice}
+                className="flex items-center gap-1"
+              >
+                <Printer size={13} /> Print
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Button
+                size="sm"
+                onClick={() => void recordReceipt()}
+                disabled={Number(selected.balance) <= 0 || selected.cancelled}
+                className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                <CreditCard size={13} /> Record Receipt
+              </Button>
+
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => { setPreviewOpen(false); startEdit(); }}
+                disabled={Number(selected.received) !== 0 || selected.cancelled || selected.invoice_type === 'Credit Note' || !canEditInv}
+                title={!canEditInv ? 'Invoice edit permission is required' : undefined}
+              >
+                Edit
+              </Button>
+
+              {selected.invoice_type === 'Sales Invoice' && !selected.cancelled && (
+                <>
+                  <Button size="sm" variant="secondary" onClick={() => void createCreditNote()}>
+                    Credit Note
+                  </Button>
+                  <Button size="sm" variant="danger" onClick={() => void cancelInvoice()}>
+                    Cancel
+                  </Button>
+                </>
+              )}
+
+              <Button size="sm" variant="secondary" onClick={() => setPreviewOpen(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        ) : null
+      }
+    >
+      {selected && (
+        <div className="p-4 bg-white space-y-4 text-xs font-sans">
+          {/* Header section with company branding */}
+          <div className="flex flex-wrap justify-between items-start gap-3 border-b border-slate-200 pb-3">
+            <div>
+              <h2 className="text-xl font-black text-slate-900 tracking-tight">
+                {company?.company_name || 'ARGUS CNC'}
+              </h2>
+              <p className="text-[11px] text-slate-500 font-medium">PRECISION ENGINEERING & MANUFACTURING</p>
+            </div>
+            <div className="text-right">
+              <span className="text-xs font-bold uppercase tracking-wider text-brand-700 block">
+                {selected.invoice_type || 'TAX INVOICE'}
+              </span>
+              <span className="font-mono font-bold text-sm text-slate-800">{selected.invoice_no}</span>
+              <div className="text-[11px] text-slate-500 mt-0.5">
+                Date: <strong className="text-slate-700">{formatDate(selected.invoice_date)}</strong>
+              </div>
+              {selected.due_date && (
+                <div className="text-[11px] text-slate-500">
+                  Due: <strong className="text-slate-700">{formatDate(selected.due_date)}</strong>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Customer & Order details grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-50/80 p-3 rounded-lg border border-slate-200/90 text-xs">
+            <div>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                Billed To
+              </span>
+              <div className="font-bold text-slate-900 text-sm">{selected.customer_name}</div>
+              {selected.billing_address && (
+                <div className="text-slate-600 mt-1 whitespace-pre-line leading-relaxed">
+                  {selected.billing_address}
+                </div>
+              )}
+              {selected.customer_gstin && (
+                <div className="text-slate-700 font-medium mt-1">
+                  GSTIN: <span className="font-mono font-semibold">{selected.customer_gstin}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1.5 md:border-l md:border-slate-200 md:pl-3">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                Reference & Dispatch
+              </span>
+              <div className="flex justify-between py-0.5 border-b border-slate-200/60">
+                <span className="text-slate-500">Delivery Challan (DC):</span>
+                <span className="font-mono font-bold text-slate-800">{selected.dc_no || '-'}</span>
+              </div>
+              <div className="flex justify-between py-0.5 border-b border-slate-200/60">
+                <span className="text-slate-500">Purchase Order (PO):</span>
+                <span className="font-semibold text-slate-800">{selected.po_no || '-'}</span>
+              </div>
+              <div className="flex justify-between py-0.5 border-b border-slate-200/60">
+                <span className="text-slate-500">Payment Terms:</span>
+                <span className="font-medium text-slate-800">{selected.payment_terms || '-'}</span>
+              </div>
+              {selected.due_days && (
+                <div className="flex justify-between py-0.5">
+                  <span className="text-slate-500">Credit Period:</span>
+                  <span className="font-medium text-slate-800">{selected.due_days} Days</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Product Items Table */}
+          <div className="border border-slate-200 rounded-lg overflow-hidden">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-100/80 text-slate-600 text-[10px] uppercase font-bold tracking-wider border-b border-slate-200">
+                <tr>
+                  <th className="p-2 w-8 text-center">#</th>
+                  <th className="p-2">Description / Part Name</th>
+                  <th className="p-2 w-20 text-center">HSN</th>
+                  <th className="p-2 w-16 text-right">Qty</th>
+                  <th className="p-2 w-14 text-center">Unit</th>
+                  <th className="p-2 w-24 text-right">Rate (₹)</th>
+                  <th className="p-2 w-16 text-right">GST %</th>
+                  <th className="p-2 w-24 text-right">Amount (₹)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {(selected.items || []).map((item: any, idx: number) => {
+                  const q = Number(item.quantity) || 0;
+                  const r = Number(item.rate) || 0;
+                  const amt = Number(item.amount ?? q * r) || 0;
+                  return (
+                    <tr key={item.id || idx} className="hover:bg-slate-50/50">
+                      <td className="p-2 text-center text-slate-400 font-medium">{idx + 1}</td>
+                      <td className="p-2 font-medium text-slate-800">{item.description}</td>
+                      <td className="p-2 text-center font-mono text-slate-600 text-[11px]">{item.hsn || '-'}</td>
+                      <td className="p-2 text-right font-bold text-slate-800 tabular-nums">{item.quantity}</td>
+                      <td className="p-2 text-center text-slate-600">{item.unit || 'Nos'}</td>
+                      <td className="p-2 text-right font-medium text-slate-700 tabular-nums">{cash(item.rate)}</td>
+                      <td className="p-2 text-right text-slate-600 tabular-nums">{item.gst_rate ? `${item.gst_rate}%` : '-'}</td>
+                      <td className="p-2 text-right font-bold text-slate-900 tabular-nums">{cash(amt)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Bottom Financial Summary and Notes */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start pt-1">
+            <div className="space-y-2">
+              {selected.notes && (
+                <div className="bg-slate-50 p-2.5 rounded border border-slate-200">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Notes</span>
+                  <p className="text-slate-700">{selected.notes}</p>
+                </div>
+              )}
+              {selected.receipts && selected.receipts.length > 0 && (
+                <div className="bg-emerald-50/60 p-2.5 rounded border border-emerald-200">
+                  <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block mb-1">Payment Receipts</span>
+                  <div className="space-y-1">
+                    {selected.receipts.map((rcv: any) => (
+                      <div key={rcv.id} className="flex justify-between text-[11px] text-emerald-950 font-medium">
+                        <span>{rcv.txn_no} ({formatDate(rcv.txn_date)})</span>
+                        <span className="font-bold">{cash(rcv.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1.5 text-xs">
+              <div className="flex justify-between text-slate-600">
+                <span>Basic / Taxable Value:</span>
+                <span className="font-semibold text-slate-800 tabular-nums">{cash(selected.basic_value)}</span>
+              </div>
+              {Number(selected.cgst) > 0 && (
+                <div className="flex justify-between text-slate-600">
+                  <span>CGST:</span>
+                  <span className="font-semibold text-slate-800 tabular-nums">{cash(selected.cgst)}</span>
+                </div>
+              )}
+              {Number(selected.sgst) > 0 && (
+                <div className="flex justify-between text-slate-600">
+                  <span>SGST:</span>
+                  <span className="font-semibold text-slate-800 tabular-nums">{cash(selected.sgst)}</span>
+                </div>
+              )}
+              {Number(selected.igst) > 0 && (
+                <div className="flex justify-between text-slate-600">
+                  <span>IGST:</span>
+                  <span className="font-semibold text-slate-800 tabular-nums">{cash(selected.igst)}</span>
+                </div>
+              )}
+              {Number(selected.round_off) !== 0 && (
+                <div className="flex justify-between text-slate-600">
+                  <span>Round Off:</span>
+                  <span className="font-semibold text-slate-800 tabular-nums">{cash(selected.round_off)}</span>
+                </div>
+              )}
+              <div className="flex justify-between pt-1.5 border-t border-slate-300 text-sm font-black text-slate-900">
+                <span>Total Invoice Value:</span>
+                <span className="text-brand-700 tabular-nums">{cash(selected.total)}</span>
+              </div>
+              <div className="flex justify-between pt-1 text-slate-600">
+                <span>Total Received:</span>
+                <span className="font-semibold text-emerald-700 tabular-nums">{cash(selected.received)}</span>
+              </div>
+              <div className="flex justify-between pt-1 border-t border-slate-200 text-xs font-bold">
+                <span className={Number(selected.balance) > 0 ? "text-rose-700" : "text-emerald-700"}>Balance Due:</span>
+                <span className={`tabular-nums ${Number(selected.balance) > 0 ? "text-rose-700 text-sm" : "text-emerald-700"}`}>{cash(selected.balance)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </Modal>
 
     <Modal open={formOpen && !!editId} onClose={()=>!busy&&setFormOpen(false)} title="Edit Invoice" subtitle="Tax totals and ledger postings are calculated by the database." size="2xl" footer={<><Button variant="secondary" onClick={()=>setFormOpen(false)}>Cancel</Button><Button variant="secondary" onClick={()=>void save(true)} disabled={busy || !canEditInv} title={!canEditInv ? 'Invoice edit permission is required' : 'Save invoice and print'}><Printer size={13}/> Save & Print</Button><Button onClick={()=>void save(false)} disabled={busy || !canEditInv} title={!canEditInv ? 'Invoice edit permission is required' : undefined}>{busy?'Saving...':'Save Invoice'}</Button></>}>
       {invoiceFormBody}
