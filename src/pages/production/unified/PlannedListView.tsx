@@ -419,55 +419,37 @@ export function PlannedListView() {
         </div>
       </div>
 
-      {/* Filter and Action Bar */}
-      <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-sm space-y-2.5">
-        <div className="flex flex-wrap items-center gap-2.5">
+      {/* Filter and Action Bar - Consistent with DataTable style */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="flex flex-wrap items-center gap-3 p-3 border-b border-slate-100 bg-slate-50/50">
           {/* Search Input */}
-          <div className="relative flex-1 min-w-[220px]">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <div className="relative flex-1 min-w-[200px]">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               placeholder="Search product, customer, process, machine…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full h-9 pl-9 pr-3 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-brand-500 focus:bg-white"
+              className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all placeholder:text-slate-400"
             />
           </div>
 
-          {/* Quick Dates */}
-          <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs">
-            {(['all', 'today', 'week', 'month'] as const).map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setQuickRange(r)}
-                className={`px-2.5 py-1 rounded-md font-medium transition ${
-                  (r === 'all' && !fDateFrom && !fDateTo) ||
-                  (r === 'today' && fDateFrom === today && fDateTo === today)
-                    ? 'bg-white font-semibold text-brand-700 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                {r === 'all' ? 'All Dates' : r === 'today' ? 'Today' : r === 'week' ? 'This Week' : 'This Month'}
-              </button>
-            ))}
-          </div>
-
-          {/* Date Range Inputs */}
-          <div className="flex items-center gap-1 text-xs">
+          {/* Date Range */}
+          <div className="flex items-center gap-1.5">
+            <Calendar size={14} className="text-slate-400" />
             <input
               type="date"
               value={fDateFrom}
               onChange={(e) => setFDateFrom(e.target.value)}
-              className="h-9 px-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-brand-500"
+              className="px-2 py-2 text-sm bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
               title="From date"
             />
-            <span className="text-slate-400">→</span>
+            <span className="text-slate-400 text-xs">to</span>
             <input
               type="date"
               value={fDateTo}
               onChange={(e) => setFDateTo(e.target.value)}
-              className="h-9 px-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-brand-500"
+              className="px-2 py-2 text-sm bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
               title="To date"
             />
           </div>
@@ -476,7 +458,8 @@ export function PlannedListView() {
           <select
             value={fMachine}
             onChange={(e) => setFMachine(e.target.value)}
-            className="h-9 px-2.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-brand-500 cursor-pointer"
+            className="px-3 py-2 text-sm font-medium bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 cursor-pointer appearance-none pr-8"
+            style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
           >
             <option value="All">All Machines</option>
             {machines.map((m) => (
@@ -488,7 +471,8 @@ export function PlannedListView() {
           <select
             value={fOperator}
             onChange={(e) => setFOperator(e.target.value)}
-            className="h-9 px-2.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-brand-500 cursor-pointer"
+            className="px-3 py-2 text-sm font-medium bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 cursor-pointer appearance-none pr-8"
+            style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
           >
             <option value="All">All Operators</option>
             {operators.map((op) => (
@@ -500,33 +484,53 @@ export function PlannedListView() {
           <select
             value={fStatus}
             onChange={(e) => setFStatus(e.target.value)}
-            className="h-9 px-2.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-brand-500 cursor-pointer"
+            className="px-3 py-2 text-sm font-medium bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 cursor-pointer appearance-none pr-8"
+            style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
           >
-            <option value="All">All Statuses</option>
+            <option value="All">All Status</option>
             <option value="Today">Today</option>
             <option value="Upcoming">Upcoming</option>
             <option value="Past">Past</option>
           </select>
+
+          {/* Quick Date Buttons */}
+          <div className="flex items-center border border-slate-200 rounded-md overflow-hidden bg-white">
+            {(['all', 'today', 'week', 'month'] as const).map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setQuickRange(r)}
+                className={`px-3 py-2 text-xs font-semibold transition border-r border-slate-200 last:border-r-0 ${
+                  (r === 'all' && !fDateFrom && !fDateTo) ||
+                  (r === 'today' && fDateFrom === today && fDateTo === today)
+                    ? 'bg-brand-600 text-white'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {r === 'all' ? 'All' : r === 'today' ? 'Today' : r === 'week' ? 'Week' : 'Month'}
+              </button>
+            ))}
+          </div>
 
           {/* Export CSV */}
           <button
             type="button"
             onClick={handleExport}
             disabled={!filteredPlans.length}
-            className="h-9 px-3 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-xs flex items-center gap-1.5 shrink-0 transition disabled:opacity-40 cursor-pointer"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold tracking-wide text-slate-600 hover:text-brand-700 bg-white hover:bg-brand-50 rounded-md transition-colors border border-slate-200 hover:border-brand-200 shadow-sm disabled:opacity-40"
           >
-            <Download size={13} />
-            <span>Export CSV</span>
+            <Download size={14} />
+            EXPORT
           </button>
 
           {/* Add Plan */}
           <button
             type="button"
             onClick={openAddModal}
-            className="h-9 px-3.5 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-xs flex items-center gap-1.5 shrink-0 transition cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-md shadow-sm transition cursor-pointer"
           >
             <Plus size={14} />
-            <span>Add Plan</span>
+            Add Plan
           </button>
         </div>
       </div>
