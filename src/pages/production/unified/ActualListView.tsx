@@ -46,6 +46,7 @@ export function ActualListView() {
   const [fMachine, setFMachine] = useState('All');
   const [fOperator, setFOperator] = useState('All');
   const [fStatus, setFStatus] = useState('All');
+  const [fProduct, setFProduct] = useState('All');
 
   // Add Run modal state
   const [showAdd, setShowAdd] = useState(false);
@@ -119,6 +120,20 @@ export function ActualListView() {
     return map;
   }, [wos]);
 
+  const productNames = useMemo(() => {
+    const names = new Set<string>();
+    jobs.forEach((j) => {
+      const wo = woMap.get(String(j.work_order ?? '').trim().toLowerCase());
+      const p = wo?.part_name || wo?.product_name || j.part_name;
+      if (p) names.add(String(p).trim());
+    });
+    wos.forEach((w) => {
+      if (w.part_name) names.add(String(w.part_name).trim());
+      if (w.product_name) names.add(String(w.product_name).trim());
+    });
+    return Array.from(names).filter(Boolean).sort();
+  }, [jobs, wos, woMap]);
+
   // Quick range helpers
   const setQuickRange = (type: 'today' | 'week' | 'month' | 'all') => {
     const now = new Date();
@@ -162,6 +177,13 @@ export function ActualListView() {
       if (fMachine !== 'All' && j.machine !== fMachine) return false;
       if (fOperator !== 'All' && String(j.operator ?? '').toLowerCase() !== fOperator.toLowerCase()) return false;
 
+      if (fProduct !== 'All') {
+        const partName = String(wo?.part_name || j.part_name || '').toLowerCase();
+        const productName = String(wo?.product_name ?? '').toLowerCase();
+        const filterLower = fProduct.toLowerCase();
+        if (!partName.includes(filterLower) && !productName.includes(filterLower)) return false;
+      }
+
       const isRunning = span?.running || ['Running', 'In Progress'].includes(String(j.status));
       const isCompleted = String(j.status) === 'Completed' || !!j.actual_end;
       const isPaused = String(j.status) === 'Paused';
@@ -184,7 +206,7 @@ export function ActualListView() {
       }
       return true;
     });
-  }, [jobs, woMap, search, fDateFrom, fDateTo, fMachine, fOperator, fStatus, now]);
+  }, [jobs, woMap, search, fDateFrom, fDateTo, fMachine, fOperator, fStatus, fProduct, now]);
 
   // KPIs
   const totalActualHours = useMemo(() => {
@@ -410,18 +432,82 @@ export function ActualListView() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto max-h-[640px]">
           <table className="w-full text-xs min-w-[1100px]">
-            <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider text-[11px] sticky top-0 z-10 shadow-xs border-b border-slate-200">
+            <thead className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider text-[11px] sticky top-0 z-10 shadow-xs border-b border-slate-200">
               <tr className="text-left">
-                <th className="py-2.5 px-3 w-12 text-center">#</th>
-                <th className="py-2.5 px-3">Product / Part & Customer</th>
-                <th className="py-2.5 px-3">Operation / Process</th>
-                <th className="py-2.5 px-3">Machine</th>
-                <th className="py-2.5 px-3">Operator</th>
-                <th className="py-2.5 px-3">Start Time</th>
-                <th className="py-2.5 px-3">End Time</th>
-                <th className="py-2.5 px-3">Duration</th>
-                <th className="py-2.5 px-3 text-right">Parts Output</th>
-                <th className="py-2.5 px-3 text-center">Status</th>
+                <th className="py-2.5 px-3 w-12 text-center bg-slate-100 text-slate-700">#</th>
+                <th className="py-2.5 px-3 bg-slate-100 text-slate-700">
+                  <div className="flex items-center gap-1.5 flex-nowrap">
+                    <span className="whitespace-nowrap">Product / Part</span>
+                    <select
+                      aria-label="Filter by Product"
+                      title="Filter by Product"
+                      value={fProduct}
+                      onChange={(e) => setFProduct(e.target.value)}
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[120px] truncate shadow-xs"
+                    >
+                      <option value="All">All</option>
+                      {productNames.map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
+                <th className="py-2.5 px-3 bg-slate-100 text-slate-700">Operation / Process</th>
+                <th className="py-2.5 px-3 bg-slate-100 text-slate-700">
+                  <div className="flex items-center gap-1.5 flex-nowrap">
+                    <span className="whitespace-nowrap">Machine</span>
+                    <select
+                      aria-label="Filter by Machine"
+                      title="Filter by Machine"
+                      value={fMachine}
+                      onChange={(e) => setFMachine(e.target.value)}
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[90px] truncate shadow-xs"
+                    >
+                      <option value="All">All</option>
+                      {machines.map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
+                <th className="py-2.5 px-3 bg-slate-100 text-slate-700">
+                  <div className="flex items-center gap-1.5 flex-nowrap">
+                    <span className="whitespace-nowrap">Operator</span>
+                    <select
+                      aria-label="Filter by Operator"
+                      title="Filter by Operator"
+                      value={fOperator}
+                      onChange={(e) => setFOperator(e.target.value)}
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[90px] truncate shadow-xs"
+                    >
+                      <option value="All">All</option>
+                      {operators.map((op) => (
+                        <option key={op} value={op}>{op}</option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
+                <th className="py-2.5 px-3 bg-slate-100 text-slate-700">Start Time</th>
+                <th className="py-2.5 px-3 bg-slate-100 text-slate-700">End Time</th>
+                <th className="py-2.5 px-3 bg-slate-100 text-slate-700">Duration</th>
+                <th className="py-2.5 px-3 text-right bg-slate-100 text-slate-700">Parts Output</th>
+                <th className="py-2.5 px-3 text-center bg-slate-100 text-slate-700">
+                  <div className="flex items-center justify-center gap-1.5 flex-nowrap">
+                    <span className="whitespace-nowrap">Status</span>
+                    <select
+                      aria-label="Filter by Status"
+                      title="Filter by Status"
+                      value={fStatus}
+                      onChange={(e) => setFStatus(e.target.value)}
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[80px] truncate shadow-xs"
+                    >
+                      <option value="All">All</option>
+                      <option value="Running">Running</option>
+                      <option value="Completed">Completed</option>
+                      <option value="Paused">Paused</option>
+                    </select>
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">

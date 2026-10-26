@@ -682,17 +682,81 @@ export function PlannedListView() {
           <table className="w-full text-xs min-w-[1050px]">
             <thead className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider text-[11px] sticky top-0 z-10 shadow-xs border-b border-slate-200">
               <tr className="text-left">
-                <th className="py-3 px-3 w-12 text-center bg-slate-100 text-slate-700">#</th>
-                <th className="py-3 px-3 bg-slate-100 text-slate-700">Product / Part & Customer</th>
-                <th className="py-3 px-3 bg-slate-100 text-slate-700">Operation / Process</th>
-                <th className="py-3 px-3 bg-slate-100 text-slate-700">Plan Date</th>
-                <th className="py-3 px-3 bg-slate-100 text-slate-700">Time Window</th>
-                <th className="py-3 px-3 bg-slate-100 text-slate-700">Duration</th>
-                <th className="py-3 px-3 bg-slate-100 text-slate-700">Machine</th>
-                <th className="py-3 px-3 bg-slate-100 text-slate-700">Operator</th>
-                <th className="py-3 px-3 text-right bg-slate-100 text-slate-700">Qty</th>
-                <th className="py-3 px-3 text-center bg-slate-100 text-slate-700">Status</th>
-                <th className="py-3 px-3 text-center bg-slate-100 text-slate-700">Actions</th>
+                <th className="py-2.5 px-3 w-12 text-center bg-slate-100 text-slate-700">#</th>
+                <th className="py-2.5 px-3 bg-slate-100 text-slate-700">
+                  <div className="flex items-center gap-1.5 flex-nowrap">
+                    <span className="whitespace-nowrap">Product / Part</span>
+                    <select
+                      aria-label="Filter by Product"
+                      title="Filter by Product"
+                      value={fProduct}
+                      onChange={(e) => setFProduct(e.target.value)}
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[120px] truncate shadow-xs"
+                    >
+                      <option value="All">All</option>
+                      {productNames.map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
+                <th className="py-2.5 px-3 bg-slate-100 text-slate-700">Operation / Process</th>
+                <th className="py-2.5 px-3 bg-slate-100 text-slate-700">Plan Date</th>
+                <th className="py-2.5 px-3 bg-slate-100 text-slate-700">Time Window</th>
+                <th className="py-2.5 px-3 bg-slate-100 text-slate-700">Duration</th>
+                <th className="py-2.5 px-3 bg-slate-100 text-slate-700">
+                  <div className="flex items-center gap-1.5 flex-nowrap">
+                    <span className="whitespace-nowrap">Machine</span>
+                    <select
+                      aria-label="Filter by Machine"
+                      title="Filter by Machine"
+                      value={fMachine}
+                      onChange={(e) => setFMachine(e.target.value)}
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[90px] truncate shadow-xs"
+                    >
+                      <option value="All">All</option>
+                      {machines.map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
+                <th className="py-2.5 px-3 bg-slate-100 text-slate-700">
+                  <div className="flex items-center gap-1.5 flex-nowrap">
+                    <span className="whitespace-nowrap">Operator</span>
+                    <select
+                      aria-label="Filter by Operator"
+                      title="Filter by Operator"
+                      value={fOperator}
+                      onChange={(e) => setFOperator(e.target.value)}
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[90px] truncate shadow-xs"
+                    >
+                      <option value="All">All</option>
+                      {operators.map((op) => (
+                        <option key={op} value={op}>{op}</option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
+                <th className="py-2.5 px-3 text-right bg-slate-100 text-slate-700">Qty</th>
+                <th className="py-2.5 px-3 text-center bg-slate-100 text-slate-700">
+                  <div className="flex items-center justify-center gap-1.5 flex-nowrap">
+                    <span className="whitespace-nowrap">Status</span>
+                    <select
+                      aria-label="Filter by Status"
+                      title="Filter by Status"
+                      value={fStatus}
+                      onChange={(e) => setFStatus(e.target.value)}
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[80px] truncate shadow-xs"
+                    >
+                      <option value="All">All</option>
+                      <option value="Today">Today</option>
+                      <option value="Upcoming">Upcoming</option>
+                      <option value="Past">Past</option>
+                    </select>
+                  </div>
+                </th>
+                <th className="py-2.5 px-3 text-center bg-slate-100 text-slate-700">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
