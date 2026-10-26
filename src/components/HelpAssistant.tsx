@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
-import { CheckCircle2, CircleHelp, Compass, Loader2, Mic, Square, Volume2, X } from 'lucide-react';
+import { Bot, CheckCircle2, CircleHelp, Compass, Loader2, Mic, Square, Volume2, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { getBreadcrumbs } from '@/config/navigation';
 import { useDraggable } from '@/lib/useDraggable';
@@ -144,7 +144,7 @@ const REFUSAL: Record<Lang, string> = {
  * Used when the help service cannot be reached (not deployed yet / no connection): the best matching written note is read out
  * as it is. It only ever answers from the notes, and refuses anything that matches none of them.
  */
-function offlineAnswer(question: string, page: string, lang: Lang): string {
+export function offlineAnswer(question: string, page: string, lang: Lang): string {
   const generic = /\b(page|screen)\b|இந்த|indha|intha|ithu/i.test(question);
   const ranked = rankNotes(question, page).filter((r) => r.n.id !== 'overview' || r.kw > 0);
   const best = ranked.find((r) => r.kw > 0) ?? (generic ? ranked.find((r) => r.total > 0) : undefined);
@@ -379,6 +379,11 @@ export function HelpAssistant() {
         aria-label="Guide me" title="Guide me: step by step on this screen (what to enter, why, where it is saved)"
         className="flex h-12 w-12 items-center justify-center rounded-full bg-orange-600 text-white shadow-lg hover:bg-orange-700">
         <Compass size={20} />
+      </button>
+      <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { endSession(false); window.dispatchEvent(new CustomEvent('argus:copilot')); }}
+        aria-label="Copilot" title="Copilot: type or say what you want done, for example add enquiry for ABC"
+        className="flex h-12 w-12 items-center justify-center rounded-full bg-violet-600 text-white shadow-lg hover:bg-violet-700">
+        <Bot size={20} />
       </button>
       {(active || note) && (
         <div role="status" className="max-w-[20rem] rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
