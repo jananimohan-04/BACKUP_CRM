@@ -540,16 +540,48 @@ export function ProjectCostingPage() {
       // Real machine time: a job card records when it started and when it was completed (the report
       // function doesn't return those), so attach the elapsed minutes to each job card operation.
       const woNos = (baseReport.work_orders || []).map((w: any) => w.wo_no).filter(Boolean);
-      if (woNos.length && mergedOps.length) {
-        const { data: spans, error: spanErr } = await supabase
-          .from('cnc_job_cards').select('id, actual_start, completed_at').in('work_order', woNos);
-        if (spanErr) console.error('Project costing: job card run times unavailable', spanErr);
+      const matchWoList = Array.from(new Set([...woNos, p.project_name].filter(Boolean)));
+      if (matchWoList.length) {
+        const { data: jCards, error: spanErr } = await supabase
+          .from('cnc_job_cards')
+          .select('id, job_no, work_order, part_name, operation, machine, operator, actual_start, actual_end, completed_at, actual_minutes, status, qty_completed, qty_planned, cycle_time, setup_time')
+          .in('work_order', matchWoList);
+        if (spanErr) console.error('Project costing: job cards unavailable', spanErr);
         const minutesById = new Map<string, number>();
-        for (const j of spans ?? []) {
-          const m = spanMinutes(j.actual_start, j.completed_at);
+        const jcList = (jCards ?? []) as any[];
+        for (const j of jcList) {
+          const st = j.actual_start ? new Date(j.actual_start).getTime() : NaN;
+          const en = new Date(j.actual_end || j.completed_at || '').getTime();
+          let m: number | null = null;
+          if (Number(j.actual_minutes) > 0) m = Math.round(Number(j.actual_minutes));
+          else if (Number.isFinite(st) && Number.isFinite(en) && en > st) m = Math.round((en - st) / 60000);
+          else if (Number.isFinite(st) && ['Running', 'In Progress'].includes(String(j.status))) m = Math.round((Date.now() - st) / 60000);
           if (m != null) minutesById.set(String(j.id), m);
         }
         mergedOps = mergedOps.map((o: any) => (minutesById.has(String(o.id)) ? { ...o, actual_minutes: String(minutesById.get(String(o.id))) } : o));
+
+        // If mergedOps is missing runs recorded in Scheduling, append them directly
+        const existingJobIds = new Set(mergedOps.map((o: any) => String(o.id)));
+        for (const j of jcList) {
+          if (!existingJobIds.has(String(j.id))) {
+            const m = minutesById.get(String(j.id)) || Number(j.actual_minutes) || 0;
+            mergedOps.push({
+              id: j.id,
+              job_no: j.job_no,
+              operation: j.operation || 'Machining',
+              machine: j.machine || '',
+              operator: j.operator || '',
+              qty_planned: String(j.qty_planned ?? 0),
+              qty_completed: String(j.qty_completed ?? 0),
+              qty_rejected: String(j.qty_rejected ?? 0),
+              cycle_time: String(j.cycle_time ?? 0),
+              setup_time: String(j.setup_time ?? 0),
+              actual_minutes: String(m),
+              status: j.status,
+            });
+            existingJobIds.add(String(j.id));
+          }
+        }
       }
       // work_order_id is a uuid column; a non-uuid id would make the database reject the whole request.
       const isUuid = (v: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v ?? ''));

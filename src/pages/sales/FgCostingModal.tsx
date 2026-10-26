@@ -23,7 +23,7 @@ import { insertTolerant } from '@/lib/partRouting';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   costInr as inr, costNum as num, costUid as uid,
-  buildMaterialLines, buildOpLines, computeTotals, computeWarnings,
+  buildMaterialLines, buildOpLines, computeTotals, computeWarnings, matchProcess,
   applyMatPatch, applyOpPatch,
   buildVersionPayload, parseQuoteProducts,
   type MaterialLine, type OpLine,
@@ -157,6 +157,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   const [jobCards, setJobCards] = useState<any[]>([]);
   const [woOps, setWoOps] = useState<any[]>([]);
   const [processes, setProcesses] = useState<any[]>([]);
+  const [opPlans, setOpPlans] = useState<any[]>([]);
 
   // Editable product code (drives the BOM lookup) + quotation overrides.
   const [code, setCode] = useState('');
@@ -330,12 +331,25 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
       setLoading(true);
       setLoadError(null);
       try {
-        const soRef: string = inward.sales_order_ref ?? '';
+        const candidateRefs = Array.from(new Set([
+          inward.sales_order_ref,
+          card?.refNo,
+          inward.project_name,
+          (card?.raw as any)?.project_name,
+          (card?.raw as any)?.lead_no,
+          (card?.raw as any)?.sales_order,
+          card?.lead_no,
+        ].map((s) => String(s ?? '').trim()).filter(Boolean)));
+
         let soRow: any = null;
-        if (soRef) {
-          const r = await supabase.from('cnc_sales_orders').select('*').eq('order_no', soRef).limit(1);
-          if (!r.error && (r.data ?? []).length > 0) soRow = r.data![0];
+        for (const ref of candidateRefs) {
+          const r1 = await supabase.from('cnc_sales_orders').select('*').eq('order_no', ref).limit(1);
+          if (!r1.error && (r1.data ?? []).length > 0) { soRow = r1.data![0]; break; }
+          const r2 = await supabase.from('cnc_sales_orders').select('*').eq('lead_no', ref).limit(1);
+          if (!r2.error && (r2.data ?? []).length > 0) { soRow = r2.data![0]; break; }
         }
+        if (soRow?.order_no && !candidateRefs.includes(String(soRow.order_no).trim())) candidateRefs.push(String(soRow.order_no).trim());
+        if (soRow?.lead_no && !candidateRefs.includes(String(soRow.lead_no).trim())) candidateRefs.push(String(soRow.lead_no).trim());
         if (cancelled) return;
         setSo(soRow);
         // Quotation pricing is restricted: only fetch it for Project Costing viewers.
@@ -354,10 +368,25 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
         setQuote(qRow);
         const codeCandidates = [soRow?.part_no, inward.part_number, qRow?.part_number];
         setCode(String(codeCandidates.find((c) => String(c ?? '').trim() !== '' && String(c).trim().toUpperCase() !== 'N/A') ?? '').trim());
+        const candidateNames = Array.from(new Set([
+          card?.part,
+          getProductBaseName(card?.part),
+          inward.part_name,
+          inward.product_name,
+          getProductBaseName(inward.part_name),
+          getProductBaseName(inward.product_name),
+          soRow?.part_name,
+          qRow?.part_name,
+        ].map((s) => String(s ?? '').trim()).filter(Boolean)));
+
         let woRows: any[] = [];
-        if (soRow?.order_no) {
-          const r = await supabase.from('cnc_work_orders').select('*').eq('sales_order', soRow.order_no).order('created_at');
-          if (!r.error) woRows = (r.data ?? []).filter((w: any) => w.is_part_order !== true);
+        if (candidateRefs.length > 0) {
+          const r = await supabase.from('cnc_work_orders').select('*').in('sales_order', candidateRefs).order('created_at');
+          if (!r.error && (r.data ?? []).length > 0) woRows = r.data!;
+        }
+        if (woRows.length === 0 && candidateNames.length > 0) {
+          const r = await supabase.from('cnc_work_orders').select('*').or(`part_name.in.(${candidateNames.map(p => `"${p}"`).join(',')}),product_name.in.(${candidateNames.map(p => `"${p}"`).join(',')})`).order('created_at');
+          if (!r.error && (r.data ?? []).length > 0) woRows = r.data!;
         }
         if (cancelled) return;
         setWos(woRows);
@@ -413,19 +442,35 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
         let supRes: any = { data: [], error: null };
         let jcRes: any = { data: [], error: null };
         let wooRes: any = { data: [], error: null };
+        let planRes: any = { data: [], error: null };
         let procRes: any = { data: [], error: null };
         if (hasCostView) {
-          ([rmRes, supRes, jcRes, wooRes, procRes] = await Promise.all([
+          const woNos = woRows.map((w) => w.wo_no).filter(Boolean);
+          const woIds = woRows.map((w) => w.id).filter(Boolean);
+          const jcTargets = Array.from(new Set([...woNos, ...candidateRefs]));
+
+          ([rmRes, supRes, jcRes, wooRes, planRes, procRes] = await Promise.all([
             supabase.from('cnc_raw_materials').select('*'),
             supabase.from('cnc_suppliers').select('id,name'),
-            woRows.length > 0
-              ? supabase.from('cnc_job_cards').select('*').in('work_order', woRows.map((w) => w.wo_no))
+            jcTargets.length > 0
+              ? supabase.from('cnc_job_cards').select('*').in('work_order', jcTargets)
+              : (candidateNames.length > 0
+                  ? supabase.from('cnc_job_cards').select('*').in('part_name', candidateNames)
+                  : Promise.resolve({ data: [], error: null } as any)),
+            woIds.length > 0
+              ? supabase.from('cnc_work_order_operations').select('*').in('work_order_id', woIds).order('operation_sequence')
               : Promise.resolve({ data: [], error: null } as any),
-            woRows.length > 0
-              ? supabase.from('cnc_work_order_operations').select('*').in('work_order_id', woRows.map((w) => w.id)).order('operation_sequence')
+            woIds.length > 0
+              ? supabase.from('cnc_operation_plans').select('*').in('work_order_id', woIds).order('operation_sequence')
               : Promise.resolve({ data: [], error: null } as any),
             supabase.from('cnc_processes').select('*').order('process_code'),
           ]));
+
+          // If job cards not found by work order number, try matching by part name
+          if ((!jcRes.data || jcRes.data.length === 0) && candidateNames.length > 0) {
+            const byPart = await supabase.from('cnc_job_cards').select('*').in('part_name', candidateNames);
+            if (!byPart.error && (byPart.data ?? []).length > 0) jcRes = byPart;
+          }
         }
         if (cancelled) return;
         if (!rmRes.error) setRawMats(rmRes.data ?? []);
@@ -436,6 +481,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
         }
         if (!jcRes.error) setJobCards(jcRes.data ?? []);
         if (!wooRes.error && !(wooRes as any).error) setWoOps((wooRes.data ?? []) as any[]);
+        if (!planRes.error) setOpPlans(planRes.data ?? []);
         if (!procRes.error) setProcesses(procRes.data ?? []);
       } catch (e: any) {
         if (!cancelled) setLoadError(e?.message ?? String(e));
@@ -555,12 +601,8 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   // e.g. a card with 24 planned hours prices correctly while the WO operation
   // still shows cycle 0. Falls back to WO ops, then engineered routing.
   const autoOps = useMemo(() => {
-    const woNos = new Set((wos ?? []).map((w: any) => String(w.wo_no ?? '')));
-    const relevant = (jobCards ?? []).filter((c: any) => woNos.has(String(c.work_order ?? '')));
-    if (relevant.length > 0) return buildOpLines([], relevant, processes, wos);
-    return buildOpLines(woOps, jobCards, processes, wos);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [woOps, jobCards, processes, wos]);
+    return buildOpLines(woOps, jobCards, processes, wos, opPlans);
+  }, [woOps, jobCards, processes, wos, opPlans]);
   // First-batch fallback: no work orders/job cards exist yet, so value the
   // engineered routing steps with Process Master rates (hours scale with the
   // batch qty). Real production history wins whenever it exists.
@@ -1394,7 +1436,25 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
               <div className="border border-dashed border-slate-300 rounded-lg p-2.5 mt-2">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Add operation line</p>
                 <div className="grid grid-cols-2 gap-2">
-                  <input value={newOp.process} onChange={(e) => setNewOp({ ...newOp, process: e.target.value })} placeholder="Process *" className={`${inputClass} text-xs`} />
+                  <input
+                    list="costing-proc-list"
+                    value={newOp.process}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const match = matchProcess(processes, val);
+                      const mRate = match ? String(match.cost_per_hour || match.hourly_rate || '') : newOp.mRate;
+                      setNewOp({ ...newOp, process: val, mRate: mRate || newOp.mRate });
+                    }}
+                    placeholder="Process *"
+                    className={`${inputClass} text-xs`}
+                  />
+                  <datalist id="costing-proc-list">
+                    {processes.map((p: any) => (
+                      <option key={p.id || p.process_code} value={p.process_name || p.process_code}>
+                        {p.process_name} (₹{p.cost_per_hour || 0}/hr)
+                      </option>
+                    ))}
+                  </datalist>
                   <input value={newOp.machine} onChange={(e) => setNewOp({ ...newOp, machine: e.target.value })} placeholder="Machine" className={`${inputClass} text-xs`} />
                   <input type="number" min="0" step="0.01" value={newOp.hours} onChange={(e) => setNewOp({ ...newOp, hours: e.target.value })} placeholder="Mc hours *" className={`${inputClass} text-xs`} />
                   <input type="number" min="0" value={newOp.mRate} onChange={(e) => setNewOp({ ...newOp, mRate: e.target.value })} placeholder="Mc rate ₹/h" className={`${inputClass} text-xs`} />

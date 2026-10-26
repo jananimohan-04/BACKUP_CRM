@@ -94,42 +94,131 @@ export function buildMaterialLines(
   });
 }
 
-export function buildOpLines(woOps: any[], jobCards: any[], processes: any[], wos: any[]): OpLine[] {
-  const procByCode = new Map((processes ?? []).map((p: any) => [String(p.process_code), p]));
-  const procByName = new Map((processes ?? []).map((p: any) => [String(p.process_name).toLowerCase(), p]));
-  const cardsByOp = new Map<string, any[]>();
-  for (const c of jobCards ?? []) {
-    const k = `${c.work_order}::${Number(c.op_no)}`;
-    if (!cardsByOp.has(k)) cardsByOp.set(k, []);
-    cardsByOp.get(k)!.push(c);
+/** Match an operation name or machine to a row in cnc_processes (Process Master). */
+export function matchProcess(processes: any[], nameOrCode: string, machine?: string): any {
+  if (!nameOrCode && !machine) return null;
+  const norm = (s: any) => String(s ?? '').toLowerCase().trim().replace(/[-_/]/g, ' ').replace(/\s+/g, ' ');
+  const target = norm(nameOrCode);
+  const targetMach = norm(machine);
+  const list = processes ?? [];
+
+  // 1. Exact match by process_code
+  if (target) {
+    const f = list.find((p: any) => norm(p.process_code) === target);
+    if (f) return f;
   }
+
+  // 2. Exact match by process_name
+  if (target) {
+    const f = list.find((p: any) => norm(p.process_name) === target);
+    if (f) return f;
+  }
+
+  // 3. Substring / contains match by name
+  if (target) {
+    const f = list.find((p: any) => {
+      const pn = norm(p.process_name);
+      return pn && (pn.includes(target) || target.includes(pn));
+    });
+    if (f) return f;
+  }
+
+  // 4. Machine type match
+  if (targetMach) {
+    const f = list.find((p: any) => {
+      const mt = norm(p.machine_type);
+      return mt && (mt === targetMach || mt.includes(targetMach) || targetMach.includes(mt));
+    });
+    if (f) return f;
+  }
+
+  // 5. Machine in process name
+  if (targetMach) {
+    const f = list.find((p: any) => {
+      const pn = norm(p.process_name);
+      return pn && (pn.includes(targetMach) || targetMach.includes(pn));
+    });
+    if (f) return f;
+  }
+
+  return null;
+}
+
+/** Compute elapsed run time of a job card or operation plan in hours. */
+export function calcJobCardHours(c: any): number {
+  if (!c) return 0;
+  // 1. Direct actual_minutes recorded
+  if (costNum(c.actual_minutes) > 0) {
+    return costNum(c.actual_minutes) / 60;
+  }
+  // 2. Real timestamps (actual_start to actual_end / completed_at)
+  const st = c.actual_start ? new Date(c.actual_start).getTime() : NaN;
+  const en = new Date(c.actual_end || c.completed_at || '').getTime();
+  if (Number.isFinite(st) && Number.isFinite(en) && en > st) {
+    return (en - st) / 3600000;
+  }
+  // 3. In-progress / running right now in scheduling
+  if (Number.isFinite(st) && (['Running', 'In Progress'].includes(String(c.status)) || !c.actual_end)) {
+    const now = Date.now();
+    if (now > st) return (now - st) / 3600000;
+  }
+  // 4. Operation plan start_time / end_time ('HH:mm')
+  if (c.start_time && c.end_time) {
+    const toMin = (t: string) => {
+      const [h, m] = String(t).split(':').map(Number);
+      return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+    };
+    const diff = toMin(c.end_time) - toMin(c.start_time);
+    if (diff > 0) return diff / 60;
+  }
+  // 5. Fallback planned hours from cycle / setup
+  const qty = costNum(c.qty_completed) > 0 ? costNum(c.qty_completed) : costNum(c.qty_planned);
+  const planned = hoursOf(costNum(c.setup_time), qty, costNum(c.cycle_time));
+  return planned > 0 ? planned : 0;
+}
+
+export function buildOpLines(
+  woOps: any[],
+  jobCards: any[],
+  processes: any[],
+  wos: any[],
+  opPlans: any[] = []
+): OpLine[] {
   const ops: OpLine[] = [];
-  // Real run time of a job card (actual start to end). Used when no cycle / setup time was planned,
-  // so a job that really ran for hours is never costed as zero.
-  const elapsedHours = (cs: any[]) => cs.reduce((s, c) => {
-    const st = c?.actual_start ? new Date(c.actual_start).getTime() : NaN;
-    const en = new Date(c?.actual_end || c?.completed_at || '').getTime();
-    return Number.isFinite(st) && Number.isFinite(en) && en > st ? s + (en - st) / 3600000 : s;
-  }, 0);
+  const norm = (s: any) => String(s ?? '').toLowerCase().trim().replace(/[-_/]/g, ' ').replace(/\s+/g, ' ');
+
   const pushOp = (
-    seq: number, p: any, machine: string, operator: string,
-    qty: number, cycleMin: number, setupMin: number, loggedHours = 0, label = '',
+    seq: number,
+    processLabel: string,
+    processCode: string,
+    machine: string,
+    operator: string,
+    qty: number,
+    cycleMin: number,
+    setupMin: number,
+    loggedHours: number,
   ) => {
+    // Match Process Master to get the per hour rate (cost_per_hour or hourly_rate)
+    const p = matchProcess(processes, processLabel || processCode, machine);
+    const mRate = costNum(p?.cost_per_hour ?? p?.hourly_rate ?? 0);
+
     const planned = hoursOf(setupMin, qty, cycleMin);
-    const mh = planned > 0 ? planned : Math.max(0, loggedHours);
-    const mRate = costNum(p?.cost_per_hour);
-    const lh = operator ? mh : 0;
-    const machineCost = mh * mRate;
+    // User formula: in scheduling how many hrs ran is in data; hour rate * hours calculate and show
+    const mh = loggedHours > 0 ? loggedHours : planned;
+    const roundedMh = Math.round(mh * 100) / 100;
+    const machineCost = Math.round(roundedMh * mRate * 100) / 100;
+
+    const lh = operator ? roundedMh : 0;
     const labourCost = 0;
+
     ops.push({
       key: costUid(),
       seq,
-      process_code: p?.process_code ?? '',
-      // The name the run was recorded under is kept when Process Master has no such process, so it is visible why no rate was found.
-      process_name: p?.process_name ?? label,
-      machine,
-      operator,
-      machine_hours: mh,
+      process_code: p?.process_code ?? processCode ?? '',
+      process_name: p?.process_name ?? processLabel ?? 'Machining',
+      machine: machine || p?.machine_type || '',
+      operator: operator || '',
+      machine_hours: roundedMh,
       machine_rate: mRate,
       machine_cost: machineCost,
       labour_hours: lh,
@@ -138,36 +227,160 @@ export function buildOpLines(woOps: any[], jobCards: any[], processes: any[], wo
       cycle_time: costNum(cycleMin),
       setup_time: costNum(setupMin),
       cost_per_hour: mRate,
-      // Machine cost = Cost Per Hour × Hours run
       process_cost: machineCost + labourCost,
       manual: false,
-      warn_machine: mh > 0 && mRate <= 0,
-      warn_labour: lh > 0,
+      warn_machine: roundedMh > 0 && mRate <= 0,
+      warn_labour: false,
     });
   };
-  if ((woOps ?? []).length > 0) {
-    for (const o of woOps) {
-      const p = procByCode.get(String(o.process_code))
-        ?? procByName.get(String(o.process_name ?? '').toLowerCase());
+
+  const allJobs = jobCards ?? [];
+  const allWoOps = woOps ?? [];
+  const allPlans = opPlans ?? [];
+
+  if (allWoOps.length > 0) {
+    const consumedJobIds = new Set<string>();
+    allWoOps.forEach((o, idx) => {
       const woNo = (wos ?? []).find((w: any) => String(w.id) === String(o.work_order_id))?.wo_no;
-      const cards = cardsByOp.get(`${woNo}::${costNum(o.operation_sequence) * 10}`) ?? [];
-      const c = cards[0];
+      const oSeq = costNum(o.operation_sequence) || (idx + 1);
+      const oName = String(o.process_name || o.process_code || '');
+
+      // Find job cards that match this operation
+      const matchedCards = allJobs.filter((c: any) => {
+        if (consumedJobIds.has(String(c.id))) return false;
+        const cWo = String(c.work_order ?? '');
+        const cOpNo = Number(c.op_no);
+        const cName = String(c.operation ?? '');
+        const sameWo = !woNo || cWo === woNo;
+        const matchesSeq = Number.isFinite(cOpNo) && (cOpNo === oSeq * 10 || cOpNo === oSeq);
+        const matchesName = norm(cName) === norm(oName) || (cName && oName && (norm(cName).includes(norm(oName)) || norm(oName).includes(norm(cName))));
+        return sameWo && (matchesSeq || matchesName);
+      });
+
+      matchedCards.forEach((c: any) => consumedJobIds.add(String(c.id)));
+
+      const cardHours = matchedCards.reduce((sum, c) => sum + calcJobCardHours(c), 0);
+      const directHours = costNum(o.actual_minutes) > 0 ? costNum(o.actual_minutes) / 60 : 0;
+      const loggedHours = directHours > 0 ? directHours : cardHours;
+
+      const firstCard = matchedCards[0];
       const qty = costNum(o.completed_qty) > 0 ? costNum(o.completed_qty) : costNum(o.planned_qty);
-      pushOp(costNum(o.operation_sequence), p, o.machine ?? c?.machine ?? '', o.operator ?? c?.operator ?? '',
-        qty, costNum(o.est_cycle_time), costNum(o.setup_time),
-        costNum(o.actual_minutes) > 0 ? costNum(o.actual_minutes) / 60 : elapsedHours(cards), String(o.process_name || c?.operation || ''));
+      const machine = o.machine ?? firstCard?.machine ?? '';
+      const operator = o.operator ?? firstCard?.operator ?? '';
+
+      pushOp(
+        oSeq,
+        oName,
+        String(o.process_code ?? ''),
+        machine,
+        operator,
+        qty,
+        costNum(o.est_cycle_time),
+        costNum(o.setup_time),
+        loggedHours
+      );
+    });
+
+    // If there were extra job cards from scheduling that didn't match any woOp, add them
+    const unconsumedJobs = allJobs.filter((c: any) => !consumedJobIds.has(String(c.id)));
+    if (unconsumedJobs.length > 0) {
+      const seen = new Map<string, { machine: string; operator: string; qty: number; cycle: number; setup: number; hours: number }>();
+      unconsumedJobs.forEach((c: any) => {
+        const opName = String(c.operation || 'Machining').trim();
+        const mach = String(c.machine || '').trim();
+        const k = `${opName}|${mach}`;
+        const prev = seen.get(k) ?? {
+          machine: mach,
+          operator: String(c.operator || '').trim(),
+          qty: costNum(c.qty_completed) || costNum(c.qty_planned),
+          cycle: costNum(c.cycle_time),
+          setup: costNum(c.setup_time),
+          hours: 0,
+        };
+        prev.hours += calcJobCardHours(c);
+        if (!prev.operator && c.operator) prev.operator = String(c.operator).trim();
+        seen.set(k, prev);
+      });
+
+      let nextSeq = ops.length + 1;
+      seen.forEach((data, k) => {
+        const opName = k.split('|')[0];
+        pushOp(nextSeq++, opName, '', data.machine, data.operator, data.qty, data.cycle, data.setup, data.hours);
+      });
     }
-  } else {
-    const seen = new Set<string>();
-    for (const c of jobCards ?? []) {
-      const k = `${c.work_order}::${Number(c.op_no)}`;
-      if (seen.has(k)) continue;
-      seen.add(k);
-      const p = procByName.get(String(c.operation ?? '').toLowerCase());
-      const qty = costNum(c.qty_completed) > 0 ? costNum(c.qty_completed) : costNum(c.qty_planned);
-      pushOp(Number(c.op_no) / 10 || 0, p, c.machine ?? '', c.operator ?? '', qty, costNum(c.cycle_time), costNum(c.setup_time), elapsedHours(cardsByOp.get(k) ?? [c]), String(c.operation ?? ''));
-    }
+  } else if (allJobs.length > 0) {
+    // Scheduling data from job cards (no work order operations table)
+    // Group by operation name & machine so multiple runs of the same operation add their running hours
+    const grouped = new Map<string, {
+      opName: string;
+      machine: string;
+      operator: string;
+      qty: number;
+      cycle: number;
+      setup: number;
+      hours: number;
+      seq: number;
+    }>();
+
+    allJobs.forEach((c: any) => {
+      const opName = String(c.operation || 'Machining').trim();
+      const mach = String(c.machine || '').trim();
+      const k = `${opName.toLowerCase()}|${mach.toLowerCase()}`;
+      const hrs = calcJobCardHours(c);
+      const existing = grouped.get(k);
+
+      if (existing) {
+        existing.hours += hrs;
+        if (!existing.operator && c.operator) existing.operator = String(c.operator).trim();
+        if (costNum(c.qty_completed) > existing.qty) existing.qty = costNum(c.qty_completed);
+      } else {
+        const seq = Number(c.op_no) > 0 ? (Number(c.op_no) >= 10 ? Math.round(Number(c.op_no) / 10) : Number(c.op_no)) : (grouped.size + 1);
+        grouped.set(k, {
+          opName,
+          machine: mach,
+          operator: String(c.operator || '').trim(),
+          qty: costNum(c.qty_completed) || costNum(c.qty_planned),
+          cycle: costNum(c.cycle_time),
+          setup: costNum(c.setup_time),
+          hours: hrs,
+          seq,
+        });
+      }
+    });
+
+    let s = 1;
+    grouped.forEach((item) => {
+      pushOp(
+        item.seq || s++,
+        item.opName,
+        '',
+        item.machine,
+        item.operator,
+        item.qty,
+        item.cycle,
+        item.setup,
+        item.hours
+      );
+    });
+  } else if (allPlans.length > 0) {
+    // Planned scheduling runs from cnc_operation_plans
+    allPlans.forEach((p: any, idx: number) => {
+      const seq = costNum(p.operation_sequence) || (idx + 1);
+      const hours = calcJobCardHours(p);
+      pushOp(
+        seq,
+        String(p.process_name || 'Machining'),
+        '',
+        String(p.machine || ''),
+        String(p.operator || ''),
+        costNum(p.quantity),
+        0,
+        0,
+        hours
+      );
+    });
   }
+
   ops.sort((a, b) => a.seq - b.seq);
   return ops;
 }
