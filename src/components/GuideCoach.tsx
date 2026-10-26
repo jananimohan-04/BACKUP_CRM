@@ -440,6 +440,8 @@ export function GuideCoach() {
   const [teaching, setTeaching] = useState(false);   // Teaching mode: the walkthrough plays itself, narrated
   const [fullErpTeaching, setFullErpTeaching] = useState(false);  // Full ERP teaching: navigate through ALL pages
   const [erpPageIndex, setErpPageIndex] = useState(0);  // Current page index in full ERP teaching
+  const [teachingElements, setTeachingElements] = useState<{ selector: string; label: string }[]>([]);
+  const [currentTeachElement, setCurrentTeachElement] = useState(0);
   const teachRef = useRef(false);
   const fullErpRef = useRef(false);
   const queueRef = useRef<Guide[]>([]);
@@ -466,7 +468,25 @@ export function GuideCoach() {
     return () => { mo.disconnect(); window.clearTimeout(t); };
   }, [path]);
 
-  const close = useCallback(() => { teachRef.current = false; fullErpRef.current = false; fallbackRef.current = false; queueRef.current = []; stepToken.current += 1; setTeaching(false); setFullErpTeaching(false); setErpPageIndex(0); stopSpeaking(); setActive(null); setPicker(null); setFlight(null); setRect(null); targetEl.current = null; }, []);
+  const close = useCallback(() => { 
+    teachRef.current = false; 
+    fullErpRef.current = false; 
+    fallbackRef.current = false; 
+    queueRef.current = []; 
+    stepToken.current += 1; 
+    setTeaching(false); 
+    setFullErpTeaching(false); 
+    setErpPageIndex(0); 
+    setTeachingElements([]); 
+    setCurrentTeachElement(0);
+    setToast('');
+    stopSpeaking(); 
+    setActive(null); 
+    setPicker(null); 
+    setFlight(null); 
+    setRect(null); 
+    targetEl.current = null; 
+  }, []);
   const start = useCallback((g: Guide) => {
     window.dispatchEvent(new Event('argus:voice-pause'));
     setOffer(null); setPicker(null); setFlight(null); setActive({ guide: g, i: 0 });
@@ -555,29 +575,41 @@ export function GuideCoach() {
   const teachCurrentPage = useCallback(() => {
     if (!teachRef.current) return;
     
+    // Stop any previous speech first
+    stopSpeaking();
+    
+    // Get the current page title
+    const pageTitle = pageTitles[path.replace(/^\//, '')] || path.split('/').pop() || 'this page';
+    
     // ALWAYS use comprehensive page teaching first - teach ALL functions
     const pageTeaching = PAGE_TEACHINGS[path];
     if (pageTeaching) {
       fallbackRef.current = true;
       const token = ++stepToken.current;
-      const pageTitle = pageTitles[path.replace(/^\//, '')] || path;
       const text = lang === 'ta' ? pageTeaching.ta : pageTeaching.en;
       
-      // Show teaching text in toast
-      setToast(text.length > 300 ? `${text.slice(0, 300)}…` : text);
+      // Show teaching text in toast with current page title
+      const displayText = text.length > 300 ? `${text.slice(0, 300)}…` : text;
+      setToast(displayText);
+      
+      // Find and highlight elements on the page while teaching
+      highlightPageElements();
       
       // Speak the teaching with voice
       say(text, () => {
         if (stepToken.current === token) {
           fallbackRef.current = false;
           setToast('');
-          // After teaching the page, run any walkthroughs if available
+          setTeachingElements([]);
+          setCurrentTeachElement(0);
+          
+          // After teaching the page overview, run any specific walkthroughs
           const currentOffers = guidesFor(GUIDES, path, dialog);
           if (currentOffers.length && fullErpRef.current) {
             queueRef.current = currentOffers.slice(1);
             start(currentOffers[0]);
           } else if (fullErpRef.current) {
-            // Move to next page
+            // Move to next page after a pause
             window.setTimeout(() => nextPageRef.current(), 2000);
           } else {
             teachRef.current = false;
@@ -597,18 +629,16 @@ export function GuideCoach() {
       return;
     }
     
-    // Last fallback: read from notes
+    // Last fallback: generic page introduction
     fallbackRef.current = true;
     const token = ++stepToken.current;
-    const pageTitle = pageTitles[path.replace(/^\//, '')] || path;
     const intro = lang === 'ta' 
-      ? `இது ${pageTitle} பக்கம். இந்தப் பக்கத்தைப் பற்றிய தகவல் இன்னும் சேர்க்கப்படவில்லை.` 
+      ? `இது ${pageTitle} பக்கம். இந்தப் பக்கத்தின் செயல்பாடுகளை ஆராயுங்கள்.` 
       : lang === 'tanglish' 
-        ? `Ithu ${pageTitle} page. Intha page pathi info innum serkapadala.` 
-        : `This is the ${pageTitle} page. Teaching content for this page is being prepared.`;
-    const text = intro;
-    setToast(text);
-    say(text, () => {
+        ? `Ithu ${pageTitle} page. Explore the features here.` 
+        : `This is the ${pageTitle} page. Explore the features and functions available here.`;
+    setToast(intro);
+    say(intro, () => {
       if (stepToken.current === token) {
         fallbackRef.current = false;
         setToast('');
@@ -621,6 +651,29 @@ export function GuideCoach() {
       }
     }, undefined);
   }, [path, dialog, lang, start]);
+
+  // Function to find and highlight key elements on the page
+  const highlightPageElements = useCallback(() => {
+    const elements: { selector: string; label: string }[] = [];
+    
+    // Find buttons
+    document.querySelectorAll('button').forEach(btn => {
+      const text = btn.textContent?.trim();
+      if (text && text.length > 1 && text.length < 30) {
+        elements.push({ selector: `button:contains("${text}")`, label: text });
+      }
+    });
+    
+    // Find key headings
+    document.querySelectorAll('h1, h2, h3').forEach(h => {
+      const text = h.textContent?.trim();
+      if (text && text.length > 1) {
+        elements.push({ selector: 'heading', label: text });
+      }
+    });
+    
+    setTeachingElements(elements.slice(0, 10)); // Limit to 10 elements
+  }, []);
 
   // Navigate to next page in full ERP teaching
   const nextPage = useCallback(() => {
@@ -654,25 +707,35 @@ export function GuideCoach() {
       const wantFullErp = (e as CustomEvent<{ on?: boolean; fullErp?: boolean }>).detail?.fullErp ?? true; // Default to full ERP
       const turnOn = typeof want === 'boolean' ? want : !teachRef.current;
       if (!turnOn) { close(); return; }
+      
+      // Stop any existing speech first
+      stopSpeaking();
       window.dispatchEvent(new Event('argus:voice-pause'));
+      
       teachRef.current = true;
       setTeaching(true);
       
       if (wantFullErp) {
-        // Full ERP teaching: start from the first page
+        // Full ERP teaching: start from CURRENT page, not first page
         fullErpRef.current = true;
         setFullErpTeaching(true);
-        setErpPageIndex(0);
-        const firstPage = ALL_ERP_PAGES[0];
+        
+        // Find current page index in ALL_ERP_PAGES
+        const currentPageIndex = ALL_ERP_PAGES.findIndex(p => path.includes(p.page) || `/${p.page}` === path);
+        const startIndex = currentPageIndex >= 0 ? currentPageIndex : 0;
+        setErpPageIndex(startIndex);
+        
+        const currentPageLabel = pageTitles[path.replace(/^\//, '')] || ALL_ERP_PAGES[startIndex]?.label || 'this page';
         const welcome = lang === 'ta'
-          ? `வணக்கம்! ARGUS ERP முழுவதையும் கற்றுக்கொள்வோம். முதலில் ${firstPage.label} பக்கத்தில் தொடங்குவோம்.`
+          ? `வணக்கம்! ARGUS ERP கற்பித்தல் தொடங்குகிறது. ${currentPageLabel} பக்கத்தில் தொடங்குவோம்.`
           : lang === 'tanglish'
-            ? `Vanakkam! ARGUS ERP-ah muzhuva katrukkolam. Mudhalil ${firstPage.label} page-la thodanguvom.`
-            : `Welcome! Let's learn the entire ARGUS ERP. We'll start with ${firstPage.label}.`;
+            ? `Vanakkam! ARGUS ERP teaching thodanguthu. ${currentPageLabel} page-la thodanguvom.`
+            : `Welcome! ARGUS ERP teaching begins. Let's start with ${currentPageLabel}.`;
         setToast(welcome);
         say(welcome, () => {
-          navigate(`/${firstPage.page}`);
           setToast('');
+          // Start teaching current page directly (don't navigate away)
+          teachCurrentPage();
         }, undefined);
       } else {
         // Teach only current page
@@ -681,11 +744,19 @@ export function GuideCoach() {
     };
     window.addEventListener('argus:teach', on);
     return () => window.removeEventListener('argus:teach', on);
-  }, [close, lang, navigate, teachCurrentPage]);
+  }, [close, lang, path, teachCurrentPage]);
 
   // When path changes during full ERP teaching, teach the new page
+  // Use a ref to track if this is the initial mount to prevent auto-start
+  const didMountRef = useRef(false);
   useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return; // Skip on initial mount
+    }
     if (!fullErpRef.current || !teaching) return;
+    // Stop any previous speech first
+    stopSpeaking();
     // Small delay to let the page render
     const t = window.setTimeout(() => teachCurrentPage(), 1500);
     return () => window.clearTimeout(t);
@@ -792,9 +863,9 @@ export function GuideCoach() {
             </div>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500">{ALL_ERP_PAGES[erpPageIndex]?.label}</span>
+            <span className="text-xs font-medium text-orange-600">{pageTitles[path.replace(/^\//, '')] || ALL_ERP_PAGES[erpPageIndex]?.label || 'Current Page'}</span>
             <div className="flex gap-2">
-              <button onClick={nextPage} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><SkipForward size={12} />{L('Skip', 'தவிர்')}</button>
+              <button onClick={nextPage} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><SkipForward size={12} />{L('Next', 'அடுத்து')}</button>
               <button onClick={close} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50">{L('Stop', 'நிறுத்து')}</button>
             </div>
           </div>
