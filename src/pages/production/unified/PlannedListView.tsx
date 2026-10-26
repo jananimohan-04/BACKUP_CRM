@@ -28,6 +28,9 @@ export function PlannedListView() {
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [wos, setWos] = useState<any[]>([]);
   const [operations, setOperations] = useState<any[]>([]);
+  const [salesOrders, setSalesOrders] = useState<any[]>([]);
+  const [jobCards, setJobCards] = useState<any[]>([]);
+  const [inwards, setInwards] = useState<any[]>([]);
   const [machines, setMachines] = useState<string[]>([]);
   const [operators, setOperators] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,19 +76,24 @@ export function PlannedListView() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, w, m, pr, jc, opRes] = await Promise.all([
+      const [p, w, m, pr, jc, opRes, soRes, inwRes] = await Promise.all([
         supabase.from('cnc_operation_plans').select('*').order('plan_date', { ascending: false }).order('start_time', { ascending: true }),
         supabase.from('cnc_work_orders').select('*'),
         supabase.from('cnc_machines').select('code'),
         supabase.from('cnc_processes').select('machine_type'),
-        supabase.from('cnc_job_cards').select('operator'),
-        supabase.from('cnc_work_order_operations').select('id,work_order_id,operation_sequence,process_name,process_code,machine,operator'),
+        supabase.from('cnc_job_cards').select('*'),
+        supabase.from('cnc_work_order_operations').select('*'),
+        supabase.from('cnc_sales_orders').select('*'),
+        supabase.from('cnc_inwards').select('*').neq('status', 'Deleted'),
       ]);
 
       const planList = p.error ? [] : ((p.data ?? []) as PlanRow[]);
       setPlans(planList);
       setWos(w.data ?? []);
       setOperations(opRes.error ? [] : (opRes.data ?? []));
+      setJobCards(jc.error ? [] : (jc.data ?? []));
+      setSalesOrders(soRes.error ? [] : (soRes.data ?? []));
+      setInwards(inwRes.error ? [] : (inwRes.data ?? []));
 
       const machineSet = new Set<string>();
       [...(m.data ?? []).map((x: any) => x.code), ...(pr.data ?? []).map((x: any) => x.machine_type)].forEach((v) => {
@@ -125,30 +133,91 @@ export function PlannedListView() {
     return map;
   }, [wos]);
   
-  // Also create a map from operation's work_order_id to work order
-  const opWoMap = useMemo(() => {
-    const map = new Map<string, any>();
-    operations.forEach((op) => {
-      if (op.work_order_id) {
-        const wo = wos.find(w => String(w.id) === String(op.work_order_id));
-        if (wo) {
-          map.set(String(op.work_order_id).toLowerCase(), wo);
-        }
-      }
-    });
-    return map;
-  }, [operations, wos]);
-
-  // Helper to find work order by various ID formats
-  const findWo = (workOrderId: string | null | undefined) => {
+  // Comprehensive multi-source resolver for plans
+  const findWo = useCallback((workOrderId: string | null | undefined) => {
     if (!workOrderId) return null;
     const id = String(workOrderId).trim();
-    // Try direct lookup first
-    let wo = woMap.get(id) || woMap.get(id.toLowerCase());
-    // Try through operations table
-    if (!wo) wo = opWoMap.get(id.toLowerCase());
-    return wo || null;
-  };
+    const idLower = id.toLowerCase();
+
+    // 1. Direct match on work orders
+    const directWo = woMap.get(id) || woMap.get(idLower);
+    if (directWo) return directWo;
+
+    // 2. Match via operations table
+    const op = operations.find((o) =>
+      String(o.id).toLowerCase() === idLower ||
+      String(o.work_order_id).toLowerCase() === idLower
+    );
+    if (op) {
+      const linkedWo = woMap.get(String(op.work_order_id).toLowerCase()) || (op.sales_order_no ? woMap.get(String(op.sales_order_no).toLowerCase()) : null);
+      if (linkedWo) return linkedWo;
+      if (op.sales_order_no || op.sales_order_id) {
+        const so = salesOrders.find((s) =>
+          (op.sales_order_no && String(s.order_no).toLowerCase() === String(op.sales_order_no).toLowerCase()) ||
+          (op.sales_order_id && String(s.id).toLowerCase() === String(op.sales_order_id).toLowerCase())
+        );
+        if (so) {
+          return {
+            id: so.id,
+            wo_no: so.order_no,
+            part_name: so.part_name || so.product_name,
+            product_name: so.product_name,
+            customer: so.customer,
+            quantity: so.quantity,
+          };
+        }
+      }
+    }
+
+    // 3. Match via sales orders
+    const so = salesOrders.find((s) =>
+      String(s.id).toLowerCase() === idLower ||
+      String(s.order_no).toLowerCase() === idLower
+    );
+    if (so) {
+      return {
+        id: so.id,
+        wo_no: so.order_no,
+        part_name: so.part_name || so.product_name,
+        product_name: so.product_name,
+        customer: so.customer,
+        quantity: so.quantity,
+      };
+    }
+
+    // 4. Match via job cards
+    const jc = jobCards.find((j) =>
+      String(j.id).toLowerCase() === idLower ||
+      String(j.job_no).toLowerCase() === idLower ||
+      String(j.work_order).toLowerCase() === idLower
+    );
+    if (jc) {
+      return {
+        id: jc.id,
+        wo_no: jc.work_order || jc.job_no,
+        part_name: jc.part_name || jc.operation,
+        customer: jc.customer,
+        quantity: jc.qty_planned,
+      };
+    }
+
+    // 5. Match via inwards
+    const inw = inwards.find((i) =>
+      String(i.id).toLowerCase() === idLower ||
+      String(i.inward_no).toLowerCase() === idLower
+    );
+    if (inw) {
+      return {
+        id: inw.id,
+        wo_no: inw.inward_no,
+        part_name: inw.part_name || inw.material_name,
+        customer: inw.customer || inw.supplier,
+        quantity: inw.quantity,
+      };
+    }
+
+    return null;
+  }, [woMap, operations, salesOrders, jobCards, inwards]);
   
   // Get unique product/part names from work orders for filtering
   const productNames = useMemo(() => {
@@ -611,69 +680,19 @@ export function PlannedListView() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto max-h-[640px]">
           <table className="w-full text-xs min-w-[1050px]">
-            <thead className="bg-slate-800 text-white font-bold uppercase tracking-wider text-[11px] sticky top-0 z-10 shadow-xs border-b border-slate-600">
+            <thead className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider text-[11px] sticky top-0 z-10 shadow-xs border-b border-slate-200">
               <tr className="text-left">
-                <th className="py-2.5 px-3 w-12 text-center">#</th>
-                <th className="py-2.5 px-3">
-                  <div className="flex items-center gap-1.5">
-                    <span>Product / Part</span>
-                    <select
-                      value={fProduct}
-                      onChange={(e) => setFProduct(e.target.value)}
-                      className="text-[10px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[90px] truncate shadow-xs"
-                    >
-                      <option value="All">All</option>
-                      {productNames.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                  </div>
-                </th>
-                <th className="py-2.5 px-3">Operation / Process</th>
-                <th className="py-2.5 px-3">Plan Date</th>
-                <th className="py-2.5 px-3">Time Window</th>
-                <th className="py-2.5 px-3">Duration</th>
-                <th className="py-2.5 px-3">
-                  <div className="flex items-center gap-1.5">
-                    <span>Machine</span>
-                    <select
-                      value={fMachine}
-                      onChange={(e) => setFMachine(e.target.value)}
-                      className="text-[10px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[80px] truncate shadow-xs"
-                    >
-                      <option value="All">All</option>
-                      {machines.map(m => <option key={m} value={m}>{m}</option>)}
-                    </select>
-                  </div>
-                </th>
-                <th className="py-2.5 px-3">
-                  <div className="flex items-center gap-1.5">
-                    <span>Operator</span>
-                    <select
-                      value={fOperator}
-                      onChange={(e) => setFOperator(e.target.value)}
-                      className="text-[10px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[80px] truncate shadow-xs"
-                    >
-                      <option value="All">All</option>
-                      {operators.map(op => <option key={op} value={op}>{op}</option>)}
-                    </select>
-                  </div>
-                </th>
-                <th className="py-2.5 px-3 text-right">Qty</th>
-                <th className="py-2.5 px-3 text-center">
-                  <div className="flex items-center justify-center gap-1.5">
-                    <span>Status</span>
-                    <select
-                      value={fStatus}
-                      onChange={(e) => setFStatus(e.target.value)}
-                      className="text-[10px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[70px] truncate shadow-xs"
-                    >
-                      <option value="All">All</option>
-                      <option value="Today">Today</option>
-                      <option value="Upcoming">Upcoming</option>
-                      <option value="Past">Past</option>
-                    </select>
-                  </div>
-                </th>
-                <th className="py-2.5 px-3 text-center">Actions</th>
+                <th className="py-3 px-3 w-12 text-center bg-slate-100 text-slate-700">#</th>
+                <th className="py-3 px-3 bg-slate-100 text-slate-700">Product / Part & Customer</th>
+                <th className="py-3 px-3 bg-slate-100 text-slate-700">Operation / Process</th>
+                <th className="py-3 px-3 bg-slate-100 text-slate-700">Plan Date</th>
+                <th className="py-3 px-3 bg-slate-100 text-slate-700">Time Window</th>
+                <th className="py-3 px-3 bg-slate-100 text-slate-700">Duration</th>
+                <th className="py-3 px-3 bg-slate-100 text-slate-700">Machine</th>
+                <th className="py-3 px-3 bg-slate-100 text-slate-700">Operator</th>
+                <th className="py-3 px-3 text-right bg-slate-100 text-slate-700">Qty</th>
+                <th className="py-3 px-3 text-center bg-slate-100 text-slate-700">Status</th>
+                <th className="py-3 px-3 text-center bg-slate-100 text-slate-700">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -687,24 +706,14 @@ export function PlannedListView() {
                   <tr key={p.id} className="hover:bg-slate-50/70 transition">
                     <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">{idx + 1}</td>
                     <td className="py-2.5 px-3">
-                      {wo ? (
-                        <>
-                          <div className="font-semibold text-slate-900 truncate max-w-[260px]" title={wo.part_name || wo.product_name || wo.wo_no || ''}>
-                            {wo.part_name || wo.product_name || `WO: ${wo.wo_no}`}
-                          </div>
-                          <div className="text-[11px] text-slate-500 truncate max-w-[260px]">
-                            {wo.customer || ''}
-                            {wo.is_part_order === true && wo.product_name && wo.part_name ? ` · Part of ${wo.product_name}` : ''}
-                          </div>
-                        </>
-                      ) : p.work_order_id ? (
-                        <div className="text-amber-600 text-[11px]" title={`Work Order ID: ${p.work_order_id}`}>
-                          <span className="font-medium">⚠ WO Not Found</span>
-                          <div className="text-[10px] text-slate-400 font-mono">{String(p.work_order_id).slice(0, 12)}…</div>
-                        </div>
-                      ) : (
-                        <span className="text-slate-400">—</span>
-                      )}
+                      <div className="font-semibold text-slate-900 truncate max-w-[260px]" title={wo?.part_name || wo?.product_name || p.process_name || 'Production Order'}>
+                        {wo?.part_name || wo?.product_name || (p.process_name ? p.process_name : (wo?.wo_no ? 'WO: ' + wo.wo_no : 'Production Order'))}
+                      </div>
+                      <div className="text-[11px] text-slate-500 truncate max-w-[260px]">
+                        {wo?.customer
+                          ? (wo?.is_part_order === true && wo?.product_name ? `${wo.customer} · Part of ${wo.product_name}` : wo.customer)
+                          : (wo?.wo_no ? `WO: ${wo.wo_no}` : (p.machine ? `Machine: ${p.machine}` : 'Scheduled Plan'))}
+                      </div>
                     </td>
                     <td className="py-2.5 px-3">
                       <div className="font-medium text-slate-800">
