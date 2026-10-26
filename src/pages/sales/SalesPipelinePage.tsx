@@ -387,6 +387,8 @@ export interface KanbanCard {
   raw: any;
   /** Order quantity reconciliation (live rows) for order/FG/DC/invoice cards. */
   qtyTrack?: OrderQtySummary | null;
+  /** True for a record that has left the Kanban board (converted, finished, billed ...): shown only in List View. */
+  history?: boolean;
 };
 
 /**
@@ -2101,6 +2103,8 @@ export function SalesPipelinePage() {
   const [activeView, setActiveView] = useState<'pipeline' | 'enquiry_list' | 'quotation_list' | 'sales_order_list' | 'inward_list' | 'rejected_list' | 'fg_list' | 'dc_list' | 'invoice_list' | 'tracking_list'>('pipeline');
   const columns: Stage[] = ['Enquiry', 'Quotation', 'Sales Order', 'Inward', 'Finished Goods', 'DC', 'Invoice'];
   const [cards, setCards] = useState<KanbanCard[]>([]);
+  // Records that are no longer on the Kanban board; the List View adds them so it shows everything ever entered.
+  const [historyCards, setHistoryCards] = useState<KanbanCard[]>([]);
   // ERP-wide date filter: board, list/calendar views and KPI counts show only cards
   // whose record date falls in range. Pickers and quantity math keep using `cards`.
   const { inRange: inGlobalDateRange } = useGlobalDateFilter();
@@ -4352,14 +4356,93 @@ export function SalesPipelinePage() {
       } catch { /* single product */ }
       return names.length === 0 || names.every(n => inwardNames.has(getProductBaseName(n).toLowerCase()));
     };
-    setCards(newCards.filter(c => {
+    const boardNow = newCards.filter(c => {
       if (c.type === 'order' && orderInwarded(c.raw)) return false;
       if (c.type !== 'inward') return true;
       if (c.qtyTrack && c.qtyTrack.ordered > 0) return c.qtyTrack.remaining > 0;
       // No linked sales order: everything received has been produced when no product has any left.
       const prod = ((c.raw as any)?._inwardProd ?? []) as { recv: number; left: number }[];
       return !(prod.length > 0 && prod.some(x => x.recv > 0) && prod.every(x => x.left <= 0));
-    }));
+    });
+    setCards(boardNow);
+
+    // ---- List View also shows every record that has left the board ----
+    // (enquiries that became quotations, accepted quotations, finished orders, produced inwards, billed challans, completed
+    // invoices). Same card shape as the board; each row carries its own stage. The board itself is unchanged.
+    try {
+      const onBoard = new Set(boardNow.map((c) => c.id));
+      const hist: KanbanCard[] = [];
+      const add = (c: KanbanCard) => { if (!onBoard.has(c.id)) hist.push({ ...c, history: true }); };
+      (allLeads || []).forEach((l: any) => add({
+        id: `lead_${l.id}`, stage: 'Enquiry', type: 'lead', refNo: leadMap.get(l.id), customer: l.customer, part: formatLeadProductDisplay(l),
+        qty: l.quantity, value: l.estimated_value, date: l.expected_date || l.received_date || (l.created_at ? String(l.created_at).split('T')[0] : ''), status: l.status, raw: l,
+      }));
+      resolvedQuotes.forEach((q: any) => add({
+        id: `quote_${q.id}`, stage: 'Quotation', type: 'quotation', refNo: quoteMap.get(q.id) || q.enquiry_no || q.quote_no, customer: q.customer || q.customer_name,
+        part: formatLeadProductDisplay(q), qty: q.quantity, value: q.total_value, date: q.valid_till || q.valid_until || q.date || q.quote_date, status: q.status, raw: q,
+      }));
+      (allOrders || []).forEach((o: any) => add({
+        id: `order_${o.id}`, stage: 'Sales Order', type: 'order', refNo: orderMap.get(o.order_no), customer: o.customer || o.customer_name, part: formatLeadProductDisplay(o),
+        qty: o.quantity || (o.items?.[0]?.quantity), value: Number(o.total_value ?? o.value) || 0, date: o.delivery_date || o.order_date, status: o.status, raw: o,
+      }));
+      if (inwards && !inwardErr) {
+        const hg = new Map<string, any[]>();
+        inwards.filter((i: any) => isKanbanInwardCategory(i.category)).forEach((i: any) => {
+          const key = baseUniqueNo(orderMap.get(i.sales_order_ref) || i.project_name || i.inward_no || i.id);
+          if (!hg.has(key)) hg.set(key, []);
+          hg.get(key)!.push(i);
+        });
+        hg.forEach((list, key) => {
+          const first = list[0];
+          const parts = Array.from(new Set(list.map((x: any) => (x.product_name ? `${x.product_name} · ${x.part_name}` : x.part_name)).filter(Boolean)));
+          const soMatch = (allOrders || []).find((o: any) => { const lead = String(o.lead_no || '').trim(); return lead !== '' && baseUniqueNo(lead) === key; });
+          add({
+            id: `inward_${first.id}`, stage: 'Inward', type: 'inward', refNo: soMatch?.lead_no || key, customer: first.party_name,
+            part: parts.slice(0, 3).join(', ') + (parts.length > 3 ? ` +${parts.length - 3} more` : ''),
+            qty: list.reduce((n: number, x: any) => n + (Number(x.quantity) || 0), 0), value: list.reduce((n: number, x: any) => n + (Number(x.total_amount) || 0), 0),
+            date: list.map((x: any) => x.inward_date).filter(Boolean).sort().reverse()[0] || first.inward_date, status: first.status,
+            raw: list.length > 1 ? { ...first, _groupIds: list.map((x: any) => x.id), _groupCount: list.length } : first,
+          });
+        });
+      }
+      const wg = new Map<string, any[]>();
+      (allWos || []).filter((w: any) => Number(w.completed) > 0 || w.status === 'Completed').forEach((w: any) => {
+        const key = orderMap.get(w.sales_order) || w.wo_no || `WO-${String(w.id).substring(0, 4)}`;
+        if (!wg.has(key)) wg.set(key, []);
+        wg.get(key)!.push(w);
+      });
+      wg.forEach((list, key) => {
+        const first = list[0];
+        const names = Array.from(new Set(list.map((x: any) => x.part_name).filter(Boolean)));
+        add({
+          id: `fg_${first.id}`, stage: 'Finished Goods', type: 'finished_goods', refNo: key, customer: first.customer,
+          part: names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3} more` : ''),
+          qty: list.reduce((n: number, x: any) => n + (Number(x.completed) || 0), 0), value: 0,
+          date: list.map((x: any) => x.created_at).filter(Boolean).sort().reverse()[0]?.split('T')[0] || '', status: first.status,
+          raw: list.length > 1 ? { ...first, _groupIds: list.map((x: any) => x.id), _groupCount: list.length, _groupRows: list } : first,
+        });
+      });
+      dcGroups.forEach((list, key) => {
+        const first = list[0];
+        const names = Array.from(new Set(list.map((x: any) => x.part_name).filter(Boolean)));
+        add({
+          id: `dc_${first.id}`, stage: 'DC', type: 'dc', refNo: uniqueForDelivery(first), customer: first.customer_name || first.party_name || 'Customer',
+          part: names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3} more` : ''),
+          qty: list.reduce((n: number, x: any) => n + (Number(x.dispatch_qty ?? x.quantity) || 0), 0), value: 0,
+          date: list.map((x: any) => x.delivery_date).filter(Boolean).sort().reverse()[0] || first.delivery_date, status: first.status,
+          raw: list.length > 1 ? { ...first, _groupIds: list.map((x: any) => x.id), _groupCount: list.length } : first,
+        });
+      });
+      (invoicesData || []).forEach((inv: any) => add({
+        id: inv.id, stage: 'Invoice', type: 'invoice', refNo: inv.invoice_no || `INV-${String(inv.id).substring(0, 4)}`, customer: inv.customer_name || 'Customer',
+        part: inv.item || inv.part_name || '-', qty: inv.quantity || 1, value: inv.amount || 0,
+        date: inv.invoice_date || (inv.created_at ? String(inv.created_at).split('T')[0] : ''), status: inv.status, raw: inv,
+      }));
+      setHistoryCards(hist);
+    } catch (e) {
+      console.error('List history could not be built; the list shows the board records only:', e);
+      setHistoryCards([]);
+    }
     } catch (err) {
       console.error("Error loading pipeline:", err);
     } finally {
@@ -4623,6 +4706,12 @@ export function SalesPipelinePage() {
   const visibleCards = useMemo(
     () => boardCards.filter((c) => canView(STAGE_MODULE[c.stage] ?? 'sales-pipeline')),
     [boardCards, canView],
+  );
+  // List View: the board's records plus every record that has left it (old / converted / billed), same filters.
+  const listCards = useMemo(
+    () => [...visibleCards, ...historyCards.filter((c) => inGlobalDateRange(cardRecordDate(c)) && canView(STAGE_MODULE[c.stage] ?? 'sales-pipeline'))],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [visibleCards, historyCards, canView, inGlobalDateRange],
   );
 
   const addForStage = (stageId: string) => {
@@ -7735,7 +7824,7 @@ export function SalesPipelinePage() {
       ) : pipelineViewMode === 'list' ? (
         <div>
           <PipelineListView
-            cards={visibleCards}
+            cards={listCards}
             onView={openViewModal}
             onEdit={card => { const m = STAGE_MODULE[card.stage] ?? 'sales-pipeline'; if (!canDo(m, 'edit')) { alert('Not authorized: your account cannot edit these records.'); return; } if (card.type === 'finished_goods') { void openFgPopup(card, 'edit'); return; } setViewEditMode(true); void openViewModal(card); }}
             onDelete={card => { const m = STAGE_MODULE[card.stage] ?? 'sales-pipeline'; if (!canDo(m, 'delete')) { alert('Not authorized: your account cannot delete these records.'); return; } void handleDeleteCard({ stopPropagation() { /* not a click event */ } } as unknown as React.MouseEvent, card); }}

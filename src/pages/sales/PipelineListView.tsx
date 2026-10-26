@@ -162,7 +162,7 @@ export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineLi
                 <td className="px-4 py-1.5 text-sm text-slate-600 whitespace-nowrap">{card.date}</td>
                 <td className="px-4 py-1.5 text-[15px] font-semibold text-slate-800">{card.customer}</td>
                 <td className="px-4 py-1.5 text-sm text-slate-700 max-w-[220px] truncate" title={card.part}>{card.part}</td>
-                <td className="px-4 py-1.5 whitespace-nowrap"><span className="inline-block rounded-full bg-brand-50 text-brand-700 border border-brand-100 px-2.5 py-0.5 text-xs font-semibold">{stageOf(card)}</span></td>
+                <td className="px-4 py-1.5 whitespace-nowrap"><span className="inline-block rounded-full bg-brand-50 text-brand-700 border border-brand-100 px-2.5 py-0.5 text-xs font-semibold">{stageOf(card)}</span>{card.history && <span title={`Left the board${card.status ? ` (${card.status})` : ''}`} className="ml-1.5 inline-block rounded-full bg-slate-100 text-slate-500 border border-slate-200 px-2 py-0.5 text-[10px] font-semibold">{card.status || 'Old'}</span>}</td>
                 <td className="px-4 py-1.5 text-[15px] text-slate-800 text-right font-bold">{card.qty}</td>
                 <td className="px-4 py-1.5 text-xs text-slate-500 max-w-[160px] truncate">{card.raw?.remarks || card.raw?.internal_remarks || '-'}</td>
                 <td className="px-4 py-1.5">
