@@ -12,6 +12,30 @@ import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 type SortKey = 'enquiry_no' | 'date' | 'customer' | 'products' | 'quantity' | 'status' | null;
 type SortDir = 'asc' | 'desc';
 
+export function productNames(enq: any): string {
+  try {
+    const ef = enq?.enquiring_for;
+    const parsed = typeof ef === 'string' ? JSON.parse(ef) : ef;
+    if (Array.isArray(parsed)) {
+      const names = parsed.map((it: any) => String(it.productName || it.partName || it.part_name || '').trim()).filter(Boolean);
+      if (names.length) return names.join(', ');
+    }
+  } catch { /* fall through to part_name */ }
+  return String(enq?.part_name || '').trim().replace(/(\s*\(?\d+\s*products?\)?\s*)+$/i, '').trim() || '—';
+}
+
+export function productRemarks(enq: any): string {
+  try {
+    const ef = enq?.enquiring_for;
+    const parsed = typeof ef === 'string' ? JSON.parse(ef) : ef;
+    if (Array.isArray(parsed)) {
+      const rs = parsed.map((it: any) => String(it.remarks || '').trim()).filter(Boolean);
+      if (rs.length) return rs.join(' | ');
+    }
+  } catch { /* no remarks */ }
+  return '—';
+}
+
 export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView, entryForm }: { onBack: () => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onView?: (record: any) => void; entryForm?: ReactNode | ((props: { onBack: () => void; searchSlot: ReactNode }) => ReactNode) }) {
   const { companyFilter, setCompanyFilter, companyOptions } = useHeaderKpis();
   const [enquiries, setEnquiries] = useState<any[]>([]);
@@ -142,30 +166,6 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
   const SortIcon = ({ column }: { column: SortKey }) => {
     if (sortKey !== column) return <ArrowUpDown size={12} className="text-slate-400" />;
     return sortDir === 'asc' ? <ArrowUp size={12} className="text-brand-600" /> : <ArrowDown size={12} className="text-brand-600" />;
-  };
-
-  const productNames = (enq: any): string => {
-    try {
-      const ef = enq?.enquiring_for;
-      const parsed = typeof ef === 'string' ? JSON.parse(ef) : ef;
-      if (Array.isArray(parsed)) {
-        const names = parsed.map((it: any) => String(it.productName || it.partName || it.part_name || '').trim()).filter(Boolean);
-        if (names.length) return names.join(', ');
-      }
-    } catch { /* fall through to part_name */ }
-    return String(enq?.part_name || '').trim().replace(/(\s*\(?\d+\s*products?\)?\s*)+$/i, '').trim() || '—';
-  };
-
-  const productRemarks = (enq: any): string => {
-    try {
-      const ef = enq?.enquiring_for;
-      const parsed = typeof ef === 'string' ? JSON.parse(ef) : ef;
-      if (Array.isArray(parsed)) {
-        const rs = parsed.map((it: any) => String(it.remarks || '').trim()).filter(Boolean);
-        if (rs.length) return rs.join(' | ');
-      }
-    } catch { /* no remarks */ }
-    return '—';
   };
 
   const pager = usePager(filteredEnquiries, `${search}||${companyFilter}||${statusFilter}||${globalFrom}||${globalTo}`);
