@@ -110,14 +110,45 @@ export function PlannedListView() {
   }, [load]);
 
   // Map work orders by both UUID (id) and wo_no for flexible lookups
+  // Also map by lowercase to handle case differences
   const woMap = useMemo(() => {
     const map = new Map<string, any>();
     wos.forEach((w) => {
-      map.set(String(w.id), w);
-      if (w.wo_no) map.set(String(w.wo_no), w);
+      const id = String(w.id ?? '').trim();
+      map.set(id, w);
+      map.set(id.toLowerCase(), w);
+      if (w.wo_no) {
+        map.set(String(w.wo_no), w);
+        map.set(String(w.wo_no).toLowerCase(), w);
+      }
     });
     return map;
   }, [wos]);
+  
+  // Also create a map from operation's work_order_id to work order
+  const opWoMap = useMemo(() => {
+    const map = new Map<string, any>();
+    operations.forEach((op) => {
+      if (op.work_order_id) {
+        const wo = wos.find(w => String(w.id) === String(op.work_order_id));
+        if (wo) {
+          map.set(String(op.work_order_id).toLowerCase(), wo);
+        }
+      }
+    });
+    return map;
+  }, [operations, wos]);
+
+  // Helper to find work order by various ID formats
+  const findWo = (workOrderId: string | null | undefined) => {
+    if (!workOrderId) return null;
+    const id = String(workOrderId).trim();
+    // Try direct lookup first
+    let wo = woMap.get(id) || woMap.get(id.toLowerCase());
+    // Try through operations table
+    if (!wo) wo = opWoMap.get(id.toLowerCase());
+    return wo || null;
+  };
   
   // Get unique product/part names from work orders for filtering
   const productNames = useMemo(() => {
@@ -181,7 +212,7 @@ export function PlannedListView() {
   const filteredPlans = useMemo(() => {
     const q = search.trim().toLowerCase();
     return plans.filter((p) => {
-      const wo = woMap.get(String(p.work_order_id));
+      const wo = findWo(p.work_order_id);
       const pDate = String(p.plan_date).slice(0, 10);
       const status = getStatus(pDate);
 
@@ -230,7 +261,7 @@ export function PlannedListView() {
     const rows = [
       ['#', 'Product / Part', 'Customer', 'Operation', 'Process', 'Machine', 'Operator', 'Plan Date', 'Start Time', 'End Time', 'Duration (Hours)', 'Planned Qty', 'Status'],
       ...filteredPlans.map((p, i) => {
-        const wo = woMap.get(String(p.work_order_id));
+        const wo = findWo(p.work_order_id);
         const pDate = String(p.plan_date).slice(0, 10);
         const mins = calcDurationMins(p.start_time, p.end_time);
         return [
@@ -580,24 +611,74 @@ export function PlannedListView() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto max-h-[640px]">
           <table className="w-full text-xs min-w-[1050px]">
-            <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider text-[11px] sticky top-0 z-10 shadow-xs border-b border-slate-200">
+            <thead className="bg-slate-800 text-white font-bold uppercase tracking-wider text-[11px] sticky top-0 z-10 shadow-xs border-b border-slate-600">
               <tr className="text-left">
                 <th className="py-2.5 px-3 w-12 text-center">#</th>
-                <th className="py-2.5 px-3">Product / Part & Customer</th>
+                <th className="py-2.5 px-3">
+                  <div className="flex items-center gap-1.5">
+                    <span>Product / Part</span>
+                    <select
+                      value={fProduct}
+                      onChange={(e) => setFProduct(e.target.value)}
+                      className="text-[10px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[90px] truncate shadow-xs"
+                    >
+                      <option value="All">All</option>
+                      {productNames.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
+                </th>
                 <th className="py-2.5 px-3">Operation / Process</th>
                 <th className="py-2.5 px-3">Plan Date</th>
                 <th className="py-2.5 px-3">Time Window</th>
                 <th className="py-2.5 px-3">Duration</th>
-                <th className="py-2.5 px-3">Machine</th>
-                <th className="py-2.5 px-3">Operator</th>
+                <th className="py-2.5 px-3">
+                  <div className="flex items-center gap-1.5">
+                    <span>Machine</span>
+                    <select
+                      value={fMachine}
+                      onChange={(e) => setFMachine(e.target.value)}
+                      className="text-[10px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[80px] truncate shadow-xs"
+                    >
+                      <option value="All">All</option>
+                      {machines.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                </th>
+                <th className="py-2.5 px-3">
+                  <div className="flex items-center gap-1.5">
+                    <span>Operator</span>
+                    <select
+                      value={fOperator}
+                      onChange={(e) => setFOperator(e.target.value)}
+                      className="text-[10px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[80px] truncate shadow-xs"
+                    >
+                      <option value="All">All</option>
+                      {operators.map(op => <option key={op} value={op}>{op}</option>)}
+                    </select>
+                  </div>
+                </th>
                 <th className="py-2.5 px-3 text-right">Qty</th>
-                <th className="py-2.5 px-3 text-center">Status</th>
+                <th className="py-2.5 px-3 text-center">
+                  <div className="flex items-center justify-center gap-1.5">
+                    <span>Status</span>
+                    <select
+                      value={fStatus}
+                      onChange={(e) => setFStatus(e.target.value)}
+                      className="text-[10px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[70px] truncate shadow-xs"
+                    >
+                      <option value="All">All</option>
+                      <option value="Today">Today</option>
+                      <option value="Upcoming">Upcoming</option>
+                      <option value="Past">Past</option>
+                    </select>
+                  </div>
+                </th>
                 <th className="py-2.5 px-3 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredPlans.map((p, idx) => {
-                const wo = woMap.get(String(p.work_order_id));
+                const wo = findWo(p.work_order_id);
                 const pDate = String(p.plan_date).slice(0, 10);
                 const status = getStatus(pDate);
                 const durationMins = calcDurationMins(p.start_time, p.end_time);
@@ -606,13 +687,24 @@ export function PlannedListView() {
                   <tr key={p.id} className="hover:bg-slate-50/70 transition">
                     <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">{idx + 1}</td>
                     <td className="py-2.5 px-3">
-                      <div className="font-semibold text-slate-900 truncate max-w-[260px]" title={wo?.part_name || wo?.wo_no || ''}>
-                        {wo?.part_name || wo?.product_name || (wo?.wo_no ? `WO: ${wo.wo_no}` : (p.work_order_id ? `ID: ${String(p.work_order_id).slice(0, 8)}…` : '—'))}
-                      </div>
-                      <div className="text-[11px] text-slate-500 truncate max-w-[260px]">
-                        {wo?.customer || (wo?.wo_no && !wo?.part_name ? 'No part assigned' : '')}
-                        {wo?.is_part_order === true && wo?.product_name && wo?.part_name ? ` · Part of ${wo.product_name}` : ''}
-                      </div>
+                      {wo ? (
+                        <>
+                          <div className="font-semibold text-slate-900 truncate max-w-[260px]" title={wo.part_name || wo.product_name || wo.wo_no || ''}>
+                            {wo.part_name || wo.product_name || `WO: ${wo.wo_no}`}
+                          </div>
+                          <div className="text-[11px] text-slate-500 truncate max-w-[260px]">
+                            {wo.customer || ''}
+                            {wo.is_part_order === true && wo.product_name && wo.part_name ? ` · Part of ${wo.product_name}` : ''}
+                          </div>
+                        </>
+                      ) : p.work_order_id ? (
+                        <div className="text-amber-600 text-[11px]" title={`Work Order ID: ${p.work_order_id}`}>
+                          <span className="font-medium">⚠ WO Not Found</span>
+                          <div className="text-[10px] text-slate-400 font-mono">{String(p.work_order_id).slice(0, 12)}…</div>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
                     </td>
                     <td className="py-2.5 px-3">
                       <div className="font-medium text-slate-800">
@@ -724,7 +816,7 @@ export function PlannedListView() {
         {picked && (
           <div className="space-y-3.5 text-xs">
             <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-              <div className="font-bold text-slate-900">{woMap.get(String(picked.work_order_id))?.part_name}</div>
+              <div className="font-bold text-slate-900">{findWo(picked.work_order_id)?.part_name || findWo(picked.work_order_id)?.wo_no || 'Unknown'}</div>
               <div className="text-slate-600 font-medium">{picked.process_name}</div>
             </div>
 
