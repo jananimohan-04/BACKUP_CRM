@@ -83,7 +83,7 @@ export function SalesOrderSection({ order, qtyTracking, editMode: editing, saveR
       .map((it: any) => ({ ...it, partName: String(it.partName || '').trim() }))
       .filter((it: any) => it.partName);
     if (!customer.trim()) { setError('Enter the company.'); return false; }
-    if (!entered.length) { setError('Enter at least one product.'); return false; }
+    // Products are optional: an order may be saved without any and filled in later.
     if (entered.some((it: any) => Number(it.quantity) < 0)) { setError('Product quantities cannot be negative.'); return false; }
     if (entered.some((it: any) => Number(it.rejectedQty) < 0)) { setError('Rejected quantities cannot be negative.'); return false; }
     if (saving) return false;
@@ -125,7 +125,7 @@ export function SalesOrderSection({ order, qtyTracking, editMode: editing, saveR
         status: prodStatuses.length === 1 ? prodStatuses[0] : (order?.status || 'Confirmed'),
         items: saved,
         quantity: totalQty,
-        part_name: saved.length > 1 ? `${names.join(', ')} (${saved.length} Products)` : saved[0].partName,
+        part_name: saved.length > 1 ? `${names.join(', ')} (${saved.length} Products)` : (saved[0]?.partName ?? ''),
       };
       if (totalVal !== null) {
         payload.total_value = Number(totalVal.toFixed(2));

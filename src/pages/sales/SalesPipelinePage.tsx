@@ -5900,7 +5900,7 @@ export function SalesPipelinePage() {
     if (savingSo) return; // the form stays on screen after saving, so guard double clicks
     if (!String(soForm.customer || '').trim()) { alert('Enter the company.'); return; }
     if (!soForm.orderDate) { alert('Enter the order date.'); return; }
-    if (!soForm.deliveryDate) { alert('Enter the delivery date.'); return; }
+    // Delivery date is optional; when it is given it must come after the order date.
     if (soForm.orderDate && soForm.deliveryDate && soForm.deliveryDate <= soForm.orderDate) {
       alert('Delivery date must be after order date.');
       return;
@@ -5908,7 +5908,7 @@ export function SalesPipelinePage() {
     const entered = ((soForm.items || []) as any[])
       .map((it: any) => ({ ...it, partName: String(it.partName || '').trim() }))
       .filter((it: any) => it.partName);
-    if (!entered.length) { alert('Enter at least one product.'); return; }
+    // Products are optional too: an order can be saved first and its products added later.
     if (entered.some((it: any) => Number(it.quantity) < 0)) { alert('Product quantities cannot be negative.'); return; }
     if (entered.some((it: any) => Number(it.rejectedQty) < 0)) { alert('Rejected quantities cannot be negative.'); return; }
     const hasFiles = entered.some((it: any) => (it.files || []).length);
@@ -5952,7 +5952,7 @@ export function SalesPipelinePage() {
       lead_no: '', order_date: soForm.orderDate || null,
       customer_po_no: String(soForm.customerPoNo || '').trim(), customer_po_date: null,
       items: finalItems,
-      part_name: finalItems.length > 1 ? `${names.join(', ')} (${finalItems.length} Products)` : names[0],
+      part_name: finalItems.length > 1 ? `${names.join(', ')} (${finalItems.length} Products)` : (names[0] ?? ''),
       part_number: '', part_no: '',
       quantity: totalQty, delivered: 0,
       value: totalVal, total_value: totalVal,
@@ -6539,7 +6539,7 @@ export function SalesPipelinePage() {
             <FormField label="Order Date" required inline><input type="date" className={`${compactInput} w-[8.25rem]`} value={soForm.orderDate || ''} onChange={e=>setSoForm({...soForm, orderDate: e.target.value})} /></FormField>
           </div>
           <div className="shrink-0">
-            <FormField label="Delivery Date" required inline>
+            <FormField label="Delivery Date" inline>
               <div className="flex items-center gap-1.5">
                 <input
                   type="date"
