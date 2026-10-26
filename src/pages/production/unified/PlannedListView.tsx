@@ -39,6 +39,7 @@ export function PlannedListView() {
   const [fMachine, setFMachine] = useState('All');
   const [fOperator, setFOperator] = useState('All');
   const [fStatus, setFStatus] = useState('All');
+  const [fProduct, setFProduct] = useState('All');
 
   // Edit / Delete modal state
   const [picked, setPicked] = useState<PlanRow | null>(null);
@@ -108,7 +109,26 @@ export function PlannedListView() {
     void load();
   }, [load]);
 
-  const woMap = useMemo(() => new Map(wos.map((w) => [String(w.id), w])), [wos]);
+  // Map work orders by both UUID (id) and wo_no for flexible lookups
+  const woMap = useMemo(() => {
+    const map = new Map<string, any>();
+    wos.forEach((w) => {
+      map.set(String(w.id), w);
+      if (w.wo_no) map.set(String(w.wo_no), w);
+    });
+    return map;
+  }, [wos]);
+  
+  // Get unique product/part names from work orders for filtering
+  const productNames = useMemo(() => {
+    const names = new Set<string>();
+    wos.forEach((w) => {
+      if (w.part_name) names.add(w.part_name);
+      if (w.product_name) names.add(w.product_name);
+    });
+    return Array.from(names).sort();
+  }, [wos]);
+  
   const today = todayISO();
 
   // Quick range helpers
@@ -170,6 +190,14 @@ export function PlannedListView() {
       if (fMachine !== 'All' && p.machine !== fMachine) return false;
       if (fOperator !== 'All' && String(p.operator ?? '').toLowerCase() !== fOperator.toLowerCase()) return false;
       if (fStatus !== 'All' && status !== fStatus) return false;
+      
+      // Product/Part filter
+      if (fProduct !== 'All') {
+        const partName = String(wo?.part_name ?? '').toLowerCase();
+        const productName = String(wo?.product_name ?? '').toLowerCase();
+        const filterLower = fProduct.toLowerCase();
+        if (!partName.includes(filterLower) && !productName.includes(filterLower)) return false;
+      }
 
       if (q) {
         const woNo = String(wo?.wo_no ?? '').toLowerCase();
@@ -184,7 +212,7 @@ export function PlannedListView() {
       }
       return true;
     });
-  }, [plans, woMap, search, fDateFrom, fDateTo, fMachine, fOperator, fStatus]);
+  }, [plans, woMap, search, fDateFrom, fDateTo, fMachine, fOperator, fStatus, fProduct]);
 
   // KPIs
   const totalPlannedHours = useMemo(() => {
@@ -454,6 +482,19 @@ export function PlannedListView() {
             />
           </div>
 
+          {/* Product/Part Filter */}
+          <select
+            value={fProduct}
+            onChange={(e) => setFProduct(e.target.value)}
+            className="px-3 py-2 text-sm font-medium bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 cursor-pointer appearance-none pr-8"
+            style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
+          >
+            <option value="All">All Products</option>
+            {productNames.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+
           {/* Machine Filter */}
           <select
             value={fMachine}
@@ -565,9 +606,12 @@ export function PlannedListView() {
                   <tr key={p.id} className="hover:bg-slate-50/70 transition">
                     <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">{idx + 1}</td>
                     <td className="py-2.5 px-3">
-                      <div className="font-semibold text-slate-900 truncate max-w-[260px]" title={wo?.part_name}>{wo?.part_name || '—'}</div>
+                      <div className="font-semibold text-slate-900 truncate max-w-[260px]" title={wo?.part_name || wo?.wo_no || ''}>
+                        {wo?.part_name || wo?.product_name || (wo?.wo_no ? `WO: ${wo.wo_no}` : (p.work_order_id ? `ID: ${String(p.work_order_id).slice(0, 8)}…` : '—'))}
+                      </div>
                       <div className="text-[11px] text-slate-500 truncate max-w-[260px]">
-                        {wo?.is_part_order === true && wo?.product_name ? `Part of ${wo.product_name}` : ''}{wo?.customer ? `${wo?.is_part_order === true && wo?.product_name ? ' · ' : ''}${wo.customer}` : ''}
+                        {wo?.customer || (wo?.wo_no && !wo?.part_name ? 'No part assigned' : '')}
+                        {wo?.is_part_order === true && wo?.product_name && wo?.part_name ? ` · Part of ${wo.product_name}` : ''}
                       </div>
                     </td>
                     <td className="py-2.5 px-3">

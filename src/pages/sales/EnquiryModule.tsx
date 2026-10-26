@@ -2,12 +2,15 @@ import { useState, useEffect, useMemo, type ReactNode } from 'react';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { recordDateOf } from '@/lib/globalDate';
 import { supabase } from '@/lib/supabase';
-import { Search, ArrowLeft, FileText } from 'lucide-react';
+import { Search, ArrowLeft, FileText, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
+
+type SortKey = 'enquiry_no' | 'date' | 'customer' | 'products' | 'quantity' | 'status' | null;
+type SortDir = 'asc' | 'desc';
 
 export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView, entryForm }: { onBack: () => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onView?: (record: any) => void; entryForm?: ReactNode | ((props: { onBack: () => void; searchSlot: ReactNode }) => ReactNode) }) {
   const { companyFilter, setCompanyFilter, companyOptions } = useHeaderKpis();
@@ -15,6 +18,9 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [productFilter, setProductFilter] = useState('All');
+  const [sortKey, setSortKey] = useState<SortKey>(null);
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [selectedEnquiry, setSelectedEnquiry] = useState<any | null>(null);
   const [relatedQuote, setRelatedQuote] = useState<any | null>(null);
 
@@ -47,19 +53,96 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
 
   const companies = useMemo(() => Array.from(new Set([...companyOptions, ...enquiries.map(e => e.customer)])).filter(Boolean).sort(), [companyOptions, enquiries]);
   const statuses = useMemo(() => Array.from(new Set(enquiries.map(e => e.status || 'New'))).filter(Boolean).sort(), [enquiries]);
+  
+  // Get all unique product names for the product filter
+  const allProducts = useMemo(() => {
+    const productSet = new Set<string>();
+    enquiries.forEach(e => {
+      const names = productNames(e);
+      if (names && names !== '—') {
+        names.split(', ').forEach(name => {
+          const trimmed = name.trim();
+          if (trimmed) productSet.add(trimmed);
+        });
+      }
+    });
+    return Array.from(productSet).sort();
+  }, [enquiries]);
 
   const { from: globalFrom, to: globalTo, inRange: inDateRange } = useGlobalDateFilter();
-  const filteredEnquiries = enquiries.filter(e => {
-    const matchesSearch = (e.enquiry_no || '').toLowerCase().includes(search.toLowerCase()) || 
-      (e.customer || '').toLowerCase().includes(search.toLowerCase()) ||
-      productNames(e).toLowerCase().includes(search.toLowerCase());
-    const matchesCompany = !companyFilter || companyFilter === 'All Companies' || 
-      (e.customer || '').trim().toLowerCase() === companyFilter.trim().toLowerCase();
-    const matchesStatus = statusFilter === 'All' || (e.status || 'New').toLowerCase() === statusFilter.toLowerCase();
-    // Global date filter uses the enquiry's received date.
-    const matchesDate = inDateRange(recordDateOf(e, ['received_date', 'created_at']));
-    return matchesSearch && matchesCompany && matchesStatus && matchesDate;
-  });
+  
+  const filteredEnquiries = useMemo(() => {
+    const filtered = enquiries.filter(e => {
+      const matchesSearch = (e.enquiry_no || '').toLowerCase().includes(search.toLowerCase()) || 
+        (e.customer || '').toLowerCase().includes(search.toLowerCase()) ||
+        productNames(e).toLowerCase().includes(search.toLowerCase());
+      const matchesCompany = !companyFilter || companyFilter === 'All Companies' || 
+        (e.customer || '').trim().toLowerCase() === companyFilter.trim().toLowerCase();
+      const matchesStatus = statusFilter === 'All' || (e.status || 'New').toLowerCase() === statusFilter.toLowerCase();
+      const matchesProduct = productFilter === 'All' || productNames(e).toLowerCase().includes(productFilter.toLowerCase());
+      // Global date filter uses the enquiry's received date.
+      const matchesDate = inDateRange(recordDateOf(e, ['received_date', 'created_at']));
+      return matchesSearch && matchesCompany && matchesStatus && matchesProduct && matchesDate;
+    });
+    
+    // Sort the filtered results
+    if (sortKey) {
+      filtered.sort((a, b) => {
+        let aVal: string | number = '';
+        let bVal: string | number = '';
+        
+        switch (sortKey) {
+          case 'enquiry_no':
+            aVal = a.enquiry_no || '';
+            bVal = b.enquiry_no || '';
+            break;
+          case 'date':
+            aVal = a.received_date || a.created_at || '';
+            bVal = b.received_date || b.created_at || '';
+            break;
+          case 'customer':
+            aVal = (a.customer || '').toLowerCase();
+            bVal = (b.customer || '').toLowerCase();
+            break;
+          case 'products':
+            aVal = productNames(a).toLowerCase();
+            bVal = productNames(b).toLowerCase();
+            break;
+          case 'quantity':
+            aVal = Number(a.quantity) || 0;
+            bVal = Number(b.quantity) || 0;
+            break;
+          case 'status':
+            aVal = (a.status || 'New').toLowerCase();
+            bVal = (b.status || 'New').toLowerCase();
+            break;
+        }
+        
+        if (typeof aVal === 'number' && typeof bVal === 'number') {
+          return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+        }
+        const cmp = String(aVal).localeCompare(String(bVal), undefined, { numeric: true });
+        return sortDir === 'asc' ? cmp : -cmp;
+      });
+    }
+    
+    return filtered;
+  }, [enquiries, search, companyFilter, statusFilter, productFilter, sortKey, sortDir, inDateRange]);
+
+  // Toggle sort direction or set new sort key
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
+
+  const SortIcon = ({ column }: { column: SortKey }) => {
+    if (sortKey !== column) return <ArrowUpDown size={12} className="text-slate-400" />;
+    return sortDir === 'asc' ? <ArrowUp size={12} className="text-brand-600" /> : <ArrowDown size={12} className="text-brand-600" />;
+  };
 
   const productNames = (enq: any): string => {
     try {
@@ -125,18 +208,32 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
         ) : (
           <table className="erp-table erp-table-blue w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-100 text-slate-700 text-xs uppercase tracking-wider border-b border-slate-300">
-                <th className="p-3 font-semibold">Enquiry No</th>
-                <th className="p-3 font-semibold">Date</th>
+              <tr className="bg-slate-800 text-white text-xs uppercase tracking-wider border-b border-slate-600">
+                <th className="p-3 font-semibold w-8">#</th>
+                <th className="p-3 font-semibold">
+                  <button onClick={() => handleSort('enquiry_no')} className="flex items-center gap-1.5 hover:text-brand-300 transition-colors cursor-pointer">
+                    <span>Enquiry No</span>
+                    <SortIcon column="enquiry_no" />
+                  </button>
+                </th>
+                <th className="p-3 font-semibold">
+                  <button onClick={() => handleSort('date')} className="flex items-center gap-1.5 hover:text-brand-300 transition-colors cursor-pointer">
+                    <span>Date</span>
+                    <SortIcon column="date" />
+                  </button>
+                </th>
                 <th className="p-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
-                    <span className="whitespace-nowrap">Company</span>
+                    <button onClick={() => handleSort('customer')} className="flex items-center gap-1 hover:text-brand-300 transition-colors cursor-pointer">
+                      <span className="whitespace-nowrap">Company</span>
+                      <SortIcon column="customer" />
+                    </button>
                     <select
                       aria-label="Filter by Company"
                       title="Filter by Company"
                       value={companyFilter || 'All Companies'}
                       onChange={e => setCompanyFilter(e.target.value)}
-                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[125px] truncate shadow-xs"
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[100px] truncate shadow-xs"
                     >
                       <option value="All Companies">All</option>
                       {companies.map(c => (
@@ -145,18 +242,38 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
                     </select>
                   </div>
                 </th>
-                <th className="p-3 font-semibold">Products</th>
-                <th className="p-3 font-semibold">Remarks</th>
-                <th className="p-3 font-semibold">Quantity</th>
                 <th className="p-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
-                    <span className="whitespace-nowrap">Status</span>
+                    <button onClick={() => handleSort('products')} className="flex items-center gap-1 hover:text-brand-300 transition-colors cursor-pointer">
+                      <span className="whitespace-nowrap">Products</span>
+                      <SortIcon column="products" />
+                    </button>
+                    <select
+                      aria-label="Filter by Product"
+                      title="Filter by Product"
+                      value={productFilter}
+                      onChange={e => setProductFilter(e.target.value)}
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[100px] truncate shadow-xs"
+                    >
+                      <option value="All">All</option>
+                      {allProducts.map(p => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
+                <th className="p-3 font-semibold">
+                  <div className="flex items-center gap-1.5 flex-nowrap">
+                    <button onClick={() => handleSort('status')} className="flex items-center gap-1 hover:text-brand-300 transition-colors cursor-pointer">
+                      <span className="whitespace-nowrap">Stage</span>
+                      <SortIcon column="status" />
+                    </button>
                     <select
                       aria-label="Filter by Status"
                       title="Filter by Status"
                       value={statusFilter}
                       onChange={e => setStatusFilter(e.target.value)}
-                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[95px] truncate shadow-xs"
+                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[80px] truncate shadow-xs"
                     >
                       <option value="All">All</option>
                       {statuses.map(s => (
@@ -165,28 +282,40 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
                     </select>
                   </div>
                 </th>
-                <th className="p-3 font-semibold">Actions</th>
+                <th className="p-3 font-semibold">
+                  <button onClick={() => handleSort('quantity')} className="flex items-center gap-1.5 hover:text-brand-300 transition-colors cursor-pointer">
+                    <span>Qty</span>
+                    <SortIcon column="quantity" />
+                  </button>
+                </th>
+                <th className="p-3 font-semibold">Remarks</th>
+                <th className="p-3 font-semibold text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {pager.pageItems.map(enq => (
+              {pager.pageItems.map((enq, idx) => (
                 <tr key={enq.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                  <td className="p-3 text-xs text-slate-400 font-mono">{pager.start + idx + 1}</td>
                   <td className="p-3 font-mono text-sm text-slate-800 font-medium">{enq.enquiry_no || 'Pending'}</td>
-                  <td className="p-3 text-sm text-slate-800">{enq.received_date ? enq.received_date.split('T')[0] : (enq.created_at ? enq.created_at.split('T')[0] : '')}</td>
-                  <td className="p-3 font-semibold text-brand-700 text-sm max-w-[220px] truncate" title={enq.customer}>{enq.customer}</td>
-                  <td className="p-3 text-sm text-slate-700 max-w-[260px]">{productNames(enq)}</td>
-                  <td className="p-3 text-sm text-slate-800 max-w-[200px] truncate" title={productRemarks(enq)}>{productRemarks(enq)}</td>
-                  <td className="p-3 text-sm font-medium text-slate-700">{enq.quantity || '-'}</td>
+                  <td className="p-3 text-sm text-slate-800 whitespace-nowrap">{enq.received_date ? enq.received_date.split('T')[0] : (enq.created_at ? enq.created_at.split('T')[0] : '')}</td>
+                  <td className="p-3 font-semibold text-brand-700 text-sm max-w-[200px] truncate" title={enq.customer}>{enq.customer}</td>
+                  <td className="p-3 text-sm text-slate-700 max-w-[240px] truncate" title={productNames(enq)}>{productNames(enq)}</td>
                   <td className="p-3">
                     <span className="bg-orange-200 text-orange-900 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">{enq.status || 'New'}</span>
                   </td>
+                  <td className="p-3 text-sm font-medium text-slate-700 text-center">{enq.quantity || '-'}</td>
+                  <td className="p-3 text-sm text-slate-600 max-w-[180px] truncate" title={productRemarks(enq)}>{productRemarks(enq)}</td>
                   <td className="p-3">
-                    <div className="flex flex-wrap gap-2"><Button variant="secondary" size="sm" onClick={() => (onView ? onView(enq) : openEnquiry(enq))}>View Details</Button>{onEdit && <Button variant="secondary" size="sm" onClick={() => onEdit(enq)}>Edit</Button>}{onDelete && <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => onDelete(enq)}>Delete</Button>}</div>
+                    <div className="flex flex-wrap gap-1.5 justify-center">
+                      <Button variant="secondary" size="sm" onClick={() => (onView ? onView(enq) : openEnquiry(enq))}>View</Button>
+                      {onEdit && <Button variant="secondary" size="sm" onClick={() => onEdit(enq)}>Edit</Button>}
+                      {onDelete && <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => onDelete(enq)}>Delete</Button>}
+                    </div>
                   </td>
                 </tr>
               ))}
               {filteredEnquiries.length === 0 && (
-                <tr><td colSpan={8} className="text-center py-8 text-slate-500">No enquiries found.</td></tr>
+                <tr><td colSpan={9} className="text-center py-8 text-slate-500">No enquiries found.</td></tr>
               )}
             </tbody>
           </table>
