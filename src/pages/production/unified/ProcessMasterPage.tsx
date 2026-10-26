@@ -21,10 +21,7 @@ export interface ProcessMaster {
   processCategory: string;
   machineType: string;
   description: string;
-  costPerHour: number;
-  costPerComponent: number;
-  setupCost: number;
-  minimumCharge: number;
+  costPerHour: number;  // Machine cost = Cost Per Hour × Hours run
   status: 'Active' | 'Inactive';
   notes: string;
   createdAt: string;
@@ -36,10 +33,7 @@ interface ProcessForm {
   processCategory: string;
   machineType: string;
   description: string;
-  costPerHour: string;
-  costPerComponent: string;
-  setupCost: string;
-  minimumCharge: string;
+  costPerHour: string;  // Machine cost = Cost Per Hour × Hours run
   status: 'Active' | 'Inactive';
   notes: string;
 }
@@ -51,9 +45,6 @@ const EMPTY_FORM: ProcessForm = {
   machineType: '',
   description: '',
   costPerHour: '',
-  costPerComponent: '',
-  setupCost: '',
-  minimumCharge: '',
   status: 'Active',
   notes: '',
 };
@@ -67,9 +58,6 @@ function mapRow(r: any): ProcessMaster {
     machineType: r.machine_type ?? '',
     description: r.description ?? '',
     costPerHour: Number(r.cost_per_hour) || 0,
-    costPerComponent: Number(r.cost_per_component) || 0,
-    setupCost: Number(r.setup_cost) || 0,
-    minimumCharge: Number(r.minimum_charge) || 0,
     status: r.status === 'Inactive' ? 'Inactive' : 'Active',
     notes: r.notes ?? '',
     createdAt: r.created_at ?? '',
@@ -215,9 +203,6 @@ export function ProcessMasterPage() {
       machineType: row.machineType,
       description: row.description,
       costPerHour: String(row.costPerHour),
-      costPerComponent: row.costPerComponent ? String(row.costPerComponent) : '',
-      setupCost: row.setupCost ? String(row.setupCost) : '',
-      minimumCharge: row.minimumCharge ? String(row.minimumCharge) : '',
       status: row.status,
       notes: row.notes,
     });
@@ -234,9 +219,6 @@ export function ProcessMasterPage() {
       machineType: row.machineType,
       description: row.description,
       costPerHour: String(row.costPerHour),
-      costPerComponent: row.costPerComponent ? String(row.costPerComponent) : '',
-      setupCost: row.setupCost ? String(row.setupCost) : '',
-      minimumCharge: row.minimumCharge ? String(row.minimumCharge) : '',
       status: 'Active',
       notes: row.notes,
     });
@@ -282,19 +264,6 @@ export function ProcessMasterPage() {
     else if (cph === null || !Number.isFinite(cph as number)) next.costPerHour = 'Cost Per Hour must be a number.';
     else if ((cph as number) < 0) next.costPerHour = 'Cost Per Hour cannot be negative.';
 
-    const optionals: (keyof ProcessForm)[] = ['costPerComponent', 'setupCost', 'minimumCharge'];
-    const labels: Record<string, string> = {
-      costPerComponent: 'Cost Per Component',
-      setupCost: 'Setup Cost',
-      minimumCharge: 'Minimum Charge',
-    };
-    for (const key of optionals) {
-      if (form[key].trim() === '') continue;
-      const n = parseCost(form[key]);
-      if (n === null || !Number.isFinite(n as number)) next[key] = `${labels[key]} must be a number.`;
-      else if ((n as number) < 0) next[key] = `${labels[key]} cannot be negative.`;
-    }
-
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -309,10 +278,7 @@ export function ProcessMasterPage() {
         process_category: form.processCategory.trim() || null,
         machine_type: form.machineType.trim() || null,
         description: form.description.trim() || null,
-        cost_per_hour: Number(form.costPerHour),
-        cost_per_component: form.costPerComponent.trim() === '' ? 0 : Number(form.costPerComponent),
-        setup_cost: form.setupCost.trim() === '' ? 0 : Number(form.setupCost),
-        minimum_charge: form.minimumCharge.trim() === '' ? 0 : Number(form.minimumCharge),
+        cost_per_hour: Number(form.costPerHour),  // Machine cost = Cost Per Hour × Hours run
         status: form.status,
         notes: form.notes.trim() || null,
         updated_at: new Date().toISOString(),
@@ -398,13 +364,6 @@ export function ProcessMasterPage() {
           {formatINR(r.costPerHour)}<span className="text-xs font-medium text-slate-400">/hour</span>
         </span>
       ),
-    },
-    {
-      key: 'costPerComponent',
-      label: 'Cost / Component',
-      sortable: true,
-      align: 'right',
-      render: (r) => <span className="text-slate-600 whitespace-nowrap">{formatINR(r.costPerComponent)}</span>,
     },
     {
       key: 'status',
@@ -633,9 +592,9 @@ export function ProcessMasterPage() {
         </FormSection>
 
         <FormSection title="Costing">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <div>
-              <FormField label="Cost Per Hour (₹)" required hint="Machine-hour rate used for future process costing.">
+              <FormField label="Cost Per Hour (₹)" required hint="Machine cost = Cost Per Hour × Hours the machine runs">
                 <input
                   type="number"
                   min="0"
@@ -647,48 +606,7 @@ export function ProcessMasterPage() {
                 />
               </FormField>
               {errText('costPerHour')}
-            </div>
-            <div>
-              <FormField label="Cost Per Component (₹)">
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.costPerComponent}
-                  onChange={(e) => set('costPerComponent', e.target.value)}
-                  placeholder="e.g. 0"
-                  className={`${inputClass} ${errors.costPerComponent ? 'border-red-400' : ''}`}
-                />
-              </FormField>
-              {errText('costPerComponent')}
-            </div>
-            <div>
-              <FormField label="Setup Cost (₹)">
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.setupCost}
-                  onChange={(e) => set('setupCost', e.target.value)}
-                  placeholder="e.g. 0"
-                  className={`${inputClass} ${errors.setupCost ? 'border-red-400' : ''}`}
-                />
-              </FormField>
-              {errText('setupCost')}
-            </div>
-            <div>
-              <FormField label="Minimum Charge (₹)">
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.minimumCharge}
-                  onChange={(e) => set('minimumCharge', e.target.value)}
-                  placeholder="e.g. 0"
-                  className={`${inputClass} ${errors.minimumCharge ? 'border-red-400' : ''}`}
-                />
-              </FormField>
-              {errText('minimumCharge')}
+              <p className="text-xs text-slate-500 mt-1">Machine Cost = Cost/Hour × Run Hours</p>
             </div>
           </div>
         </FormSection>

@@ -104,7 +104,7 @@ export function JobCardsTab({ workOrders }: { workOrders: any[] }) {
       const [j, o, p, m] = await Promise.all([
         supabase.from('cnc_job_cards').select('*').order('created_at', { ascending: false }).limit(2000),
         supabase.from('cnc_work_order_operations').select('*').order('operation_sequence').limit(5000),
-        supabase.from('cnc_processes').select('process_code,process_name,cost_per_hour,cost_per_component,status').limit(1000),
+        supabase.from('cnc_processes').select('process_code,process_name,cost_per_hour,status').limit(1000),
         supabase.from('cnc_machines').select('code,name').order('code').limit(1000),
       ]);
       if (!j.error) setJobs(j.data ?? []);

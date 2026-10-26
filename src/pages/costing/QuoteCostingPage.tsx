@@ -260,7 +260,7 @@ export function QuoteCostingPage() {
       <h3>3. Machine & Labour — ${inr(totals.machineLabour)}</h3>
       ${tbl(['Op', 'Machine', 'Mc Hrs', 'Mc Rate', 'Mc Cost', 'Operator', 'Lab Hrs', 'Lab Rate', 'Lab Cost'], opLines.map((o) => row([`${o.seq} ${o.process_name}`, o.machine, String(o.machine_hours), inr(o.machine_rate), inr(o.machine_cost), o.operator, String(o.labour_hours), inr(o.labour_rate), inr(o.labour_cost)])).join(''))}
       <h3>4. Process Costing — ${inr(totals.process)}</h3>
-      ${tbl(['Seq', 'Process', 'Cycle', 'Setup', 'Cost/Hour', 'Comp', 'Process Cost'], opLines.map((o) => row([String(o.seq), o.process_name, String(o.cycle_time), String(o.setup_time), inr(o.cost_per_hour), inr(o.cost_per_component), inr(o.process_cost)])).join(''))}
+      ${tbl(['Seq', 'Process', 'Cycle (min)', 'Setup (min)', 'Cost/Hour', 'Process Cost'], opLines.map((o) => row([String(o.seq), o.process_name, String(o.cycle_time), String(o.setup_time), inr(o.cost_per_hour), inr(o.process_cost)])).join(''))}
       <h3>5. Final Price — Calculated ${inr(totals.calculated)} | Approved ${approvedNum == null ? '—' : inr(approvedNum)}</h3>`);
   };
 
@@ -498,8 +498,8 @@ export function QuoteCostingPage() {
                     <table className="w-full text-sm min-w-[820px]">
                       <thead><tr className="text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-200">
                         <th className="text-left py-2">Seq</th><th className="text-left py-2">Process</th><th className="text-left py-2">Machine</th>
-                        <th className="text-right py-2">Cycle</th><th className="text-right py-2">Setup</th>
-                        <th className="text-right py-2">Cost/Hour</th><th className="text-right py-2">Cost/Comp</th><th className="text-right py-2">Process Cost</th>
+                        <th className="text-right py-2">Cycle (min)</th><th className="text-right py-2">Setup (min)</th>
+                        <th className="text-right py-2">Cost/Hour</th><th className="text-right py-2">Process Cost</th>
                       </tr></thead>
                       <tbody>
                         {opLines.map((o) => (
@@ -507,10 +507,9 @@ export function QuoteCostingPage() {
                             <td className="py-2 font-mono">{o.seq}</td>
                             <td className="py-2 font-medium">{o.process_code} {o.process_name}</td>
                             <td className="py-2">{o.machine || '—'}</td>
-                            <td className="py-2 text-right">{o.cycle_time} min</td>
-                            <td className="py-2 text-right">{o.setup_time} min</td>
+                            <td className="py-2 text-right">{o.cycle_time}</td>
+                            <td className="py-2 text-right">{o.setup_time}</td>
                             <td className="py-2 text-right">{inr(o.cost_per_hour)}</td>
-                            <td className="py-2 text-right">{inr(o.cost_per_component)}</td>
                             <td className="py-2 text-right font-bold">{inr(o.process_cost)}</td>
                           </tr>
                         ))}
@@ -518,7 +517,7 @@ export function QuoteCostingPage() {
                     </table>
                   </div>
                 )}
-                <p className="text-[11px] text-slate-400 mt-2">Process Cost = (Time × Cost/Hour) + Cost/Component + Setup Cost, using live Process Master rates.</p>
+                <p className="text-[11px] text-slate-400 mt-2">Machine Cost = Cost/Hour × Hours Run. Process Cost = Machine + Labour.</p>
               </div>
 
               {/* final summary */}

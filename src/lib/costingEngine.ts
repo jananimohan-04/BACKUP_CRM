@@ -15,10 +15,10 @@ export interface MaterialLine {
 export interface OpLine {
   key: string; seq: number; process_code: string; process_name: string;
   machine: string; operator: string;
-  machine_hours: number; machine_rate: number; machine_cost: number;
+  machine_hours: number; machine_rate: number; machine_cost: number;  // machine_cost = machine_rate × machine_hours
   labour_hours: number; labour_rate: number; labour_cost: number;
   cycle_time: number; setup_time: number;
-  cost_per_hour: number; cost_per_component: number; setup_cost: number;
+  cost_per_hour: number;  // Machine Cost = Cost Per Hour × Hours run
   process_cost: number; manual: boolean;
   warn_machine: boolean; warn_labour: boolean;
 }
@@ -138,10 +138,8 @@ export function buildOpLines(woOps: any[], jobCards: any[], processes: any[], wo
       cycle_time: costNum(cycleMin),
       setup_time: costNum(setupMin),
       cost_per_hour: mRate,
-      cost_per_component: costNum(p?.cost_per_component),
-      setup_cost: costNum(p?.setup_cost),
-      // Machine cost is considered process cost: process = machine + labour + extras.
-      process_cost: machineCost + labourCost + costNum(p?.cost_per_component) + costNum(p?.setup_cost),
+      // Machine cost = Cost Per Hour × Hours run
+      process_cost: machineCost + labourCost,
       manual: false,
       warn_machine: mh > 0 && mRate <= 0,
       warn_labour: lh > 0,
@@ -176,12 +174,10 @@ export function buildOpLines(woOps: any[], jobCards: any[], processes: any[], wo
 
 export function computeTotals(matLines: MaterialLine[], opLines: OpLine[], quoteTotal: number, serviceTotal = 0): CostingTotals {
   const material = matLines.reduce((s, m) => s + costNum(m.total), 0);
-  const machine = opLines.reduce((s, o) => s + costNum(o.machine_cost), 0);
+  const machine = opLines.reduce((s, o) => s + costNum(o.machine_cost), 0);  // Machine Cost = Cost/Hour × Hours
   const labour = opLines.reduce((s, o) => s + costNum(o.labour_cost), 0);
-  const extras = opLines.reduce((s, o) => s + costNum(o.cost_per_component) + costNum(o.setup_cost), 0);
-  // Machine cost is considered process cost: process = machine + labour + extras,
-  // so the total adds process only once (no double count).
-  const process = machine + labour + extras;
+  // Process cost = machine cost + labour cost
+  const process = machine + labour;
   const quotation = costNum(quoteTotal);
   const service = costNum(serviceTotal);
   return { material, machine, labour, machineLabour: machine + labour, process, quotation, service, calculated: quotation + material + process + service };
@@ -216,9 +212,9 @@ export function applyOpPatch(lines: OpLine[], key: string, patch: Partial<OpLine
   return lines.map((o) => {
     if (o.key !== key) return o;
     const n = { ...o, ...patch, manual: true };
-    n.machine_cost = costNum(n.machine_hours) * costNum(n.machine_rate);
+    n.machine_cost = costNum(n.machine_hours) * costNum(n.machine_rate);  // Machine Cost = Rate × Hours
     n.labour_cost = costNum(n.labour_hours) * costNum(n.labour_rate);
-    n.process_cost = n.machine_cost + n.labour_cost + costNum(n.cost_per_component) + costNum(n.setup_cost);
+    n.process_cost = n.machine_cost + n.labour_cost;
     n.warn_machine = costNum(n.machine_hours) > 0 && costNum(n.machine_rate) <= 0;
     n.warn_labour = costNum(n.labour_hours) > 0 && costNum(n.labour_rate) <= 0;
     return n;
@@ -321,7 +317,7 @@ export function buildCostingPdfInput(args: {
     processes: opLines.map((o) => ({
       seq: String(o.seq), process: `${o.process_code} ${o.process_name}`.trim(), machine: o.machine || '',
       cycle: String(o.cycle_time), setup: String(o.setup_time),
-      rate: costPdfInr(o.cost_per_hour), comp: costPdfInr(o.cost_per_component), cost: costPdfInr(o.process_cost),
+      rate: costPdfInr(o.cost_per_hour), cost: costPdfInr(o.process_cost),  // Machine Cost = Rate × Hours
     })),
     summary: [
       ['Project Costing', costPdfInr(totals.calculated)],

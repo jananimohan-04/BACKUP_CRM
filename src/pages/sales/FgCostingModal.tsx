@@ -631,8 +631,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
       machine_hours: mh, machine_rate: mRate, machine_cost: mc,
       labour_hours: lh, labour_rate: lRate, labour_cost: lc,
       cycle_time: 0, setup_time: 0,
-      cost_per_hour: mRate, cost_per_component: 0, setup_cost: 0,
-      // Machine cost is considered process cost.
+      cost_per_hour: mRate,  // Machine Cost = Cost Per Hour × Hours
       process_cost: mc + lc,
       manual: true, warn_machine: mh > 0 && mRate <= 0, warn_labour: lh > 0 && lRate <= 0,
     };
@@ -1336,9 +1335,9 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
               </div>
               <div className="overflow-x-auto border border-slate-200 rounded-lg">
                 <table className="w-full text-xs">
-                  <thead className="bg-slate-50"><tr><th className={cellTh}>#</th><th className={cellTh}>Operation / Process</th><th className={cellTh}>Machine</th><th className={cellTh}>Qty</th><th className={cellTh}>Cycle</th><th className={cellTh}>₹/Hr</th><th className={cellTh}>Setup</th><th className={cellTh}>Comp</th><th className={`${cellTh} text-right`}>Process Cost</th></tr></thead>
+                  <thead className="bg-slate-50"><tr><th className={cellTh}>#</th><th className={cellTh}>Operation / Process</th><th className={cellTh}>Machine</th><th className={cellTh}>Qty</th><th className={cellTh}>Cycle (min)</th><th className={cellTh}>₹/Hr</th><th className={`${cellTh} text-right`}>Process Cost</th></tr></thead>
                   <tbody>
-                    {effOpLines.length === 0 && (<tr><td colSpan={9} className="py-3 text-center text-slate-400">No operations yet — add one below.</td></tr>)}
+                    {effOpLines.length === 0 && (<tr><td colSpan={7} className="py-3 text-center text-slate-400">No operations yet — add one below.</td></tr>)}
                     {effOpLines.map((o) => (
                       <tr key={o.key} className="border-t border-slate-100">
                         <td className={cellTd}>{o.seq}</td>
@@ -1347,8 +1346,6 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
                         <td className={cellTd}>{baseQty}</td>
                         <td className={cellTd}>{o.cycle_time}</td>
                         <td className={cellTd}>{editOps ? <EditNum aria="Cost per hour" value={o.cost_per_hour} onChange={(v) => patchOp(o.key, { cost_per_hour: v, machine_rate: v })} /> : inr(o.cost_per_hour)}</td>
-                        <td className={cellTd}>{editOps ? <EditNum aria="Setup cost" value={o.setup_cost} onChange={(v) => patchOp(o.key, { setup_cost: v })} /> : inr(o.setup_cost)}</td>
-                        <td className={cellTd}>{editOps ? <EditNum aria="Cost per component" value={o.cost_per_component} onChange={(v) => patchOp(o.key, { cost_per_component: v })} /> : inr(o.cost_per_component)}</td>
                         <td className={`${cellTd} text-right font-bold`}>{inr(o.process_cost)}</td>
                       </tr>
                     ))}

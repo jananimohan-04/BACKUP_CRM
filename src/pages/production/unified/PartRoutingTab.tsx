@@ -38,8 +38,7 @@ const emptyOp = (): OpRow => ({
   machine: '',
   setup_time: 0,
   cycle_time: 0,
-  cost_per_hour: 0,
-  cost_per_component: 0,
+  cost_per_hour: 0,  // Machine Cost = Cost Per Hour × Hours
   standard_qty: 1,
   instructions: '',
 });
@@ -49,7 +48,7 @@ const statusBadge = (s: string) =>
 
 /** Step-level rules shared by editor save and quick-activate. */
 const stepErrors = (
-  steps: { sequence: any; process_id: any; machine: any; setup_time: any; cycle_time: any; cost_per_hour: any; cost_per_component: any; standard_qty: any }[],
+  steps: { sequence: any; process_id: any; machine: any; setup_time: any; cycle_time: any; cost_per_hour: any; standard_qty: any }[],
   procs: any[],
   mCodes: string[],
 ): string[] => {
@@ -68,7 +67,7 @@ const stepErrors = (
     if (proc.machine_type && String(proc.machine_type).trim() !== '' && !r.machine) {
       errs.push(`${label}: process ${proc.process_code} requires a machine.`);
     }
-    for (const [k, label2] of [['setup_time', 'Setup Time'], ['cycle_time', 'Cycle Time'], ['cost_per_hour', 'Cost Per Hour'], ['cost_per_component', 'Cost Per Component'], ['standard_qty', 'Standard Quantity']] as const) {
+    for (const [k, label2] of [['setup_time', 'Setup Time'], ['cycle_time', 'Cycle Time'], ['cost_per_hour', 'Cost Per Hour'], ['standard_qty', 'Standard Quantity']] as const) {
       const n = num((r as any)[k]);
       if (!Number.isFinite(n) || n < 0) errs.push(`${label}: ${label2} must be 0 or more.`);
     }
@@ -234,7 +233,6 @@ export function PartRoutingTab() {
       setup_time: Number(s.setup_time) || 0,
       cycle_time: Number(s.cycle_time) || 0,
       cost_per_hour: Number(s.cost_per_hour) || 0,
-      cost_per_component: Number(s.cost_per_component) || 0,
       standard_qty: Number(s.standard_qty) || 0,
       instructions: s.instructions ?? '',
     })));
@@ -267,7 +265,6 @@ export function PartRoutingTab() {
       process_name: p.process_name ?? '',
       process_category: p.process_category ?? '',
       cost_per_hour: Number(p.cost_per_hour) || 0,
-      cost_per_component: Number(p.cost_per_component) || 0,
     });
   };
 
@@ -350,8 +347,7 @@ export function PartRoutingTab() {
           machine: r.machine || null,
           setup_time: num(r.setup_time),
           cycle_time: num(r.cycle_time),
-          cost_per_hour: num(r.cost_per_hour),
-          cost_per_component: num(r.cost_per_component),
+          cost_per_hour: num(r.cost_per_hour),  // Machine Cost = Cost Per Hour × Hours
           standard_qty: num(r.standard_qty),
           instructions: r.instructions.trim() || null,
         })));
@@ -458,7 +454,6 @@ export function PartRoutingTab() {
           setup_time: Number(s.setup_time) || 0,
           cycle_time: Number(s.cycle_time) || 0,
           cost_per_hour: Number(s.cost_per_hour) || 0,
-          cost_per_component: Number(s.cost_per_component) || 0,
           standard_qty: Number(s.standard_qty) || 0,
           instructions: s.instructions ?? null,
         })));
@@ -684,9 +679,6 @@ export function PartRoutingTab() {
                       <FormField label="Cost Per Hour (₹)">
                         <input type="number" min={0} value={r.cost_per_hour} placeholder={proc ? String(Number(proc.cost_per_hour) || 0) : '0'} onChange={(e) => updateRow(r.key, { cost_per_hour: e.target.value as any })} className={inputClass} />
                       </FormField>
-                      <FormField label="Cost Per Component (₹)">
-                        <input type="number" min={0} value={r.cost_per_component} placeholder={proc ? String(Number(proc.cost_per_component) || 0) : '0'} onChange={(e) => updateRow(r.key, { cost_per_component: e.target.value as any })} className={inputClass} />
-                      </FormField>
                       <FormField label="Standard Quantity">
                         <input type="number" min={0} value={r.standard_qty} onChange={(e) => updateRow(r.key, { standard_qty: e.target.value as any })} className={inputClass} />
                       </FormField>
@@ -747,12 +739,12 @@ export function PartRoutingTab() {
             </div>
             {viewHeader.notes && <p className="text-xs text-slate-500">{viewHeader.notes}</p>}
             <div className="overflow-x-auto border border-slate-200 rounded-xl">
-              <table className="w-full text-xs min-w-[760px]">
+              <table className="w-full text-xs min-w-[660px]">
                 <thead>
                   <tr className="bg-slate-50 text-slate-500 uppercase text-[10px]">
                     <th className="p-2 text-left">Seq</th><th className="p-2 text-left">Process</th><th className="p-2 text-left">Machine</th>
-                    <th className="p-2 text-right">Setup</th><th className="p-2 text-right">Cycle</th>
-                    <th className="p-2 text-right">Cost/Hour</th><th className="p-2 text-right">Cost/Comp</th>
+                    <th className="p-2 text-right">Setup (min)</th><th className="p-2 text-right">Cycle (min)</th>
+                    <th className="p-2 text-right">₹/Hour</th>
                     <th className="p-2 text-right">Est. Cost</th>
                   </tr>
                 </thead>
@@ -765,13 +757,12 @@ export function PartRoutingTab() {
                       <td className="p-2 text-right tabular-nums">{Number(s.setup_time) || 0}</td>
                       <td className="p-2 text-right tabular-nums">{Number(s.cycle_time) || 0}</td>
                       <td className="p-2 text-right tabular-nums">{money(Number(s.cost_per_hour) || 0)}</td>
-                      <td className="p-2 text-right tabular-nums">{money(Number(s.cost_per_component) || 0)}</td>
                       <td className="p-2 text-right tabular-nums font-bold">
-                        {money(routingOpCost({ setup_time: Number(s.setup_time), cycle_time: Number(s.cycle_time), cost_per_hour: Number(s.cost_per_hour), cost_per_component: Number(s.cost_per_component) }, Math.max(0, Number(s.standard_qty) || 0)))}
+                        {money(routingOpCost({ setup_time: Number(s.setup_time), cycle_time: Number(s.cycle_time), cost_per_hour: Number(s.cost_per_hour) }, Math.max(0, Number(s.standard_qty) || 0)))}
                       </td>
                     </tr>
                   ))}
-                  {viewSteps.length === 0 && <tr><td colSpan={8} className="p-4 text-center text-slate-400">No operations in this revision.</td></tr>}
+                  {viewSteps.length === 0 && <tr><td colSpan={7} className="p-4 text-center text-slate-400">No operations in this revision.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -779,7 +770,7 @@ export function PartRoutingTab() {
               <span>Total Operations: <b>{viewSteps.length}</b></span>
               <span>Total Setup Time: <b className="tabular-nums">{viewSteps.reduce((s: number, x: any) => s + (Number(x.setup_time) || 0), 0)} min</b></span>
               <span>Total Cycle Time: <b className="tabular-nums">{viewSteps.reduce((s: number, x: any) => s + (Number(x.cycle_time) || 0), 0)} min/unit</b></span>
-              <span>Estimated Routing Cost: <b className="tabular-nums text-brand-700">{money(viewSteps.reduce((s: number, x: any) => s + routingOpCost({ setup_time: Number(x.setup_time), cycle_time: Number(x.cycle_time), cost_per_hour: Number(x.cost_per_hour), cost_per_component: Number(x.cost_per_component) }, Math.max(0, Number(x.standard_qty) || 0)), 0))}</b></span>
+              <span>Estimated Routing Cost: <b className="tabular-nums text-brand-700">{money(viewSteps.reduce((s: number, x: any) => s + routingOpCost({ setup_time: Number(x.setup_time), cycle_time: Number(x.cycle_time), cost_per_hour: Number(x.cost_per_hour) }, Math.max(0, Number(x.standard_qty) || 0)), 0))}</b></span>
             </div>
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Revision history — {viewHeader.product_code}</p>

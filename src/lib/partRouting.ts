@@ -23,17 +23,15 @@ export interface RoutingStep {
   machine: string;
   setup_time: number;
   cycle_time: number;
-  cost_per_hour: number;
-  cost_per_component: number;
+  cost_per_hour: number;  // Machine Cost = Cost Per Hour × Hours
   standard_qty: number;
   instructions: string;
 }
 
-/** Estimated operation cost for a quantity — the exact engine convention
- *  (hoursOf): (setup + qty × cycle) / 60 × rate + cost/component. */
-export function routingOpCost(step: Pick<RoutingStep, 'setup_time' | 'cycle_time' | 'cost_per_hour' | 'cost_per_component'>, qty: number): number {
-  return hoursOf(num(step.setup_time), qty, num(step.cycle_time)) * num(step.cost_per_hour)
-    + num(step.cost_per_component);
+/** Estimated operation cost for a quantity — Machine Cost = Cost/Hour × Hours
+ *  where Hours = (setup + qty × cycle) / 60 */
+export function routingOpCost(step: Pick<RoutingStep, 'setup_time' | 'cycle_time' | 'cost_per_hour'>, qty: number): number {
+  return hoursOf(num(step.setup_time), qty, num(step.cycle_time)) * num(step.cost_per_hour);
 }
 
 export function nextSequence(steps: { sequence: number }[]): number {
