@@ -1,7 +1,7 @@
 import { defaultTermsText } from '@/lib/termsLibrary';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Download, Upload, Eye, FileText, Plus, Printer, CreditCard, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { ArrowLeft, Download, Upload, Eye, FileText, Plus, Printer, CreditCard, ChevronLeft, ChevronRight, Trash2, ChevronDown, Search, Check, X } from 'lucide-react';
 import { Badge, Button, Card, statusToVariant } from '@/components/ui/Card';
 import { FormField, inputClass, Modal } from '@/components/ui/Modal';
 import { financeApi, type InvoiceDetail, type InvoiceRow, type InvoiceSummary } from '@/lib/finance';
@@ -73,6 +73,21 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
   const [partsList, setPartsList] = useState<any[]>([]);
   const [quotesList, setQuotesList] = useState<any[]>([]);
   const [salesOrdersList, setSalesOrdersList] = useState<any[]>([]);
+  const [selectedDcNos, setSelectedDcNos] = useState<string[]>([]);
+  const [dcDropdownOpen, setDcDropdownOpen] = useState(false);
+  const [dcSearch, setDcSearch] = useState('');
+  const [showAllCompaniesDc, setShowAllCompaniesDc] = useState(false);
+  const dcDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (dcDropdownRef.current && !dcDropdownRef.current.contains(e.target as Node)) {
+        setDcDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
 
   const reload = async (p = page, f = effFilters, t = tab) => {
     setLoading(true); setError('');
@@ -104,15 +119,25 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     let active = true;
     (async () => {
       const { data: delivery, error: deliveryError } = await supabase.from('cnc_deliveries')
-        .select('id,delivery_no,delivery_date,customer_id,customer_name,sales_order_id,sales_order_no,part_name,dispatch_qty,quantity,delivery_address')
+        .select('*')
         .eq('id', deliveryId).maybeSingle();
       if (deliveryError) throw deliveryError;
       if (!delivery) throw new Error('Delivery challan not found.');
+
+      let allDeliveryLines: any[] = [delivery];
+      if (delivery.delivery_no) {
+        const { data: siblings } = await supabase.from('cnc_deliveries')
+          .select('*')
+          .eq('delivery_no', delivery.delivery_no);
+        if (siblings && siblings.length > 0) {
+          allDeliveryLines = siblings;
+        }
+      }
+
       const { data: order } = delivery.sales_order_id
         ? await supabase.from('cnc_sales_orders').select('id,quantity,value').eq('id', delivery.sales_order_id).maybeSingle()
         : { data: null };
       if (!active) return;
-      const qty = Number(delivery.dispatch_qty ?? delivery.quantity ?? 0);
       const unitRate = Number(order?.quantity || 0) > 0 ? Number(order?.value || 0) / Number(order?.quantity) : 0;
       let qTerms = '';
       if (delivery.sales_order_id) {
@@ -142,8 +167,34 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
       const days = qTerms ? extractDueDays(qTerms) : '';
       setSelected(null);
       setEditId('');
-      setForm({ invoice_type: 'Sales Invoice', invoice_date: delivery.delivery_date || todayISO(), customer_name: delivery.customer_name || '', customer_id: delivery.customer_id || '', billing_address: delivery.delivery_address || '', due_days: days || '', po_no: '', dc_no: delivery.delivery_no || '', delivery_id: delivery.id, sales_order_id: delivery.sales_order_id || '', payment_terms: qTerms || '' });
-      setLines([{ description: delivery.part_name || '', quantity: String(qty), unit: '', rate: String(unitRate), gst_rate: '', discount_pct: '0' }]);
+      const dcNo = delivery.delivery_no || '';
+      if (dcNo) setSelectedDcNos([dcNo]);
+      setForm({
+        invoice_type: 'Sales Invoice',
+        invoice_date: delivery.delivery_date || todayISO(),
+        customer_name: delivery.customer_name || '',
+        customer_id: delivery.customer_id || '',
+        billing_address: delivery.delivery_address || delivery.billing_address || '',
+        due_days: days || '',
+        po_no: delivery.po_no || delivery.customer_po_no || '',
+        dc_no: dcNo,
+        delivery_id: delivery.id,
+        sales_order_id: delivery.sales_order_id || '',
+        payment_terms: qTerms || ''
+      });
+      setLines(allDeliveryLines.map(dl => {
+        const q = Number(dl.dispatch_qty ?? dl.quantity ?? 1) || 1;
+        const r = dl.unit_price ?? dl.price ?? unitRate ?? '';
+        return {
+          description: dl.part_name || '',
+          quantity: String(q),
+          unit: dl.unit || 'Nos',
+          rate: String(r),
+          gst_rate: String(dl.gst_rate || '18'),
+          discount_pct: '0',
+          hsn: dl.hsn || '',
+        };
+      }));
       setFormOpen(true);
     })().catch(e => { if (active) setError(e instanceof Error ? e.message : 'Unable to load the delivery challan.'); });
     return () => { active = false; };
@@ -167,15 +218,29 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
       const billedDc = new Set<string>();
       const billedQty = new Map<string, number>();
       live.forEach(i => {
-        if (i.delivery_id) billedDc.add(String(i.delivery_id));
-        if (i.dc_no) billedDc.add(String(i.dc_no));
+        if (i.delivery_id) billedDc.add(String(i.delivery_id).trim().toLowerCase());
+        if (i.dc_no) {
+          String(i.dc_no).split(/[,;/]+/).forEach((s: string) => {
+            const clean = s.trim().toLowerCase();
+            if (clean) billedDc.add(clean);
+          });
+        }
         if (i.sales_order_id) {
           const sign = String(i.invoice_type) === 'Credit Note' ? -1 : 1;
           billedQty.set(String(i.sales_order_id), (billedQty.get(String(i.sales_order_id)) || 0) + sign * (Number(i.quantity) || 0));
         }
       });
       // Challans that are billed, and orders that are fully invoiced, no longer appear in the product list.
-      if (d.data) setDeliveries((d.data as any[]).filter(x => !['Billed', 'Cancelled'].includes(String(x.status)) && !billedDc.has(String(x.id)) && !billedDc.has(String(x.delivery_no))));
+      if (d.data) {
+        const unbilled = (d.data as any[]).filter(x => {
+          const isBilled = String(x.status || '').trim().toLowerCase() === 'billed';
+          const isCancelled = String(x.status || '').trim().toLowerCase() === 'cancelled';
+          const xId = String(x.id || '').trim().toLowerCase();
+          const xNo = String(x.delivery_no || '').trim().toLowerCase();
+          return !isBilled && !isCancelled && (!xId || !billedDc.has(xId)) && (!xNo || !billedDc.has(xNo));
+        });
+        setDeliveries(unbilled);
+      }
       setAccounts(b.accounts || []);
       // Items already in stock (not tied to any customer order) can be invoiced straight from inventory.
       const stockParts = ((p.data as any[]) || []).map(x => ({ ...x, part_code: x.part_no, kind: 'Part' }));
@@ -204,6 +269,10 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
   };
   const startNew = () => {
     setEditId('');
+    setSelectedDcNos([]);
+    setDcDropdownOpen(false);
+    setDcSearch('');
+    setShowAllCompaniesDc(false);
     setForm({ invoice_type: 'Sales Invoice', invoice_date: todayISO(), customer_name: '', customer_id: '', due_days: '', po_no: '', dc_no: '', delivery_id: '', payment_terms: '' });
     setLines([{ description: '', quantity: '', unit: '', rate: '', gst_rate: '', discount_pct: '0' }]);
     setFormOpen(true);
@@ -212,6 +281,8 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     if (!selected || Number(selected.received) !== 0 || selected.cancelled) return;
     const item = selected.items?.[0];
     setEditId(selected.id);
+    const parsedDcs = selected.dc_no ? String(selected.dc_no).split(/[,;/]+/).map((s: string) => s.trim()).filter(Boolean) : [];
+    setSelectedDcNos(parsedDcs);
     setForm({ id: selected.id, invoice_no: selected.invoice_no, invoice_type: selected.invoice_type, invoice_date: selected.invoice_date || todayISO(), due_date: selected.due_date || '', due_days: (selected.invoice_date && selected.due_date) ? diffDaysISO(selected.invoice_date, selected.due_date) : '', customer_name: selected.customer_name || '', customer_id: selected.customer_id || '', po_no: selected.po_no || '', dc_no: selected.dc_no || '', payment_terms: selected.payment_terms || '' });
     const quantity = Math.max(1, Number(selected.quantity || 1));
     const taxable = Number(selected.taxable_value || selected.basic_value || 0);
@@ -229,6 +300,23 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
         ? addDaysISO(form.invoice_date, Number(form.due_days))
         : (form.due_date || '');
       const result = await financeApi.saveInvoice({ ...form, due_date: dueDate, quantity: items.reduce((sum, item) => sum + item.quantity, 0), part_name: items.map(item => item.description).join(', ') }, items);
+
+      // Mark all selected delivery rows as Billed
+      const dcNosToBill = selectedDcNos.length > 0
+        ? selectedDcNos
+        : (form.dc_no ? String(form.dc_no).split(/[,;/]+/).map((s: string) => s.trim()).filter(Boolean) : []);
+
+      if (dcNosToBill.length > 0) {
+        try {
+          await supabase.from('cnc_deliveries').update({ status: 'Billed' }).in('delivery_no', dcNosToBill);
+        } catch (e) {
+          console.warn('Failed to update delivery status to Billed:', e);
+        }
+      } else if (form.delivery_id) {
+        try {
+          await supabase.from('cnc_deliveries').update({ status: 'Billed' }).eq('id', form.delivery_id);
+        } catch (e) {}
+      }
       
       const savedInvoiceRecord = {
         ...form,
@@ -356,35 +444,198 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     return list;
   }, [quotesList, salesOrdersList, company?.id]);
 
+  // Group all unbilled deliveries by unique DC number
+  const dcGroups = useMemo(() => {
+    const groups = new Map<string, {
+      dcNo: string;
+      customerName: string;
+      customerId?: string;
+      deliveryDate?: string;
+      salesOrderId?: string;
+      salesOrderNo?: string;
+      poNo?: string;
+      billingAddress?: string;
+      status?: string;
+      deliveryIds: string[];
+      items: Array<{
+        id: string;
+        partName: string;
+        qty: number;
+        unit: string;
+        rate: number | string;
+        gstRate: number | string;
+        hsn?: string;
+      }>;
+      totalQty: number;
+    }>();
+
+    (deliveries || []).forEach((d: any) => {
+      const dcNo = String(d.delivery_no || d.id || '').trim();
+      if (!dcNo) return;
+      const existing = groups.get(dcNo);
+      const qty = Number(d.dispatch_qty ?? d.quantity ?? 1) || 1;
+      const unit = d.unit || 'Nos';
+      const rate = d.unit_price ?? d.price ?? '';
+      const gstRate = d.gst_rate ?? '18';
+      const hsn = d.hsn ?? '';
+      const item = {
+        id: String(d.id),
+        partName: String(d.part_name || '').trim(),
+        qty,
+        unit,
+        rate,
+        gstRate,
+        hsn,
+      };
+
+      if (!existing) {
+        groups.set(dcNo, {
+          dcNo,
+          customerName: String(d.customer_name || '').trim(),
+          customerId: d.customer_id || '',
+          deliveryDate: d.delivery_date || '',
+          salesOrderId: d.sales_order_id || '',
+          salesOrderNo: d.sales_order_no || '',
+          poNo: d.po_no || d.customer_po_no || '',
+          billingAddress: d.delivery_address || d.billing_address || '',
+          status: d.status || 'Pending',
+          deliveryIds: [String(d.id)],
+          items: [item],
+          totalQty: qty,
+        });
+      } else {
+        existing.deliveryIds.push(String(d.id));
+        existing.items.push(item);
+        existing.totalQty += qty;
+        if (!existing.poNo && (d.po_no || d.customer_po_no)) {
+          existing.poNo = d.po_no || d.customer_po_no;
+        }
+        if (!existing.billingAddress && (d.delivery_address || d.billing_address)) {
+          existing.billingAddress = d.delivery_address || d.billing_address;
+        }
+        if (!existing.customerName && d.customer_name) {
+          existing.customerName = String(d.customer_name).trim();
+        }
+      }
+    });
+
+    return Array.from(groups.values());
+  }, [deliveries]);
+
+  // Filter DC groups based on selected company in form, search, etc.
+  const filteredDcGroups = useMemo(() => {
+    const q = dcSearch.toLowerCase().trim();
+    const custKey = String(form.customer_name || '').trim().toLowerCase();
+    const custId = String(form.customer_id || '').trim().toLowerCase();
+
+    return dcGroups.filter(g => {
+      if (!showAllCompaniesDc && (custKey || custId)) {
+        const gCust = String(g.customerName || '').trim().toLowerCase();
+        const gId = String(g.customerId || '').trim().toLowerCase();
+        const matchesCompany = (custKey && gCust && (gCust === custKey || gCust.includes(custKey) || custKey.includes(gCust))) ||
+          (custId && gId && gId === custId);
+        if (!matchesCompany && !selectedDcNos.includes(g.dcNo)) {
+          return false;
+        }
+      }
+
+      if (!q) return true;
+      const inDcNo = g.dcNo.toLowerCase().includes(q);
+      const inCust = (g.customerName || '').toLowerCase().includes(q);
+      const inPo = (g.poNo || '').toLowerCase().includes(q);
+      const inParts = g.items.some(it => it.partName.toLowerCase().includes(q));
+      return inDcNo || inCust || inPo || inParts;
+    });
+  }, [dcGroups, dcSearch, form.customer_name, form.customer_id, showAllCompaniesDc, selectedDcNos]);
+
+  const toggleDcSelection = (dcNo: string) => {
+    const nextSelected = selectedDcNos.includes(dcNo)
+      ? selectedDcNos.filter(n => n !== dcNo)
+      : [...selectedDcNos, dcNo];
+
+    setSelectedDcNos(nextSelected);
+
+    const chosen = dcGroups.filter(g => nextSelected.includes(g.dcNo));
+
+    if (chosen.length > 0) {
+      const primaryCust = chosen[0]?.customerName || form.customer_name || '';
+      const matchedCust = customers.find(c =>
+        String(c.name || '').trim().toLowerCase() === primaryCust.toLowerCase() ||
+        String(c.id || '') === String(chosen[0]?.customerId || '')
+      );
+      const primaryCustId = matchedCust?.id || chosen[0]?.customerId || form.customer_id || '';
+      const allPos = Array.from(new Set(chosen.map(g => g.poNo).filter(Boolean))).join(', ');
+      const bestAddress = chosen.find(g => g.billingAddress)?.billingAddress || (matchedCust as any)?.address || form.billing_address || '';
+      const bestSoId = chosen.find(g => g.salesOrderId)?.salesOrderId || form.sales_order_id || '';
+
+      const qTerms = findQuoteTermsForCustomer(primaryCust);
+      const days = qTerms ? extractDueDays(qTerms) : '';
+
+      setForm((prev: any) => ({
+        ...prev,
+        dc_no: chosen.map(g => g.dcNo).join(', '),
+        delivery_id: chosen[0]?.deliveryIds[0] || '',
+        customer_name: primaryCust,
+        customer_id: primaryCustId,
+        po_no: allPos || prev.po_no,
+        billing_address: bestAddress || prev.billing_address,
+        sales_order_id: bestSoId || prev.sales_order_id,
+        payment_terms: qTerms || prev.payment_terms,
+        due_days: (days && (!prev.due_days || prev.due_days === '0')) ? days : prev.due_days,
+      }));
+
+      // Flatten items from all selected DCs into invoice lines
+      const allLines = chosen.flatMap(g => g.items.map(it => {
+        const partMatch = partsList.find(p =>
+          String(p.part_name || '').trim().toLowerCase() === String(it.partName || '').trim().toLowerCase() ||
+          String(p.part_code || '').trim().toLowerCase() === String(it.partName || '').trim().toLowerCase()
+        );
+        const s = splitProductAndRef(it.partName, allCompanies, g.customerName);
+        const orig = s.original || it.partName;
+        const fullRef = s.reference || formatFullReference(orig, g.customerName, g.deliveryDate, it.qty);
+        const rate = it.rate || partMatch?.unit_price || '';
+        return {
+          description: combineProductAndRef(orig, fullRef),
+          originalName: orig,
+          reference: fullRef,
+          quantity: String(it.qty || 1),
+          unit: it.unit || partMatch?.unit || 'Nos',
+          rate: String(rate),
+          gst_rate: String(it.gstRate || partMatch?.gst_rate || '18'),
+          discount_pct: '0',
+          hsn: it.hsn || partMatch?.hsn || '',
+        };
+      }));
+
+      setLines(allLines.length > 0 ? allLines : [{ description: '', quantity: '', unit: '', rate: '', gst_rate: '', discount_pct: '0' }]);
+    } else {
+      setForm((prev: any) => ({
+        ...prev,
+        dc_no: '',
+        delivery_id: '',
+      }));
+      setLines([{ description: '', quantity: '', unit: '', rate: '', gst_rate: '', discount_pct: '0' }]);
+    }
+  };
+
+  const clearSelectedDcs = () => {
+    setSelectedDcNos([]);
+    setForm((prev: any) => ({
+      ...prev,
+      dc_no: '',
+      delivery_id: '',
+    }));
+    setLines([{ description: '', quantity: '', unit: '', rate: '', gst_rate: '', discount_pct: '0' }]);
+  };
+
   const chooseDelivery = (id: string) => {
     const d = deliveries.find(x => String(x.id) === id);
-    const qTerms = findQuoteTermsForDelivery(d);
-    const days = qTerms ? extractDueDays(qTerms) : '';
-    setForm({
-      ...form,
-      delivery_id: id,
-      dc_no: d?.delivery_no || '',
-      sales_order_id: d?.sales_order_id || '',
-      customer_id: d?.customer_id || '',
-      customer_name: d?.customer_name || form.customer_name,
-      po_no: d?.po_no || d?.customer_po_no || form.po_no || '',
-      billing_address: d?.delivery_address || d?.party_address || form.billing_address || '',
-      payment_terms: qTerms || form.payment_terms || '',
-      due_days: (days && (!form.due_days || form.due_days === '0')) ? days : form.due_days,
-    });
-    if (d) {
-      const partMatch = partsList.find(p =>
-        String(p.part_name || '').trim().toLowerCase() === String(d.part_name || '').trim().toLowerCase() ||
-        String(p.part_code || '').trim().toLowerCase() === String(d.part_name || '').trim().toLowerCase()
-      );
-      setLines(current => current.map((line, index) => index === 0 ? {
-        ...line,
-        description: d.part_name || '',
-        quantity: String(d.dispatch_qty ?? d.quantity ?? 1),
-        unit: d.unit || partMatch?.unit || line.unit || 'Nos',
-        rate: String(d.unit_price || d.price || partMatch?.unit_price || line.rate || ''),
-        gst_rate: String(d.gst_rate || partMatch?.gst_rate || line.gst_rate || '18'),
-      } : line));
+    if (!d) return;
+    const dcNo = String(d.delivery_no || d.id || '').trim();
+    if (dcNo) {
+      if (!selectedDcNos.includes(dcNo)) {
+        toggleDcSelection(dcNo);
+      }
     }
   };
   const recordReceipt = async () => {
@@ -429,7 +680,8 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     let dcDate: string | null = null;
     if (inv.dc_no) {
       try {
-        const dr = await supabase.from('cnc_deliveries').select('delivery_date').eq('delivery_no', inv.dc_no).order('created_at').limit(1).maybeSingle();
+        const firstDc = String(inv.dc_no).split(/[,;/]+/)[0]?.trim();
+        const dr = await supabase.from('cnc_deliveries').select('delivery_date').eq('delivery_no', firstDc || inv.dc_no).order('created_at').limit(1).maybeSingle();
         if (!dr.error && dr.data) dcDate = (dr.data as any).delivery_date || null;
       } catch { /* date stays empty */ }
     }
@@ -555,24 +807,132 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
           <input className={`${invInput} w-[6.5rem]`} value={form.invoice_no||''} onChange={e=>setForm({...form,invoice_no:e.target.value})} placeholder="Auto if blank"/>
         ))}
         {renderInvField("Delivery Challan", (
-          <>
-            <input
-              autoComplete="off"
-              list="inv-dc-list"
-              className={`${invInput} w-[8.5rem]`}
-              placeholder="Type or pick DC no"
-              value={form.dc_no||''}
-              onChange={e => {
-                const v = e.target.value;
-                const d = deliveries.find(x => String(x.delivery_no || '').trim().toLowerCase() === v.trim().toLowerCase());
-                if (d) chooseDelivery(String(d.id));
-                else setForm((prev: any) => ({ ...prev, dc_no: v, delivery_id: '' }));
-              }}
-            />
-            <datalist id="inv-dc-list">
-              {deliveries.map(d => <option key={d.id} value={d.delivery_no || String(d.id)}>{d.delivery_no || d.id} · {d.customer_name || ''}</option>)}
-            </datalist>
-          </>
+          <div className="relative inline-flex items-center" ref={dcDropdownRef}>
+            <div
+              onClick={() => setDcDropdownOpen(!dcDropdownOpen)}
+              className={`${invInput} w-[9.5rem] sm:w-[11.5rem] flex items-center justify-between gap-1 cursor-pointer select-none bg-white hover:bg-slate-50`}
+              title={form.dc_no ? `Selected: ${form.dc_no}` : "Click to select Delivery Challan(s)"}
+            >
+              <span className="truncate text-[11px] font-medium text-slate-800">
+                {selectedDcNos.length > 0
+                  ? `${selectedDcNos.length} DC${selectedDcNos.length > 1 ? 's' : ''}: ${selectedDcNos.join(', ')}`
+                  : (form.dc_no ? form.dc_no : (dcGroups.length > 0 ? `Pick DC (${dcGroups.length})` : 'Type or pick DC no'))}
+              </span>
+              <div className="flex items-center gap-1 shrink-0 text-slate-400">
+                {selectedDcNos.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); clearSelectedDcs(); }}
+                    className="hover:text-rose-600 px-0.5 rounded cursor-pointer font-bold text-[10px] text-slate-400"
+                    title="Clear DC selection"
+                  >
+                    ✕
+                  </button>
+                )}
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform text-slate-500 ${dcDropdownOpen ? 'rotate-180' : ''}`} />
+              </div>
+            </div>
+
+            {dcDropdownOpen && (
+              <div
+                className="absolute top-full left-0 mt-1 w-[22rem] sm:w-[26rem] bg-white rounded-lg shadow-2xl border border-slate-300 p-2 z-[9999] text-xs space-y-1.5"
+                onClick={e => e.stopPropagation()}
+              >
+                {/* Search & scope header */}
+                <div className="space-y-1">
+                  <div className="relative flex items-center">
+                    <Search className="w-3.5 h-3.5 absolute left-2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search DC no, company, part..."
+                      value={dcSearch}
+                      onChange={e => setDcSearch(e.target.value)}
+                      className="w-full pl-7 pr-2 py-1 text-xs border border-slate-200 rounded bg-slate-50 focus:bg-white focus:outline-none focus:border-brand-500"
+                      autoFocus
+                    />
+                  </div>
+                  {form.customer_name && (
+                    <div className="flex items-center justify-between text-[10px] text-slate-600 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">
+                      <span className="truncate max-w-[15rem]">Company: <strong className="text-brand-700">{form.customer_name}</strong></span>
+                      <button
+                        type="button"
+                        onClick={() => setShowAllCompaniesDc(!showAllCompaniesDc)}
+                        className="text-brand-600 hover:text-brand-800 font-semibold underline shrink-0 cursor-pointer ml-1"
+                      >
+                        {showAllCompaniesDc ? "Filter by company" : "Show all companies"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* DC List with Checkboxes */}
+                <div className="max-h-60 overflow-y-auto space-y-1 pr-0.5">
+                  {filteredDcGroups.length === 0 ? (
+                    <div className="text-center py-5 text-slate-400 text-xs">
+                      No unbilled delivery challans found.
+                    </div>
+                  ) : (
+                    filteredDcGroups.map((g) => {
+                      const isChecked = selectedDcNos.includes(g.dcNo);
+                      return (
+                        <label
+                          key={g.dcNo}
+                          className={`flex items-start gap-2 p-1.5 rounded border transition-colors cursor-pointer select-none ${isChecked ? 'bg-purple-50/80 border-purple-300 ring-1 ring-purple-200' : 'bg-slate-50/60 border-slate-200 hover:bg-slate-100/80'}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleDcSelection(g.dcNo)}
+                            className="mt-0.5 h-3.5 w-3.5 accent-purple-600 rounded cursor-pointer shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="font-mono font-bold text-slate-800 text-[11px]">{g.dcNo}</span>
+                              <span className="text-[10px] text-slate-500 font-medium">{g.deliveryDate || ''}</span>
+                            </div>
+                            <div className="font-semibold text-brand-700 text-[11px] truncate">{g.customerName || 'No Company'}</div>
+                            <div className="text-[10px] text-slate-600 line-clamp-1 mt-0.5" title={g.items.map(it => `${it.partName} (${it.qty} ${it.unit})`).join(' · ')}>
+                              {g.items.map(it => `${it.partName} (${it.qty} ${it.unit})`).join(' · ')}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[9px] text-slate-500">
+                              <span className="font-bold text-slate-700">Total: {g.totalQty} pcs</span>
+                              {g.poNo && <span className="bg-slate-200/80 text-slate-700 px-1 rounded font-medium">PO: {g.poNo}</span>}
+                              {g.items.length > 1 && <span className="text-purple-700 font-semibold">{g.items.length} items</span>}
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-between pt-1 border-t border-slate-200 text-[11px]">
+                  <span className="text-slate-600 font-medium">
+                    {selectedDcNos.length} DC{selectedDcNos.length !== 1 ? 's' : ''} selected
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {selectedDcNos.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={clearSelectedDcs}
+                        className="text-rose-600 hover:underline text-[11px] font-medium"
+                      >
+                        Clear
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setDcDropdownOpen(false)}
+                      className="px-2 py-0.5 text-[11px] font-bold rounded bg-brand-600 text-white hover:bg-brand-700 shadow-xs"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         ))}
         {renderInvField("Company", (
           <select className={`${invInput} w-[8.5rem]`} value={form.customer_id||''} onChange={e=>{
