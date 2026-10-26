@@ -421,9 +421,25 @@ function ActualScheduling() {
   async function fetchData() {
     try {
       setLoading(true);
-      const [machinesRes, jobsRes] = await Promise.all([
+      // Fetch all tables in parallel concurrently
+      const [
+        machinesRes,
+        jobsRes,
+        woRes,
+        soRes,
+        inwRes,
+        allWoRes,
+        opsRes,
+        procRes
+      ] = await Promise.all([
         supabase.from('cnc_machines').select('*').order('code'),
-        supabase.from('cnc_job_cards').select('*')
+        supabase.from('cnc_job_cards').select('*'),
+        supabase.from('cnc_work_orders').select('*').not('status', 'in', '("Completed","Dispatched","Cancelled")'),
+        supabase.from('cnc_sales_orders').select('*'),
+        supabase.from('cnc_inwards').select('*').neq('status', 'Deleted'),
+        supabase.from('cnc_work_orders').select('*'),
+        supabase.from('cnc_work_order_operations').select('*').order('operation_sequence'),
+        supabase.from('cnc_processes').select('process_code,process_name,machine_type,status').order('process_code'),
       ]);
 
       if (machinesRes.error) throw machinesRes.error;
@@ -431,11 +447,8 @@ function ActualScheduling() {
 
       setMachines(machinesRes.data || []);
       const jobsData = jobsRes.data || [];
-      // Cancelled job cards keep audit history but never occupy the board.
       setJobs(jobsData.filter((j: any) => String(j.status ?? '') !== 'Cancelled'));
       
-      // Operators come only from job history (never login users).
-      // Skip placeholders like '—'.
       const opNames = new Map<string, string>();
       for (const j of jobsData) {
         const n = String(j.operator ?? '').trim();
@@ -443,74 +456,46 @@ function ActualScheduling() {
       }
       setOperators(Array.from(opNames.values()).map((name, i) => ({ id: `OP-${i}`, name, role: 'Operator', status: 'Available' })));
       
-      const woRes = await supabase.from('cnc_work_orders').select('*').not('status', 'in', '("Completed","Dispatched","Cancelled")');
       if (woRes.error) console.error('Failed to load work orders:', woRes.error);
       if (woRes.data) setWorkOrders(woRes.data);
-      try {
-        const [so, inw, all] = await Promise.all([
-          supabase.from('cnc_sales_orders').select('*'),
-          supabase.from('cnc_inwards').select('*').neq('status', 'Deleted'),
-          supabase.from('cnc_work_orders').select('*'),
-        ]);
-        setSoRows(so.data ?? []); setInwardRows(inw.data ?? []); setAllWoRows(all.data ?? []);
-      } catch (e) { console.error('Failed to load products / parts:', e); }
+      
+      setSoRows(soRes.data ?? []);
+      setInwardRows(inwRes.data ?? []);
+      setAllWoRows(allWoRes.data ?? []);
 
-      // Customer names for Job Details (includes completed orders).
-      try {
-        const cmapRes = await supabase.from('cnc_work_orders').select('id,wo_no,customer');
-        if (!cmapRes.error) {
-          const cmap: Record<string, string> = {};
-          const imap: Record<string, string> = {};
-          for (const w of cmapRes.data ?? []) {
-            if (w.wo_no) {
-              cmap[w.wo_no] = (w as any).customer ?? '';
-              imap[w.wo_no] = String((w as any).id);
-            }
-          }
-          setWoCustomerMap(cmap);
-          setWoIdMap(imap);
+      // Build customer and id map directly from all work orders
+      const cmap: Record<string, string> = {};
+      const imap: Record<string, string> = {};
+      for (const w of (allWoRes.data ?? [])) {
+        if (w.wo_no) {
+          cmap[w.wo_no] = (w as any).customer ?? '';
+          imap[w.wo_no] = String((w as any).id);
         }
-      } catch (cmapErr) {
-        console.error('Failed to load work order customers:', cmapErr);
       }
+      setWoCustomerMap(cmap);
+      setWoIdMap(imap);
 
-      // Work order operations from the Production module. Missing table (migration
-      // not applied) only disables operation selection — the calendar still works.
-      try {
-        const opsRes = await supabase.from('cnc_work_order_operations').select('*').order('operation_sequence');
-        if (opsRes.error) {
-          if ((opsRes.error as any).code === 'PGRST205') setOpsMissing(true);
-          else console.error('Failed to load work order operations:', opsRes.error);
-          setOperations([]);
-        } else {
-          setOpsMissing(false);
-          setOperations(opsRes.data || []);
-        }
-      } catch (opErr) {
-        console.error('Failed to load work order operations:', opErr);
+      if (opsRes.error) {
+        if ((opsRes.error as any).code === 'PGRST205') setOpsMissing(true);
+        else console.error('Failed to load work order operations:', opsRes.error);
         setOperations([]);
+      } else {
+        setOpsMissing(false);
+        setOperations(opsRes.data || []);
       }
-      // Process Master drives the Machine dropdown (machines are entered there).
-      // Missing table only empties the dropdown — the calendar still works.
-      try {
-        const procRes = await supabase.from('cnc_processes').select('process_code,process_name,machine_type,status').order('process_code');
-        if (!procRes.error) {
-          const rows = procRes.data ?? [];
-          setProcesses(rows);
-          const seen = new Set<string>();
-          const list: string[] = [];
-          for (const p of rows) {
-            if ((p.status ?? 'Active') !== 'Active') continue;
-            const mt = String(p.machine_type ?? '').trim();
-            if (mt && !seen.has(mt.toLowerCase())) { seen.add(mt.toLowerCase()); list.push(mt); }
-          }
-          setProcessMachines(list.sort((a, b) => a.localeCompare(b)));
-        } else {
-          setProcesses([]);
-          setProcessMachines([]);
+
+      if (!procRes.error) {
+        const rows = procRes.data ?? [];
+        setProcesses(rows);
+        const seen = new Set<string>();
+        const list: string[] = [];
+        for (const p of rows) {
+          if ((p.status ?? 'Active') !== 'Active') continue;
+          const mt = String(p.machine_type ?? '').trim();
+          if (mt && !seen.has(mt.toLowerCase())) { seen.add(mt.toLowerCase()); list.push(mt); }
         }
-      } catch (procErr) {
-        console.error('Failed to load process master:', procErr);
+        setProcessMachines(list.sort((a, b) => a.localeCompare(b)));
+      } else {
         setProcesses([]);
         setProcessMachines([]);
       }

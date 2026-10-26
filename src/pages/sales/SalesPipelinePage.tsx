@@ -4015,14 +4015,33 @@ export function SalesPipelinePage() {
   const fetchPipeline = async () => {
     setLoading(true);
     try {
-    // Fetch all customers for comprehensive company lookup
-    const { data: custData, error: custErr } = await supabase.from('cnc_customers').select('*');
-    if (custErr) console.warn("Error fetching customers in fetchPipeline:", custErr);
+    // Fetch all pipeline tables concurrently in parallel for ultra-fast loading
+    const [
+      custRes,
+      leadsRes,
+      quotesRes,
+      ordersRes,
+      inwardsRes,
+      allWosRes,
+      dcsRes,
+      invsRes
+    ] = await Promise.all([
+      supabase.from('cnc_customers').select('*'),
+      supabase.from('cnc_enquiries').select('id, lead_no, enquiry_no, status, pipeline_stage, customer, part_name, quantity, estimated_value, expected_date, received_date, created_at, contact_person, phone, email, enquiring_for, gst, city'),
+      supabase.from('cnc_quotations').select('*'),
+      supabase.from('cnc_sales_orders').select('*'),
+      supabase.from('cnc_inwards').select('*').neq('status', 'Deleted'),
+      supabase.from('cnc_work_orders').select('*'),
+      supabase.from('cnc_deliveries').select('*'),
+      supabase.from('cnc_invoices').select('*'),
+    ]);
+
+    const custData = custRes.data;
+    if (custRes.error) console.warn("Error fetching customers in fetchPipeline:", custRes.error);
     if (custData && custData.length > 0) setCustomerList(custData);
 
-    // Fetch all leads to build a lookup map for Unique Numbers
-    const { data: allLeads, error: leadsErr } = await supabase.from('cnc_enquiries').select('id, lead_no, enquiry_no, status, pipeline_stage, customer, part_name, quantity, estimated_value, expected_date, received_date, created_at, contact_person, phone, email, enquiring_for, gst, city');
-    if (leadsErr) console.error("Error fetching leads:", leadsErr);
+    const allLeads = leadsRes.data;
+    if (leadsRes.error) console.error("Error fetching leads:", leadsRes.error);
     
     const leadMap = new Map();
     const compMap = new Map();
@@ -4059,23 +4078,22 @@ export function SalesPipelinePage() {
     }
     setKnownCompanies(Array.from(compMap.values()));
 
-    // Load all quotes / orders for the reference maps (converted quotes and inwarded orders are still
-    // needed to resolve project numbers downstream); only the active ones become cards.
-    const { data: allQuotes, error: quotesErr } = await supabase.from('cnc_quotations').select('*');
-    if (quotesErr) console.error("Error fetching quotations:", quotesErr);
+    const allQuotes = quotesRes.data;
+    if (quotesRes.error) console.error("Error fetching quotations:", quotesRes.error);
     let resolvedQuotes: any[] = allQuotes && allQuotes.length > 0 ? allQuotes : [];
     const quoteMap = new Map();
     resolvedQuotes.forEach(q => quoteMap.set(q.id, leadMap.get(q.lead_id) || q.enquiry_no || q.quote_no));
     const quotes = resolvedQuotes.filter(q => ['Sent', 'Under Review', 'Draft'].includes(q.status));
 
-    const { data: allOrders, error: ordersErr } = await supabase.from('cnc_sales_orders').select('*');
-    if (ordersErr) console.error("Error fetching sales orders:", ordersErr);
+    const allOrders = ordersRes.data;
+    if (ordersRes.error) console.error("Error fetching sales orders:", ordersRes.error);
     if (allOrders) setSalesOrdersList(allOrders);
     const orderMap = new Map();
     if (allOrders) allOrders.forEach(o => orderMap.set(o.order_no, o.lead_no || quoteMap.get(o.quotation_id) || o.order_no));
     const orders = allOrders?.filter(o => ['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'].includes(o.status));
 
-    const { data: inwards, error: inwardErr } = await supabase.from('cnc_inwards').select('*').neq('status', 'Deleted');
+    const inwards = inwardsRes.data;
+    const inwardErr = inwardsRes.error;
 
     const newCards: KanbanCard[] = [];
 
@@ -4134,16 +4152,18 @@ export function SalesPipelinePage() {
     }
 
     // Quantities count every work order (dispatched ones too); only open ones become Finished Goods cards.
-    const { data: allWosRaw } = await supabase.from('cnc_work_orders').select('*');
+    const allWosRaw = allWosRes.data;
     const allWos = allWosRaw ? allWosRaw.filter((w: any) => w.is_part_order !== true) : allWosRaw; // part orders are not finished product
     const fgs = allWos ? allWos.filter((w: any) => ['Completed', 'In Progress'].includes(String(w.status))) : allWos;
-    const { data: dcs, error: dcErr } = await supabase.from('cnc_deliveries').select('*');
+    const dcs = dcsRes.data;
+    const dcErr = dcsRes.error;
     if (dcErr) console.warn("Error fetching deliveries:", dcErr);
     let effectiveDcs: any[] = dcs && dcs.length > 0 ? dcs : [];
     if (effectiveDcs) setDeliveriesList(effectiveDcs);
 
     let invoicesData: any[] = [];
-    const { data: invs, error: invErr } = await supabase.from('cnc_invoices').select('*');
+    const invs = invsRes.data;
+    const invErr = invsRes.error;
     if (invErr) console.error("Error fetching invoices:", invErr);
     else if (invs && invs.length > 0) {
       invoicesData = invs;
