@@ -3845,29 +3845,30 @@ export function SalesPipelinePage() {
     const rawName = String(name || '').trim();
     if (!rawName) return null;
     const norm = rawName.toLowerCase();
+    const normAlpha = norm.replace(/[^a-z0-9]/g, '');
+    const isMatch = (val: any) => {
+      if (!val) return false;
+      const v = String(val).trim().toLowerCase();
+      if (v === norm) return true;
+      if (normAlpha && v.replace(/[^a-z0-9]/g, '') === normAlpha) return true;
+      return false;
+    };
 
-    const kMatch = (allKnownCompanies || []).find((c: any) =>
-      String(c.company || '').trim().toLowerCase() === norm
-    );
-    const cMatch = (customerList || []).find((c: any) =>
-      String(c.name || '').trim().toLowerCase() === norm
-    );
-    const lMatch = (rawLeadsList || []).find((l: any) =>
-      String(l.customer || '').trim().toLowerCase() === norm && (l.city || l.address || l.gst)
-    );
+    const kMatch = (allKnownCompanies || []).find((c: any) => isMatch(c.company || c.name));
+    const cMatch = (customerList || []).find((c: any) => isMatch(c.name || c.company));
+    const lMatch = (rawLeadsList || []).find((l: any) => isMatch(l.customer) && (l.city || l.address || l.gst));
     const dMatch = (deliveriesList || []).find((d: any) =>
-      (String(d.party_name || d.customer_name || '').trim().toLowerCase() === norm) &&
+      isMatch(d.party_name || d.customer_name) &&
       (d.party_address || d.billing_address || d.party_gstin || d.customer_gstin)
     );
     const iMatch = (invoicesList || []).find((inv: any) =>
-      (String(inv.customer_name || '').trim().toLowerCase() === norm) &&
+      isMatch(inv.customer_name) &&
       (inv.customer_address || inv.billing_address || inv.customer_gstin || inv.gst)
     );
-    const sMatch = (supplierDirectory || []).find((s: any) =>
-      String(s.name || '').trim().toLowerCase() === norm
-    );
+    const sMatch = (supplierDirectory || []).find((s: any) => isMatch(s.name || s.company));
+    const soMatch = (salesOrdersList || []).find((o: any) => isMatch(o.customer || o.customer_name));
     const cardMatch = (cards || []).find((cd: any) => {
-      if (String(cd.customer || '').trim().toLowerCase() !== norm) return false;
+      if (!isMatch(cd.customer)) return false;
       const r = cd.raw || {};
       return Boolean(r.billing_address || r.party_address || r.address || r.city || r.customer_gstin || r.party_gstin || r.gst);
     });
@@ -3876,6 +3877,7 @@ export function SalesPipelinePage() {
     const addressCandidates = [
       cMatch?.address, cMatch?.billing_address, cMatch?.city,
       kMatch?.address, kMatch?.city,
+      soMatch?.customer_address, soMatch?.billing_address,
       dMatch?.party_address, dMatch?.billing_address,
       iMatch?.customer_address, iMatch?.billing_address,
       cardRaw?.billing_address, cardRaw?.party_address, cardRaw?.address, cardRaw?.city,
@@ -3888,6 +3890,7 @@ export function SalesPipelinePage() {
     const gstin = String(
       cMatch?.gst || cMatch?.gstin || cMatch?.gst_number || (cMatch as any)?.gst_no ||
       kMatch?.gst || (kMatch as any)?.gstin ||
+      soMatch?.customer_gstin || soMatch?.gst ||
       dMatch?.party_gstin || dMatch?.customer_gstin ||
       iMatch?.customer_gstin || iMatch?.gst ||
       cardRaw?.party_gstin || cardRaw?.customer_gstin || cardRaw?.gst || cardRaw?.gstin ||
@@ -3898,6 +3901,7 @@ export function SalesPipelinePage() {
     const phone = String(
       cMatch?.phone ||
       kMatch?.phone ||
+      soMatch?.phone ||
       cardRaw?.phone ||
       dMatch?.phone ||
       lMatch?.phone ||
@@ -3907,6 +3911,7 @@ export function SalesPipelinePage() {
     const partyCode = String(
       cMatch?.id ||
       (kMatch as any)?.id ||
+      soMatch?.customer_code ||
       dMatch?.customer_code ||
       cardRaw?.customer_code || cardRaw?.party_code ||
       sMatch?.code || sMatch?.id || ''
@@ -3915,6 +3920,7 @@ export function SalesPipelinePage() {
     const cityCandidates = [
       cMatch?.city,
       kMatch?.city,
+      soMatch?.place_of_supply,
       cardRaw?.city,
       lMatch?.city,
       sMatch?.city,
@@ -3923,8 +3929,12 @@ export function SalesPipelinePage() {
     ].filter(Boolean).map(s => String(s).trim()).filter(Boolean);
     const city = cityCandidates[0] || '';
 
-    return { address, gstin, phone, partyCode, city };
-  }, [allKnownCompanies, customerList, rawLeadsList, deliveriesList, invoicesList, supplierDirectory, cards]);
+    const poNumber = String(soMatch?.customer_po_no || soMatch?.po_no || cardRaw?.customer_po_no || cardRaw?.po_no || lMatch?.po_no || '').trim();
+    const salesOrderNo = String(soMatch?.order_no || cardRaw?.sales_order || '').trim();
+    const company = kMatch?.company || cMatch?.name || lMatch?.customer || dMatch?.party_name || rawName;
+
+    return { company, address, gstin, phone, partyCode, city, poNumber, salesOrderNo };
+  }, [allKnownCompanies, customerList, rawLeadsList, salesOrdersList, deliveriesList, invoicesList, supplierDirectory, cards]);
 
   useEffect(() => {
     const fromCards = cards.map(c => c.customer);
@@ -6704,41 +6714,130 @@ export function SalesPipelinePage() {
     const dcLbl = 'whitespace-nowrap text-[9px] font-bold text-slate-600 uppercase tracking-tight';
 
     const handleDcPartChange = (nm: string, idx: number) => {
-      const split = splitProductAndRef(nm);
-      const rawNm = split.original || String(nm || '');
-      const key = rawNm.trim().toLowerCase();
-      const baseNm = getProductBaseName(rawNm).trim();
-      const baseKey = baseNm.toLowerCase();
-      const targetCompany = split.company || '';
+      const knownCo = Array.from(new Set([
+        ...(allKnownCompanies || []).map((c: any) => c.company || c.name),
+        ...(customerList || []).map((c: any) => c.name),
+        ...(rawLeadsList || []).map((l: any) => l.customer),
+        ...(salesOrdersList || []).map((o: any) => o.customer || o.customer_name),
+        ...(deliveriesList || []).map((d: any) => d.party_name || d.customer_name),
+        ...(cards || []).map((c: any) => c.customer),
+        dcForm.partyName,
+        dcForm.customer,
+      ].filter(Boolean))).map((s) => String(s).trim());
+
+      const normAlpha = (s: any) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
       // 1. Look up in enquiryProductOptions (pipeline products from enquiries & sales orders)
       const soOptions = enquiryProductOptions(rawLeadsList, undefined, salesOrdersList);
-      const soHit = soOptions.find((o: any) => {
-        const oName = String(o.name || '').trim().toLowerCase();
-        const oBase = getProductBaseName(o.name || '').trim().toLowerCase();
-        return (key && oName === key) || (baseKey && (oName === baseKey || oBase === baseKey));
-      });
+
+      let soHit: any = null;
+      let matchedRefDesc = '';
+      let targetCompany = '';
+      let rawProductName = '';
+
+      // Check exact match in soOptions against formatFullReference
+      for (const o of soOptions) {
+        const s = splitProductAndRef(o.name, knownCo, o.customer);
+        const desc = formatFullReference(s.original, o.customer, s.dateTime || o.saleLabel, o.qty);
+        if (
+          desc &&
+          (desc.trim().toLowerCase() === nm.trim().toLowerCase() ||
+            nm.trim().toLowerCase().startsWith(desc.trim().toLowerCase()) ||
+            desc.trim().toLowerCase().startsWith(nm.trim().toLowerCase()) ||
+            normAlpha(desc) === normAlpha(nm))
+        ) {
+          soHit = o;
+          matchedRefDesc = desc;
+          targetCompany = o.customer || '';
+          rawProductName = s.original || productOnly(o.name);
+          break;
+        }
+      }
+
+      // Check if nm contains any known company (longest name first)
+      if (!targetCompany) {
+        const sortedCompanies = [...knownCo].sort((a, b) => b.length - a.length);
+        const nmNorm = normAlpha(nm);
+        const foundComp = sortedCompanies.find((c) => {
+          if (!c) return false;
+          if (nm.toLowerCase().includes(c.toLowerCase())) return true;
+          const cNorm = normAlpha(c);
+          return cNorm && nmNorm.includes(cNorm);
+        });
+        if (foundComp) {
+          targetCompany = foundComp;
+        }
+      }
+
+      const split = splitProductAndRef(nm, knownCo, targetCompany);
+      if (!targetCompany && split.company) {
+        targetCompany = split.company;
+      }
+
+      if (!rawProductName) {
+        rawProductName = split.original || nm;
+        if (targetCompany) {
+          const esc = targetCompany.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          rawProductName = rawProductName.replace(new RegExp(esc, 'gi'), '').trim();
+        }
+        rawProductName = productOnly(rawProductName);
+        rawProductName = rawProductName.replace(/^[-•·\s]+|[-•·\s]+$/g, '').trim();
+      }
+
+      const rawNm = rawProductName || split.original || String(nm || '');
+      const key = rawNm.trim().toLowerCase();
+      const baseNm = getProductBaseName(rawNm).trim();
+      const baseKey = baseNm.toLowerCase();
+
+      // If soHit wasn't found above, try finding it by key or baseKey
+      if (!soHit) {
+        soHit = soOptions.find((o: any) => {
+          const custMatch = !targetCompany || normAlpha(o.customer) === normAlpha(targetCompany);
+          const oName = String(o.name || '').trim().toLowerCase();
+          const oBase = getProductBaseName(o.name || '').trim().toLowerCase();
+          const matchName = (key && (oName === key || oName.includes(key) || key.includes(oName))) ||
+            (baseKey && (oName === baseKey || oBase === baseKey));
+          return custMatch && matchName;
+        }) || soOptions.find((o: any) => {
+          const oName = String(o.name || '').trim().toLowerCase();
+          const oBase = getProductBaseName(o.name || '').trim().toLowerCase();
+          return (key && oName === key) || (baseKey && (oName === baseKey || oBase === baseKey));
+        });
+      }
+
+      if (soHit?.customer && !targetCompany) {
+        targetCompany = soHit.customer;
+      }
 
       // 2. Look up in salesOrdersList
       const matchedOrder = (salesOrdersList || []).find((o: any) => {
         if (soHit?.saleOrderRef && String(o.order_no || '').trim().toLowerCase() === String(soHit.saleOrderRef).trim().toLowerCase()) return true;
         if (soHit?.saleStamp && String(o.lead_no || '').trim().toLowerCase() === String(soHit.saleStamp).trim().toLowerCase()) return true;
+        const custMatch = targetCompany && normAlpha(o.customer || o.customer_name) === normAlpha(targetCompany);
         try {
           const raw = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
           if (Array.isArray(raw)) {
-            return raw.some((it: any) => {
+            const hasItem = raw.some((it: any) => {
               const p = String(it.partName || it.productName || it.part_name || '').trim().toLowerCase();
               const pBase = getProductBaseName(p).toLowerCase();
               const stamped = attachDateTimeToProduct(p, o).toLowerCase();
-              return (key && (p === key || stamped === key)) || (baseKey && (p === baseKey || pBase === baseKey));
+              return (key && (p === key || stamped === key || p.includes(key) || key.includes(p))) ||
+                (baseKey && (p === baseKey || pBase === baseKey));
             });
+            if (hasItem && (!targetCompany || custMatch)) return true;
           }
         } catch {}
         const op = String(o.part_name || o.product_name || '').trim().toLowerCase();
         const opBase = getProductBaseName(op).toLowerCase();
         const stamped = attachDateTimeToProduct(op, o).toLowerCase();
-        return (key && (op === key || stamped === key)) || (baseKey && (op === baseKey || opBase === baseKey));
-      });
+        const hasOrderPart = (key && (op === key || stamped === key || op.includes(key) || key.includes(op))) ||
+          (baseKey && (op === baseKey || opBase === baseKey));
+        return hasOrderPart && (!targetCompany || custMatch);
+      }) || (targetCompany ? (salesOrdersList || []).find((o: any) => normAlpha(o.customer || o.customer_name) === normAlpha(targetCompany)) : null);
+
+      if (matchedOrder?.customer && !targetCompany) {
+        targetCompany = String(matchedOrder.customer || matchedOrder.customer_name || '').trim();
+      }
 
       // 3. Find order item within matchedOrder
       let orderItem: any = null;
@@ -6750,7 +6849,8 @@ export function SalesPipelinePage() {
               const p = String(it.partName || it.productName || it.part_name || '').trim().toLowerCase();
               const pBase = getProductBaseName(p).toLowerCase();
               const stamped = attachDateTimeToProduct(p, matchedOrder).toLowerCase();
-              return (key && (p === key || stamped === key)) || (baseKey && (p === baseKey || pBase === baseKey));
+              return (key && (p === key || stamped === key || p.includes(key) || key.includes(p))) ||
+                (baseKey && (p === baseKey || pBase === baseKey));
             }) || (raw.length === 1 ? raw[0] : null);
           }
         } catch {}
@@ -6761,18 +6861,25 @@ export function SalesPipelinePage() {
         if (soHit?.enquiryId && String(l.id || '') === String(soHit.enquiryId)) return true;
         if (soHit?.leadNo && (String(l.lead_no || '').trim().toLowerCase() === String(soHit.leadNo).trim().toLowerCase() || String(l.enquiry_no || '').trim().toLowerCase() === String(soHit.leadNo).trim().toLowerCase())) return true;
         if (matchedOrder?.lead_no && (String(l.lead_no || '').trim().toLowerCase() === String(matchedOrder.lead_no).trim().toLowerCase() || String(l.enquiry_no || '').trim().toLowerCase() === String(matchedOrder.lead_no).trim().toLowerCase())) return true;
+        const custMatch = targetCompany && normAlpha(l.customer) === normAlpha(targetCompany);
         try {
           const raw = typeof l.enquiring_for === 'string' ? JSON.parse(l.enquiring_for) : (l.enquiring_for || []);
           if (Array.isArray(raw)) {
-            return raw.some((it: any) => {
+            const hasLeadItem = raw.some((it: any) => {
               const p = String(it.productName || it.product_name || it.partName || it.part_name || '').trim().toLowerCase();
-              return (key && p === key) || (baseKey && (p === baseKey || getProductBaseName(p).toLowerCase() === baseKey));
+              return (key && (p === key || p.includes(key) || key.includes(p))) || (baseKey && (p === baseKey || getProductBaseName(p).toLowerCase() === baseKey));
             });
+            if (hasLeadItem && (!targetCompany || custMatch)) return true;
           }
         } catch {}
         const lp = String(l.part_name || '').trim().toLowerCase();
-        return (key && lp === key) || (baseKey && (lp === baseKey || getProductBaseName(lp).toLowerCase() === baseKey));
+        const hasLeadPart = (key && (lp === key || lp.includes(key) || key.includes(lp))) || (baseKey && (lp === baseKey || getProductBaseName(lp).toLowerCase() === baseKey));
+        return hasLeadPart && (!targetCompany || custMatch);
       });
+
+      if (matchedLead?.customer && !targetCompany) {
+        targetCompany = String(matchedLead.customer).trim();
+      }
 
       // 5. Look up in partsMaster
       const m = partsMaster.find((p: any) => {
@@ -6783,10 +6890,16 @@ export function SalesPipelinePage() {
 
       // 6. Look up in cards (Kanban / Qty tracking)
       const matchedCard = (cards || []).find((c: any) => {
+        const custMatch = !targetCompany || normAlpha(c.customer) === normAlpha(targetCompany);
         const cp = String(c.part || (c.raw as any)?.part_name || (c.raw as any)?.product_name || '').trim().toLowerCase();
         const cpBase = getProductBaseName(cp).toLowerCase();
-        return (key && cp === key) || (baseKey && (cp === baseKey || cpBase === baseKey));
-      });
+        const matchPart = (key && (cp === key || cp.includes(key) || key.includes(cp))) || (baseKey && (cp === baseKey || cpBase === baseKey));
+        return custMatch && matchPart;
+      }) || (targetCompany ? (cards || []).find((c: any) => normAlpha(c.customer) === normAlpha(targetCompany)) : null);
+
+      if (matchedCard?.customer && !targetCompany) {
+        targetCompany = String(matchedCard.customer).trim();
+      }
 
       // 7. Look up in dcPricing
       const l = dcPricing.lines.find((x) => {
@@ -6821,26 +6934,27 @@ export function SalesPipelinePage() {
       ).trim();
 
       const details = targetCust ? lookupCompanyDetails(targetCust) : null;
-      const matchedCustObj = targetCust ? (customerList || []).find((c: any) => String(c.name || '').trim().toLowerCase() === targetCust.toLowerCase()) || {} : {};
-      const matchedKnownComp = targetCust ? (allKnownCompanies || []).find((c: any) => String(c.company || '').trim().toLowerCase() === targetCust.toLowerCase()) || {} : {};
+      const matchedCustObj: any = targetCust ? (customerList || []).find((c: any) => normAlpha(c.name || c.company) === normAlpha(targetCust)) || {} : {};
+      const matchedKnownComp: any = targetCust ? (allKnownCompanies || []).find((c: any) => normAlpha(c.company || c.name) === normAlpha(targetCust)) || {} : {};
 
-      const bestAddress = details?.address || matchedOrder?.customer_address || matchedOrder?.billing_address || matchedLead?.address || matchedCustObj.address || matchedCustObj.billing_address || matchedKnownComp.address || '';
-      const bestGstin = details?.gstin || matchedOrder?.customer_gstin || matchedOrder?.gst || matchedLead?.gst || matchedCustObj.gst || matchedCustObj.gstin || matchedKnownComp.gst || '';
-      const bestCode = details?.partyCode || matchedOrder?.customer_code || matchedCustObj.id || (matchedKnownComp as any)?.id || '';
-      const bestPhone = details?.phone || matchedOrder?.phone || matchedLead?.phone || matchedCustObj.phone || matchedKnownComp.phone || '';
-      const bestPo = String(matchedOrder?.customer_po_no || matchedOrder?.po_no || (matchedCard?.raw as any)?.customer_po_no || (matchedCard?.raw as any)?.po_no || matchedLead?.po_no || '').trim();
-      const bestSoNo = String(matchedOrder?.order_no || soHit?.saleOrderRef || (matchedCard?.raw as any)?.sales_order || '').trim();
+      const bestCustomer = details?.company || matchedKnownComp.company || matchedCustObj.name || targetCust;
+      const bestAddress = details?.address || matchedOrder?.customer_address || matchedOrder?.billing_address || matchedCustObj.address || matchedCustObj.billing_address || matchedKnownComp.address || (matchedCard?.raw as any)?.billing_address || (matchedCard?.raw as any)?.address || (matchedCard?.raw as any)?.party_address || matchedLead?.address || '';
+      const bestGstin = details?.gstin || matchedOrder?.customer_gstin || matchedOrder?.gst || matchedCustObj.gst || matchedCustObj.gstin || matchedKnownComp.gst || (matchedCard?.raw as any)?.customer_gstin || (matchedCard?.raw as any)?.party_gstin || (matchedCard?.raw as any)?.gst || matchedLead?.gst || '';
+      const bestCode = details?.partyCode || matchedOrder?.customer_code || matchedCustObj.code || matchedCustObj.id || matchedKnownComp.code || matchedKnownComp.id || (matchedCard?.raw as any)?.customer_code || (matchedCard?.raw as any)?.party_code || '';
+      const bestPhone = details?.phone || matchedOrder?.phone || matchedCustObj.phone || matchedKnownComp.phone || (matchedCard?.raw as any)?.phone || matchedLead?.phone || '';
+      const bestPo = String(details?.poNumber || matchedOrder?.customer_po_no || matchedOrder?.po_no || (matchedCard?.raw as any)?.customer_po_no || (matchedCard?.raw as any)?.po_no || matchedLead?.po_no || '').trim();
+      const bestSoNo = String(details?.salesOrderNo || matchedOrder?.order_no || soHit?.saleOrderRef || (matchedCard?.raw as any)?.sales_order || '').trim();
       const bestEnquiryNo = String(soHit?.leadNo || matchedLead?.lead_no || matchedLead?.enquiry_no || (matchedCard ? baseUniqueNo(matchedCard.refNo || '') : '') || '').trim();
-      const bestSupplyPlace = String(matchedOrder?.place_of_supply || details?.city || matchedLead?.city || matchedCustObj.city || matchedKnownComp.city || '').trim();
+      const bestSupplyPlace = String(matchedOrder?.place_of_supply || details?.city || matchedCustObj.city || matchedKnownComp.city || (matchedCard?.raw as any)?.place_of_supply || matchedLead?.city || '').trim();
       const bestProcess = String(matchedOrder?.process || (m as any)?.process || (matchedCard?.raw as any)?.process || '').trim();
       const bestCategory = String(matchedOrder?.category || (m as any)?.category || (matchedCard?.raw as any)?.category || '').trim();
 
       // Update line item
-      const fullDcRef = split.reference || formatFullReference(split.original || rawNm, targetCust, split.dateTime, resolvedQty || split.qty);
+      const fullDcRef = matchedRefDesc || nm || split.reference || formatFullReference(rawNm, bestCustomer || targetCust, split.dateTime, resolvedQty || split.qty);
       setDcItems((prev) => prev.map((x, i) => (i === idx ? {
         ...x,
-        name: combineProductAndRef(split.original || rawNm, fullDcRef),
-        originalName: split.original || rawNm,
+        name: combineProductAndRef(rawNm, fullDcRef),
+        originalName: rawNm,
         reference: fullDcRef,
         hsn: resolvedHsn || x.hsn || '',
         qty: (resolvedQty && (!x.qty || x.qty === '0')) ? resolvedQty : (x.qty || resolvedQty || ''),
@@ -6849,11 +6963,12 @@ export function SalesPipelinePage() {
         price: (resolvedPrice && (!x.price || x.price === '0' || x.price === '0.00')) ? resolvedPrice : (x.price || resolvedPrice || ''),
       } : x)));
 
-      // Update dcForm header if we have company/order information
-      if (targetCust || bestAddress || bestGstin || bestPo || bestSoNo) {
+      // Update dcForm header with autofilled company, address, GST, code, phone, PO number, etc.
+      if (bestCustomer || targetCust || bestAddress || bestGstin || bestCode || bestPhone || bestPo || bestSoNo) {
         setDcForm((prev: any) => ({
           ...prev,
-          partyName: targetCust || prev.partyName || '',
+          partyName: bestCustomer || targetCust || prev.partyName || '',
+          customer: bestCustomer || targetCust || prev.customer || '',
           partyAddress: bestAddress || prev.partyAddress || '',
           partyGstin: bestGstin || prev.partyGstin || '',
           partyCode: bestCode || prev.partyCode || '',
@@ -6868,7 +6983,6 @@ export function SalesPipelinePage() {
         }));
       }
     };
-
     const renderDcField = (label: string, children: ReactNode, required?: boolean) => (
       <div className="inline-flex items-center gap-1 shrink-0">
         <span className={dcLbl}>
@@ -6995,22 +7109,10 @@ export function SalesPipelinePage() {
                     className={`${dcInput} flex-1 min-w-[24rem] sm:min-w-[30rem]`}
                     list="dc-product-list"
                     placeholder="Product - Company - Date/Time - Qty"
-                    title={it.reference || (splitProductAndRef(it.name || '', allKnownCompanies.map((c: any) => c.company || c.name), dcForm.customer, it.qty).reference || '')}
-                    value={it.reference ?? (splitProductAndRef(it.name || '', allKnownCompanies.map((c: any) => c.company || c.name), dcForm.customer, it.qty).reference || '')}
+                    title={it.reference || (splitProductAndRef(it.name || '', (allKnownCompanies || []).map((c: any) => c.company || c.name), dcForm.partyName || dcForm.customer, it.qty).reference || '')}
+                    value={it.reference ?? (splitProductAndRef(it.name || '', (allKnownCompanies || []).map((c: any) => c.company || c.name), dcForm.partyName || dcForm.customer, it.qty).reference || '')}
                     onChange={(e) => {
-                      const val = e.target.value;
-                      const split = splitProductAndRef(val, allKnownCompanies.map((c: any) => c.company || c.name), dcForm.customer, it.qty);
-                      const orig = split.original;
-                      const ref = split.reference || formatFullReference(orig, dcForm.customer, split.dateTime, split.qty || it.qty);
-                      const combined = combineProductAndRef(orig, ref);
-                      setDcItems((prev) => prev.map((x, i) => (i === idx ? {
-                        ...x,
-                        originalName: orig,
-                        reference: ref,
-                        name: combined,
-                        qty: (split.qty && (!x.qty || x.qty === '0')) ? split.qty : x.qty,
-                      } : x)));
-                      handleDcPartChange(val, idx);
+                      handleDcPartChange(e.target.value, idx);
                     }}
                   />
                   <span className={dcLbl}>Original:</span>
@@ -7018,11 +7120,11 @@ export function SalesPipelinePage() {
                     autoComplete="off"
                     className={`${dcInput} w-[16rem] sm:w-[18rem] min-w-[15rem]`}
                     placeholder="Original Product"
-                    title={it.originalName ?? (splitProductAndRef(it.name || '', allKnownCompanies.map((c: any) => c.company || c.name), dcForm.customer).original || it.name || '')}
-                    value={it.originalName ?? (splitProductAndRef(it.name || '', allKnownCompanies.map((c: any) => c.company || c.name), dcForm.customer).original || it.name || '')}
+                    title={it.originalName ?? (splitProductAndRef(it.name || '', (allKnownCompanies || []).map((c: any) => c.company || c.name), dcForm.partyName || dcForm.customer).original || it.name || '')}
+                    value={it.originalName ?? (splitProductAndRef(it.name || '', (allKnownCompanies || []).map((c: any) => c.company || c.name), dcForm.partyName || dcForm.customer).original || it.name || '')}
                     onChange={(e) => {
                       const orig = e.target.value;
-                      const ref = it.reference || (splitProductAndRef(it.name || '', allKnownCompanies.map((c: any) => c.company || c.name), dcForm.customer, it.qty).reference || '');
+                      const ref = it.reference || (splitProductAndRef(it.name || '', (allKnownCompanies || []).map((c: any) => c.company || c.name), dcForm.partyName || dcForm.customer, it.qty).reference || '');
                       const combined = combineProductAndRef(orig, ref);
                       setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, originalName: orig, name: combined } : x)));
                     }}
