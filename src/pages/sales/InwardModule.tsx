@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, Fragment, type ReactNode } from 'react';
 import { recordDateOf } from '@/lib/globalDate';
 import { supabase } from '@/lib/supabase';
-import { Search, ArrowLeft, FileText, Download } from 'lucide-react';
+import { Search, ArrowLeft, FileText, Download, Eye } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { useAuth } from '@/contexts/AuthContext';
@@ -188,7 +188,7 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
   const actionCell = (record: any) => (
     <td className="py-2 px-3">
       <div className="flex flex-wrap gap-2">
-        <Button variant="secondary" size="sm" onClick={() => (onView ? onView(record) : openRecord(record))}>View Details</Button>
+        <Button variant="secondary" size="sm" icon={<Eye size={13} />} onClick={() => (onView ? onView(record) : openRecord(record))}>View</Button>
         {onEdit && <Button variant="secondary" size="sm" onClick={() => onEdit(record)}>Edit</Button>}
         {onDelete && <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => onDelete(record)}>Delete</Button>}
       </div>

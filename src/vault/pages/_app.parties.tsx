@@ -385,7 +385,7 @@ function PartiesPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => setSelectedPartyForView(party)}>
-                          <Eye className="mr-2 h-4 w-4" /> View Details
+                          <Eye className="mr-2 h-4 w-4" /> View
                         </DropdownMenuItem>
                         {(isSuperAdmin || isCompanyAdmin || can("manage_parties")) && (
                           <>

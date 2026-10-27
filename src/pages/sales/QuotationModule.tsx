@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { recordDateOf } from '@/lib/globalDate';
 import { supabase } from '@/lib/supabase';
-import { Search, ArrowLeft, FileText } from 'lucide-react';
+import { Search, ArrowLeft, FileText, Eye } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
@@ -247,7 +247,7 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
                     <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider ${(quote.status === 'Converted' || quote.status === 'Accepted') ?'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-700'}`}>{quote.status || 'Sent'}</span>
                   </td>
                   <td className="p-3">
-                    <div className="flex flex-wrap gap-2"><Button variant="secondary" size="sm" onClick={() => (onView ? onView(quote) : openQuotation(quote))}>View Details</Button>{onEdit && <Button variant="secondary" size="sm" onClick={() => onEdit(quote)}>Edit</Button>}{onDelete && <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => onDelete(quote)}>Delete</Button>}</div>
+                    <div className="flex flex-wrap gap-2"><Button variant="secondary" size="sm" icon={<Eye size={13} />} onClick={() => (onView ? onView(quote) : openQuotation(quote))}>View</Button>{onEdit && <Button variant="secondary" size="sm" onClick={() => onEdit(quote)}>Edit</Button>}{onDelete && <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => onDelete(quote)}>Delete</Button>}</div>
                   </td>
                 </tr>
               ))}

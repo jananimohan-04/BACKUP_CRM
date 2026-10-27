@@ -8267,7 +8267,7 @@ export function SalesPipelinePage() {
                           {commentCounts[card.id] || 0}
                         </span>
                         <div className="flex items-center gap-3 z-20 relative">
-                          <button onClick={(e) => { e.stopPropagation(); openViewModal(card); }} className="text-slate-400 hover:text-brand-600 transition-colors" title="View Details">
+                          <button onClick={(e) => { e.stopPropagation(); openViewModal(card); }} className="text-slate-400 hover:text-brand-600 transition-colors" title="View">
                             <Eye size={14} />
                           </button>
                           {canDo(STAGE_MODULE[card.stage] ?? 'sales-pipeline', 'edit') && (

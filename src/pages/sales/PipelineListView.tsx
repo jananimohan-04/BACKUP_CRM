@@ -167,7 +167,7 @@ export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineLi
                 <td className="px-4 py-1.5 text-xs text-slate-500 max-w-[160px] truncate">{card.raw?.remarks || card.raw?.internal_remarks || '-'}</td>
                 <td className="px-4 py-1.5">
                   <div className="flex items-center justify-center gap-1">
-                    <button onClick={() => onView(card)} className="p-1.5 rounded-md text-slate-500 hover:text-brand-600 hover:bg-brand-50 transition-colors" title="View Details" aria-label={`View ${card.refNo}`}>
+                    <button onClick={() => onView(card)} className="p-1.5 rounded-md text-slate-500 hover:text-brand-600 hover:bg-brand-50 transition-colors" title="View" aria-label={`View ${card.refNo}`}>
                       <Eye className="w-[18px] h-[18px]" />
                     </button>
                     {onEdit && (

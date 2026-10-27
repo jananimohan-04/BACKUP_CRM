@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Search, ArrowLeft, FileText } from 'lucide-react';
+import { Search, ArrowLeft, FileText, Eye } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { InvoicesPage } from '@/pages/finance/InvoicesPage';
@@ -150,7 +150,7 @@ export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
                   <td className="p-3 text-sm text-slate-700">{record.amount ?? '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{record.status || '-'}</td>
                   <td className="p-3">
-                    <Button variant="secondary" size="sm" onClick={() => openRecord(record)}>View Details</Button>
+                    <Button variant="secondary" size="sm" icon={<Eye size={13} />} onClick={() => openRecord(record)}>View</Button>
                   </td>
                 </tr>
               ))}

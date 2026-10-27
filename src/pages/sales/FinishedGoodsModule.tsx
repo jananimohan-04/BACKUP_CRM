@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, type ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Search, ArrowLeft, FileText } from 'lucide-react';
+import { Search, ArrowLeft, FileText, Eye } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
@@ -168,7 +168,7 @@ export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, o
                   <td className="p-3 text-sm text-slate-700">{record.completed ?? '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{record.status || '-'}</td>
                   <td className="p-3">
-                    <div className="flex flex-wrap gap-2"><Button variant="secondary" size="sm" onClick={() => (onView ? onView(record) : openRecord(record))}>View Details</Button>{onEdit && <Button variant="secondary" size="sm" onClick={() => onEdit(record)}>Edit</Button>}{onDelete && <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => onDelete(record)}>Delete</Button>}</div>
+                    <div className="flex flex-wrap gap-2"><Button variant="secondary" size="sm" icon={<Eye size={13} />} onClick={() => (onView ? onView(record) : openRecord(record))}>View</Button>{onEdit && <Button variant="secondary" size="sm" onClick={() => onEdit(record)}>Edit</Button>}{onDelete && <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => onDelete(record)}>Delete</Button>}</div>
                   </td>
                 </tr>
               ))}

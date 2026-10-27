@@ -85,7 +85,7 @@ export function SuppliersPage() {
     {
       key: 'actions', label: 'Actions', align: 'center', render: (r) => (
         <div className="flex items-center justify-center gap-1">
-          <button onClick={() => { setViewTarget(r); setActiveTab('Profile'); }} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors" title="View Details"><Eye size={15} /></button>
+          <button onClick={() => { setViewTarget(r); setActiveTab('Profile'); }} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors" title="View"><Eye size={15} /></button>
           <button onClick={() => { setEditId(r.id); setFormData(r); setShowModal(true); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Edit"><Edit size={15} /></button>
           <button onClick={() => handleToggleStatus(r)} className={`p-1.5 rounded transition-colors ${r.status === 'Active' ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50' : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50'}`} title={r.status === 'Active' ? "Deactivate" : "Activate"}>
             {r.status === 'Active' ? <PowerOff size={15} /> : <Power size={15} />}

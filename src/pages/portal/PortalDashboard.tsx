@@ -457,7 +457,7 @@ export function PortalDashboard({ session }: { session: any }) {
                         <td className="px-4 py-2 text-slate-400">{enq.received_date || enq.created_at?.split('T')[0]}</td>
                         <td className="px-4 py-2"><span className={"px-2.5 py-1 rounded-full text-[10px] font-semibold " + cs.color}>{cs.label}</span></td>
                         <td className="px-4 py-2 text-right">
-                          <button onClick={() => setSelectedEnquiry(enq)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View Details">
+                          <button onClick={() => setSelectedEnquiry(enq)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View">
                             <Eye size={16} />
                           </button>
                         </td>
