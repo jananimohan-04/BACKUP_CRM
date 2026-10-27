@@ -288,6 +288,35 @@ export const MODULE_THEMES: Record<string, ModuleTheme> = {
     entryPanel: 'border-indigo-400 bg-indigo-100/90 [--entry-border:theme(colors.indigo.400)]',
   },
 
+  'Pipeline Report': {
+    id: 'pipeline-report',
+    name: 'Pipeline Report',
+    stage: 'Pipeline Report',
+    gradient: 'linear-gradient(135deg, #0e4f5a 0%, #0d6e7c 50%, #06353d 100%)',
+    kpiTile: 'bg-gradient-to-br from-teal-700 to-teal-950 border-teal-600/70 hover:brightness-110',
+    kpiIcon: 'bg-teal-500/30 text-teal-100',
+    kpiActive: '!opacity-100 ring-2 ring-teal-400 ring-offset-2 ring-offset-slate-900 border-2 border-teal-300 shadow-[0_0_16px_rgba(45,212,191,0.85)] brightness-110 font-black scale-[1.04] z-10',
+    kpiDot: 'bg-teal-300',
+    kanban: {
+      id: 'Pipeline Report',
+      title: 'PIPELINE REPORT',
+      desc: 'Pipeline conversion and stage analytics',
+      bg: 'bg-teal-950/45',
+      border: 'border-teal-500/50',
+      text: 'text-teal-100',
+      card: 'bg-teal-950/85 border-teal-500/50 hover:border-teal-400 hover:bg-teal-900/60 text-white shadow-md',
+      code: 'bg-teal-600/40 text-teal-200 border border-teal-400/30',
+      amount: 'text-teal-300',
+      badge: 'bg-teal-500/30 text-teal-200 border-teal-400/40',
+      button: 'bg-teal-600/20 hover:bg-teal-600/35 text-teal-200 border-teal-500/40',
+      search: 'bg-teal-950/60 border-teal-500/40 text-white placeholder-teal-300/60',
+    },
+    tableClass: 'erp-table-teal',
+    cardBorder: 'border-teal-400/30',
+    btnPrimary: '!bg-teal-600 hover:!bg-teal-500 text-white shadow-md shadow-teal-500/25 !border-teal-600',
+    entryPanel: 'border-teal-400 bg-teal-100/90 [--entry-border:theme(colors.teal.400)]',
+  },
+
   'Qty Tracking': {
     id: 'qty-tracking',
     name: 'Qty Tracking',
@@ -358,6 +387,10 @@ export const STAGE_THEMES: Record<string, PageTheme> = {
   tracking_list: {
     gradient: MODULE_THEMES['Qty Tracking'].gradient,
     label: 'Deep Burnt Orange (Quantity Tracking)',
+  },
+  pipeline_report: {
+    gradient: MODULE_THEMES['Pipeline Report'].gradient,
+    label: 'Deep Teal (Pipeline Report)',
   },
 };
 

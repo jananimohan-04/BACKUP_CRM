@@ -91,6 +91,7 @@ import {
   ProductionReportsPage, SalesReportsPage, InventoryReportsPage, QualityReportsPage, MachineUtilizationReportsPage, CostAnalysisReportsPage
 } from './pages/reports/ReportsPages';
 import { QuantityTrackingPage } from './pages/reports/QuantityTrackingPage';
+import { PipelineReportPage } from './pages/reports/PipelineReportPage';
 
 import {
   UsersPage, CompaniesPage, SettingsPage, AuditLogsPage, AccessPage
@@ -290,6 +291,7 @@ function MainLayout() {
             {/* Reports */}
             <Route path="/reports/production" element={<ProductionReportsPage />} />
             <Route path="/reports/order-tracking" element={<QuantityTrackingPage />} />
+            <Route path="/reports/pipeline-report" element={<PipelineReportPage />} />
             <Route path="/reports/sales" element={<SalesReportsPage />} />
             <Route path="/reports/inventory" element={<InventoryReportsPage />} />
             <Route path="/reports/quality" element={<QualityReportsPage />} />

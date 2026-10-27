@@ -16,6 +16,7 @@ import { todayISO } from '@/lib/format';
 import { summarizeSalesOrder, type OrderQtySummary } from '@/lib/orderQuantities';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
+import { PipelineReportPage } from './PipelineReportPage';
 
 const fmt = (n: number) => Number(n || 0).toLocaleString('en-IN');
 
@@ -32,7 +33,7 @@ export function QuantityTrackingPage({ embedded = false }: { embedded?: boolean 
   const [customer, setCustomer] = useState('');
   const [search, setSearch] = useState('');
   const [hideComplete, setHideComplete] = useState(false);
-  const [activeTab, setActiveTab] = useState<'orders' | 'rejections'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'rejections' | 'pipeline_report'>('orders');
 
   useEffect(() => {
     let cancelled = false;

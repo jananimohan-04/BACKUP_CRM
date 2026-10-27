@@ -94,6 +94,7 @@ export const STAGE_MODULE: Record<string, string> = {
   Invoice: 'invoices',
   Rejected: 'rejected',
   'Qty Tracking': 'reports',
+  'Pipeline Report': 'reports',
 };
 
 /** Modules a Company Admin may never grant (reserved for Super Admin). Mirrors erp_save_permissions. */
