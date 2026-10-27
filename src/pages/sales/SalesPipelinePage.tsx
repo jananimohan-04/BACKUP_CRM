@@ -1,8 +1,10 @@
 import { DcOptionSelect } from '@/components/DcOptionSelect';
+import { sameProduct } from '@/lib/productMatch';
 import { defaultTermsText } from '@/lib/termsLibrary';
 import { MemberSelect, useMemberNames } from '@/components/MemberSelect';
 import { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback, Fragment } from 'react';
 import { supabase } from '@/lib/supabase';
+import { desktopToast } from '@/lib/desktop/toast';
 import { refreshSavedProducts } from '@/lib/savedProducts';
 import { productWithCompany, splitProductAndRef, combineProductAndRef, registerKnownCompanies, formatFullReference } from '@/lib/productLabel';
 import { financeApi } from '@/lib/finance';
@@ -2637,12 +2639,20 @@ export function SalesPipelinePage() {
           if (!r.error) qRow = (r.data ?? [])[0] ?? null;
         }
         if (cancelled) return;
-        if (!qRow?.quote_no) { setDcPricing({ lines: [], loading: false }); return; }
-        const v = await supabase.from('cnc_costing_sheets')
-          .select('approved_price,quantity,version,product_code,product_name')
-          .eq('quotation_no', qRow.quote_no).eq('status', 'Approved').order('version', { ascending: false });
+        const sheets: any[] = [];
+        if (qRow?.quote_no) {
+          const v1 = await supabase.from('cnc_costing_sheets')
+            .select('approved_price,quantity,version,product_code,product_name,quotation_no,sales_order_no')
+            .eq('quotation_no', qRow.quote_no).eq('status', 'Approved').order('version', { ascending: false });
+          if (!v1.error && v1.data) sheets.push(...v1.data);
+        }
+        if (soNo) {
+          const v2 = await supabase.from('cnc_costing_sheets')
+            .select('approved_price,quantity,version,product_code,product_name,quotation_no,sales_order_no')
+            .eq('sales_order_no', soNo).eq('status', 'Approved').order('version', { ascending: false });
+          if (!v2.error && v2.data) sheets.push(...v2.data);
+        }
         if (cancelled) return;
-        const sheets = !v.error ? (v.data ?? []) : [];
         const lc = (s: any) => String(s ?? '').trim().toLowerCase();
         const frags = dcItemNames.split('|').map((s) => s.trim()).filter(Boolean);
         const candidates = [...frags, String(soRow?.part_no ?? '').trim()].filter(Boolean);
@@ -2654,9 +2664,10 @@ export function SalesPipelinePage() {
           if (!nm || seen.has(key)) continue;
           seen.add(key);
           const pick = sheets.find((s: any) => String(s.product_code ?? '').trim() !== '' && (lc(s.product_code) === key || lc(s.product_code) === baseKey || (soRow?.part_no && lc(s.product_code) === lc(soRow.part_no))))
-            ?? sheets.find((s: any) => lc(s.product_name) === key || lc(s.product_name) === baseKey);
+            ?? sheets.find((s: any) => lc(s.product_name) === key || lc(s.product_name) === baseKey || sameProduct(s.product_name, nm));
           if (pick && Number(pick.quantity) > 0 && pick.approved_price != null) {
-            lines.push({ name: nm, unit: Math.round((Number(pick.approved_price) / Number(pick.quantity)) * 100) / 100, sheetRef: `${qRow.quote_no} V${pick.version}` });
+            const refNo = pick.quotation_no || pick.sales_order_no || 'FG';
+            lines.push({ name: nm, unit: Math.round((Number(pick.approved_price) / Number(pick.quantity)) * 100) / 100, sheetRef: `${refNo} V${pick.version}` });
           }
         }
         if (!cancelled) setDcPricing({ lines, loading: false });
@@ -5444,6 +5455,8 @@ export function SalesPipelinePage() {
         setEnquiryForm(resetEnquiryForm()); 
         setDuplicateSource(null);
         setEnquirySaveNotice(payload.enquiry_no);
+        setAddPopup(null);              // close the popup after saving
+        desktopToast('success', `Enquiry ${payload.enquiry_no} saved`, undefined, 2000);
         fetchPipeline();                // recomputes the board cards and the dashboard counts
         setListRefresh(n => n + 1);     // ...and refetches the enquiries table under the form
       } else { 
@@ -5473,6 +5486,7 @@ export function SalesPipelinePage() {
         gstin: String(target.raw?.gst || master?.gstin || ''), address: String(master?.address || target.raw?.city || ''),
       },
       lines: items.filter(i => String(i.partName || '').trim()).map(i => ({ description: String(i.partName), qty: String(i.quantity || '1') })),
+      onClose: closeQuotationPopup,
       onRecord: async (doc, total) => {
         const lineItems = doc.lines.filter(l => l.description.trim() || l.unitPrice.trim()).map(l => ({
           id: l.id, partName: l.description.trim(), partNumber: '', quantity: l.qty, unitPrice: l.unitPrice, discount: l.discount || '0', unitDiscount: '0',

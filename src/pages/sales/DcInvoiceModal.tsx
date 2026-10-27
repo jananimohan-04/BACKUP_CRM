@@ -10,6 +10,7 @@ import { defaultTermsText } from '@/lib/termsLibrary';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { sameProduct } from '@/lib/productMatch';
 import { splitProductAndRef } from '@/lib/productLabel';
+import { getProductBaseName } from './SalesPipelinePage';
 import { supabase } from '@/lib/supabase';
 import { financeApi } from '@/lib/finance';
 import { fetchOrderQty, type OrderQtySummary } from '@/lib/orderQuantities';
@@ -144,14 +145,32 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
         // 2) Sales order → quotation chain.
         const first = rows[0] ?? {};
         let soRow: any = null;
+        const candidateSoKeys = Array.from(new Set([
+          first.sales_order_no,
+          first.sales_order_ref,
+          first.sales_order_id,
+          card?.refNo,
+          card?.sales_order_ref,
+          (card?.raw as any)?.sales_order,
+          (card?.raw as any)?.sales_order_no,
+          (card?.raw as any)?.sales_order_ref,
+          first.project_name,
+        ].map((s) => String(s ?? '').trim()).filter(Boolean)));
+
         if (first.sales_order_id) {
           const r = await supabase.from('cnc_sales_orders').select('*').eq('id', first.sales_order_id).limit(1);
           if (!r.error && (r.data ?? []).length > 0) soRow = r.data![0];
         }
-        if (!soRow && (first.sales_order_no || first.sales_order_ref)) {
-          const r = await supabase.from('cnc_sales_orders').select('*').eq('order_no', first.sales_order_no || first.sales_order_ref).limit(1);
-          if (!r.error && (r.data ?? []).length > 0) soRow = r.data![0];
+
+        if (!soRow) {
+          for (const key of candidateSoKeys) {
+            const r1 = await supabase.from('cnc_sales_orders').select('*').eq('order_no', key).limit(1);
+            if (!r1.error && (r1.data ?? []).length > 0) { soRow = r1.data![0]; break; }
+            const r2 = await supabase.from('cnc_sales_orders').select('*').eq('lead_no', key).limit(1);
+            if (!r2.error && (r2.data ?? []).length > 0) { soRow = r2.data![0]; break; }
+          }
         }
+
         // A challan made by hand may carry no order number: find the order through the card's unique number, else
         // through the company and the product being delivered.
         if (!soRow) {
@@ -182,13 +201,12 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
           const r = await supabase.from('cnc_quotations').select('*').eq('quote_no', soRow.quote_no).limit(1);
           if (!r.error && (r.data ?? []).length > 0) qRow = r.data![0];
         }
-        if (cancelled) return;
-        // A direct order has no quotation: its approved price is the costing sheet saved against the sales order.
-        if (!qRow && !soRow?.order_no) {
-          setBlocked('No quotation or sales order is linked to this Delivery Challan. An approved selling price is required before creating the invoice.');
-          setLoading(false);
-          return;
+        if (!qRow && (first.quotation_no || first.quote_no)) {
+          const r = await supabase.from('cnc_quotations').select('*').eq('quote_no', first.quotation_no || first.quote_no).limit(1);
+          if (!r.error && (r.data ?? []).length > 0) qRow = r.data![0];
         }
+        if (cancelled) return;
+
         setQuoteNo(qRow?.quote_no ?? '');
         setSoNo(soRow?.lead_no || soRow?.order_no || '');
         setSoOrderNo(soRow?.order_no ?? '');
@@ -204,35 +222,202 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
         if (first.customer_name || first.customer || card?.customer) {
           setCustomer(first.customer_name || first.customer || card?.customer || '');
         }
-        // 3) Approved price per product line — one fetch for the quotation,
-        // then match by product code, else by product name (codes are often
-        // empty on multi-product approvals; names always resolve).
+
+        // 3) Approved price per product line — comprehensive resolution:
+        // Priority 1: Approved costing sheet from Quotation OR Sales Order OR direct product match
+        // Priority 2: Delivery challan row agreed price (unit_price, price, rate)
+        // Priority 3: Linked Sales Order item agreed rate / price
+        // Priority 4: Linked Quotation item rate / price
         const built: InvLine[] = [];
         let missing: string[] = [];
         let sheets: any[] = [];
         try {
-          const cols = 'approved_price,quantity,version,status,product_code,product_name,costing_date,quotation_price,calculated_price,adjustment,lines';
-          const base = supabase.from('cnc_costing_sheets').select(cols).eq('status', 'Approved');
-          // With a quotation the sheets are keyed by it; a direct order's sheets are keyed by the sales order.
-          const q = qRow ? base.eq('quotation_no', qRow.quote_no) : base.eq('quotation_no', '').eq('sales_order_no', soRow.order_no);
-          const v = await q.order('version', { ascending: false });
-          if (!v.error) sheets = v.data ?? [];
-        } catch { /* missing stays missing below */ }
-        const lc = (s: any) => String(s ?? '').trim().toLowerCase();
-        const unitOf = (code: string, name: string): { unit: number | null; ref: string; sheet?: any } => {
-          const byCode = code.trim() !== ''
-            ? sheets.find((s: any) => lc(s.product_code) === lc(code))
-            : null;
-          const sheet = byCode ?? (name.trim() !== '' ? (sheets.find((s: any) => lc(s.product_name) === lc(name)) ?? sheets.find((s: any) => sameProduct(s.product_name, name))) : null) ?? null;
-          if (sheet && num(sheet.quantity) > 0 && sheet.approved_price != null) {
-            return { unit: num(sheet.approved_price) / num(sheet.quantity), ref: `${qRow ? qRow.quote_no : soRow.order_no} V${sheet.version}`, sheet };
+          const cols = 'approved_price,quantity,version,status,product_code,product_name,costing_date,quotation_price,calculated_price,adjustment,lines,quotation_no,sales_order_no';
+          const candidateQuotes = Array.from(new Set([
+            qRow?.quote_no,
+            soRow?.quote_no,
+            first?.quotation_no,
+            first?.quote_no,
+            (card as any)?.quote_no,
+          ].map((s) => String(s ?? '').trim()).filter(Boolean)));
+
+          const candidateSOs = Array.from(new Set([
+            soRow?.order_no,
+            soRow?.lead_no,
+            first.sales_order_no,
+            first.sales_order_ref,
+            card?.refNo,
+            first.project_name,
+            (card?.raw as any)?.sales_order,
+            (card?.raw as any)?.sales_order_no,
+            (card?.raw as any)?.sales_order_ref,
+          ].map((s) => String(s ?? '').trim()).filter(Boolean)));
+
+          // 1. Fetch sheets matching candidate quotations
+          if (candidateQuotes.length > 0) {
+            const qRes = await supabase.from('cnc_costing_sheets')
+              .select(cols)
+              .eq('status', 'Approved')
+              .in('quotation_no', candidateQuotes)
+              .order('version', { ascending: false });
+            if (!qRes.error && qRes.data) {
+              sheets.push(...qRes.data);
+            }
           }
+
+          // 2. Fetch sheets matching candidate sales orders
+          if (candidateSOs.length > 0) {
+            const soRes = await supabase.from('cnc_costing_sheets')
+              .select(cols)
+              .eq('status', 'Approved')
+              .in('sales_order_no', candidateSOs)
+              .order('version', { ascending: false });
+            if (!soRes.error && soRes.data) {
+              sheets.push(...soRes.data);
+            }
+          }
+
+          // 3. Fallback: if no sheets found yet, fetch recent approved costing sheets and match by product name in JS
+          if (sheets.length === 0) {
+            const candidateNames = Array.from(new Set(
+              rows.flatMap((r: any) => [
+                r.part_name,
+                r.product_name,
+                getProductBaseName(r.part_name),
+                getProductBaseName(r.product_name),
+              ]).map((s) => String(s ?? '').trim()).filter(Boolean)
+            ));
+
+            if (candidateNames.length > 0) {
+              const recentRes = await supabase.from('cnc_costing_sheets')
+                .select(cols)
+                .order('created_at', { ascending: false })
+                .limit(150);
+              if (!recentRes.error && recentRes.data) {
+                const matched = recentRes.data.filter((s: any) =>
+                  candidateNames.some((cn) =>
+                    sameProduct(s.product_name, cn) ||
+                    getProductBaseName(s.product_name).toLowerCase() === getProductBaseName(cn).toLowerCase()
+                  )
+                );
+                sheets.push(...matched);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Costing sheets fetch failed:', e);
+        }
+
+        const lc = (s: any) => String(s ?? '').trim().toLowerCase();
+        const getSheetUnitPrice = (sh: any): number | null => {
+          if (!sh) return null;
+          const qo = sh.lines?.quoteOverrides?.unit;
+          if (qo != null && num(qo) > 0) return num(qo);
+          if (sh.approved_price != null && num(sh.approved_price) > 0) {
+            const q = num(sh.quantity);
+            return q > 0 ? num(sh.approved_price) / q : num(sh.approved_price);
+          }
+          if (sh.quotation_price != null && num(sh.quotation_price) > 0) {
+            const q = num(sh.quantity);
+            return q > 0 ? num(sh.quotation_price) / q : num(sh.quotation_price);
+          }
+          if (sh.calculated_price != null && num(sh.calculated_price) > 0) {
+            const q = num(sh.quantity);
+            return q > 0 ? num(sh.calculated_price) / q : num(sh.calculated_price);
+          }
+          return null;
+        };
+
+        const unitOf = (code: string, name: string, row: any): { unit: number | null; ref: string; sheet?: any } => {
+          const cleanCode = code.trim();
+          const cleanName = name.trim();
+          const baseName = getProductBaseName(cleanName);
+
+          // 1. Check costing sheets
+          let sheet: any = null;
+          if (cleanCode) {
+            sheet = sheets.find((s: any) => lc(s.product_code) === lc(cleanCode)) ?? null;
+          }
+          if (!sheet && cleanName) {
+            sheet = sheets.find((s: any) => lc(s.product_name) === lc(cleanName)) ?? null;
+          }
+          if (!sheet && baseName) {
+            sheet = sheets.find((s: any) => lc(getProductBaseName(s.product_name)) === lc(baseName)) ?? null;
+          }
+          if (!sheet && cleanName) {
+            sheet = sheets.find((s: any) => sameProduct(s.product_name, cleanName) || sameProduct(getProductBaseName(s.product_name), baseName)) ?? null;
+          }
+          if (sheet) {
+            const u = getSheetUnitPrice(sheet);
+            if (u != null && u > 0) {
+              const ref = sheet.quotation_no
+                ? `${sheet.quotation_no} V${sheet.version}`
+                : (sheet.sales_order_no ? `${sheet.sales_order_no} V${sheet.version}` : `FG V${sheet.version}`);
+              return { unit: u, ref, sheet };
+            }
+          }
+
+          // 2. Check Delivery Challan row price
+          const rowPrice = num(row.unit_price ?? row.price ?? row.rate);
+          if (rowPrice > 0) {
+            return { unit: rowPrice, ref: `DC ${dcNo || ''} Price`.trim() };
+          }
+
+          // 3. Check Sales Order item or SO price
+          if (soRow) {
+            let soItems: any[] = [];
+            try {
+              const p = typeof soRow.items === 'string' ? JSON.parse(soRow.items) : soRow.items;
+              if (Array.isArray(p)) soItems = p;
+            } catch { /* ignore */ }
+            const matchedItem = soItems.find((it: any) => {
+              const itName = String(it.partName || it.productName || it.part_name || it.name || it.description || '').trim();
+              const itCode = String(it.partNumber || it.part_number || it.part_no || it.code || '').trim();
+              if (cleanCode && itCode && lc(itCode) === lc(cleanCode)) return true;
+              if (cleanName && itName && (lc(itName) === lc(cleanName) || lc(getProductBaseName(itName)) === lc(baseName) || sameProduct(itName, cleanName))) return true;
+              return false;
+            });
+            if (matchedItem) {
+              const pr = num(matchedItem.unitPrice ?? matchedItem.unit_price ?? matchedItem.rate ?? matchedItem.price);
+              if (pr > 0) return { unit: pr, ref: `SO ${soRow.order_no || soRow.lead_no || ''}`.trim() };
+            }
+            const soPrice = num(soRow.unit_price ?? soRow.price);
+            if (soPrice > 0) {
+              return { unit: soPrice, ref: `SO ${soRow.order_no || soRow.lead_no || ''}`.trim() };
+            }
+          }
+
+          // 4. Check Quotation item or Quote price
+          if (qRow) {
+            let qItems: any[] = [];
+            try {
+              const p = typeof qRow.items === 'string' ? JSON.parse(qRow.items) : qRow.items;
+              if (Array.isArray(p)) qItems = p;
+            } catch { /* ignore */ }
+            const matchedItem = qItems.find((it: any) => {
+              const itName = String(it.partName || it.productName || it.part_name || it.name || it.description || '').trim();
+              const itCode = String(it.partNumber || it.part_number || it.part_no || it.code || '').trim();
+              if (cleanCode && itCode && lc(itCode) === lc(cleanCode)) return true;
+              if (cleanName && itName && (lc(itName) === lc(cleanName) || lc(getProductBaseName(itName)) === lc(baseName) || sameProduct(itName, cleanName))) return true;
+              return false;
+            });
+            if (matchedItem) {
+              const pr = num(matchedItem.unitPrice ?? matchedItem.unit_price ?? matchedItem.rate ?? matchedItem.price);
+              if (pr > 0) return { unit: pr, ref: `Quote ${qRow.quote_no || ''}`.trim() };
+            }
+            const qPrice = num(qRow.unit_price ?? qRow.price);
+            if (qPrice > 0) {
+              return { unit: qPrice, ref: `Quote ${qRow.quote_no || ''}`.trim() };
+            }
+          }
+
           return { unit: null, ref: '' };
         };
+
         for (const row of rows) {
           const code = row.part_no || soRow?.part_no || '';
           const name = row.part_name || row.product_name || soRow?.part_name || '';
-          const { unit: approvedUnit, ref: sheetRef, sheet: sheetRow } = unitOf(code, name);
+          const { unit: approvedUnit, ref: sheetRef, sheet: sheetRow } = unitOf(code, name, row);
           if (approvedUnit == null) missing.push(name || code || 'Unnamed product');
           const lineQty = num(row.dispatch_qty ?? row.quantity) || 0;
           built.push({
@@ -252,7 +437,8 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
           if (cancelled) return;
         }
         if (missing.length > 0) {
-          setBlocked(`Approved selling price is required before creating the invoice. Missing for: ${missing.join(', ')}. Approve the Finished Goods costing first.`);
+          // If any price is missing, enable editing mode so user can immediately input the rate
+          setEditing(true);
         }
         setLines(built);
       } catch (e: any) {
@@ -276,8 +462,12 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
   const edited = lines.some((l) => l.unitInput.trim() !== '');
   const adjustment = basic - origTotal;
 
+  const missingPriceLines = lines.filter((l) => effUnit(l) <= 0);
+  const missingPriceNames = missingPriceLines.map((l) => l.itemName || l.productCode || 'Unnamed product');
+
   const canApprove = !loading && !loadError && !blocked && lines.length > 0
-    && lines.every((l) => !l.missing && num(l.qty) > 0 && num(l.qty) <= num(l.maxQty) && effUnit(l) >= 0)
+    && missingPriceLines.length === 0
+    && lines.every((l) => num(l.qty) > 0 && num(l.qty) <= num(l.maxQty) && effUnit(l) > 0)
     && customer.trim() !== '';
   const dcTotal = lines.reduce((s, l) => s + num(l.qty), 0);
 
@@ -290,7 +480,17 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
     return String(r?.hsn || '').trim();
   };
   const setLine = (key: string, patch: Partial<InvLine>) =>
-    setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+    setLines((ls) =>
+      ls.map((l) => {
+        if (l.key !== key) return l;
+        const updated = { ...l, ...patch };
+        if (patch.unitInput !== undefined) {
+          const inputVal = patch.unitInput.trim();
+          updated.missing = inputVal === '' ? (l.approvedUnit == null || l.approvedUnit <= 0) : num(inputVal) <= 0;
+        }
+        return updated;
+      })
+    );
 
   const approve = async (printAfter: boolean | unknown = false) => {
     if (!canApprove || saving) return;
@@ -314,7 +514,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
         dc_no: dcNo || null,
         delivery_id: dcId,
         sales_order_id: soId,
-        notes: `Priced from approved FG costing ${refs}${edited ? ` (invoice-edited, adjustment ${adjustment >= 0 ? '+' : ''}${adjustment})` : ''}`,
+        notes: `Priced from approved FG costing ${refs || 'agreed pricing'}${edited ? ` (invoice-edited, adjustment ${adjustment >= 0 ? '+' : ''}${adjustment})` : ''}`,
       }, lines.map((l) => ({
         description: l.itemName, quantity: num(l.qty), unit: l.unit || null,
         rate: effUnit(l), gst_rate: gstRate,
@@ -448,6 +648,19 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
               <p>{blocked}</p>
             </div>
           )}
+          {!blocked && missingPriceLines.length > 0 && (
+            <div data-testid="inv-missing-price" role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 flex items-start justify-between gap-3">
+              <div>
+                <p className="font-bold uppercase tracking-wider text-[10px] text-amber-800 mb-0.5">Approved Selling Price Required</p>
+                <p>Selling price is required before creating the invoice. Missing for: <span className="font-semibold">{missingPriceNames.join(', ')}</span>. Please approve Finished Goods costing or enter the invoice unit price below.</p>
+              </div>
+              {!editing && (
+                <Button variant="secondary" size="sm" icon={<Pencil size={12} />} onClick={() => setEditing(true)}>
+                  Edit Price
+                </Button>
+              )}
+            </div>
+          )}
           {/* what this company already owes: first thing in the popup */}
           {dueState === 'ok' && due && due.total > 0 && (
               <div data-testid="due-amount" role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs">
@@ -541,10 +754,10 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
                       <td className="py-2 text-right tabular-nums text-slate-500">{l.approvedUnit == null ? '—' : formatINR(l.approvedUnit)}</td>
                       <td className="py-2 text-right">
                         {editing
-                          ? <input type="number" min="0" value={l.unitInput} onChange={(e) => setLine(l.key, { unitInput: e.target.value })} placeholder={l.approvedUnit == null ? '' : String(Math.round(l.approvedUnit * 100) / 100)} className="w-24 text-right text-xs rounded border border-slate-300 px-1.5 py-1" />
-                          : <span className="font-semibold tabular-nums">{formatINR(effUnit(l))}</span>}
+                          ? <input type="number" min="0" value={l.unitInput} onChange={(e) => setLine(l.key, { unitInput: e.target.value })} placeholder={l.approvedUnit == null ? 'Enter price' : String(Math.round(l.approvedUnit * 100) / 100)} className="w-24 text-right text-xs rounded border border-slate-300 px-1.5 py-1" />
+                          : <span className={`font-semibold tabular-nums ${effUnit(l) <= 0 ? 'text-red-500' : ''}`}>{effUnit(l) <= 0 ? '—' : formatINR(effUnit(l))}</span>}
                       </td>
-                      <td className="py-2 text-right font-bold tabular-nums">{formatINR(num(l.qty) * effUnit(l))}</td>
+                      <td className="py-2 text-right font-bold tabular-nums">{effUnit(l) <= 0 ? '—' : formatINR(num(l.qty) * effUnit(l))}</td>
                     </tr>
                   ))}
                 </tbody>

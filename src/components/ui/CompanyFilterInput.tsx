@@ -32,12 +32,16 @@ export function CompanyFilterInput({
 
   const isAllSelected = !value || value === allLabel;
 
-  // Filter options based on search text
+  // Filter options based on search text (multi-word: each word must appear in the name)
   const filteredOptions = useMemo(() => {
     const q = searchText.toLowerCase().trim();
     if (!q) return options.slice(0, 100);
+    const words = q.split(/\s+/).filter(Boolean);
     return options
-      .filter(opt => opt.toLowerCase().includes(q))
+      .filter(opt => {
+        const name = opt.toLowerCase();
+        return words.every(word => name.includes(word));
+      })
       .slice(0, 100);
   }, [searchText, options]);
 

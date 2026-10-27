@@ -780,9 +780,10 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
     // Commit any typed-but-unadded input first so the saved version matches the screen.
     if (draftMat) setExtraMats((ls) => [...ls, draftMat]);
     if (draftOp) setExtraOps((ls) => [...ls, draftOp]);
+    const soPayload = so ?? (inward.sales_order_ref || card?.refNo ? { order_no: inward.sales_order_ref || card?.refNo } : null);
     const { error } = await supabase.from('cnc_costing_sheets').insert([
       buildVersionPayload({
-        quote: quote ?? {}, so, productCode: code, productName, baseQty,
+        quote: quote ?? {}, so: soPayload, productCode: code, productName, baseQty,
         status, version: nextVersion, totals, approved,
         matLines: effMatLines, opLines: effOpLines, userName, quoteOverrides,
       }),

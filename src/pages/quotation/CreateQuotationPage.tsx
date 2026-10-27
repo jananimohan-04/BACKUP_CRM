@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Building2, Calculator, Plus, UserCheck, Trash2, Package, Palette, MessageCircle, Mail, FileDown, FileSpreadsheet, Bookmark, BookmarkPlus, Download, Upload, Library, Search, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { desktopToast } from '@/lib/desktop/toast';
 import { formatINR, todayISO } from '@/lib/format';
 import { Modal } from '@/components/ui/Modal';
 import { QUOTE_UNITS, calcLine, calcTotals, emptyLine, validateQuote, type QuoteLine } from '@/lib/quotationCalc';
@@ -45,6 +46,8 @@ export interface QuotationEmbed {
   lines?: Partial<QuoteLine>[];
   /** Called after every successful save/export with the document, so the host can record it (e.g. as a pipeline quotation). */
   onRecord?: (doc: QuoteDoc, total: number, quoteNo: string) => Promise<void> | void;
+  /** Called after a successful save to close the popup. */
+  onClose?: () => void;
 }
 
 export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) {
@@ -162,7 +165,7 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
     if (issues.length) { setShowIssues(true); setMsg({ kind: 'err', text: issues[0].message }); return false; }
     setShowIssues(false); return true;
   };
-  const run = async (label: string, fn: () => void | Promise<void>) => {
+  const run = async (label: string, fn: () => void | Promise<void>, closeAfterSave = false) => {
     if (!guard()) return;
     setBusy(true);
     try {
@@ -170,7 +173,12 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
       await fn();
       const saved = upsertQuote(company?.id, buildDoc(), ident.current);
       if (embed?.onRecord) await embed.onRecord(buildDoc(), totals.total, ident.current.quoteNo);
-      setMsg(saved ? { kind: 'ok', text: `${label} · saved to Quotation Library as #${ident.current.seq}` } : { kind: 'ok', text: `${label} (could not save to the library: browser storage unavailable)` });
+      if (closeAfterSave && embed?.onClose) {
+        desktopToast('success', `Quotation ${ident.current.quoteNo} saved`, undefined, 2000);
+        embed.onClose();
+      } else {
+        setMsg(saved ? { kind: 'ok', text: `${label} · saved to Quotation Library as #${ident.current.seq}` } : { kind: 'ok', text: `${label} (could not save to the library: browser storage unavailable)` });
+      }
     }
     catch (e) { console.error(e); setMsg({ kind: 'err', text: `Could not complete: ${(e as Error).message}` }); }
     finally { setBusy(false); }
@@ -354,7 +362,7 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
           <ActionBtn cls="bg-slate-700 hover:bg-slate-800 text-white" icon={<FileDown size={15} />} disabled={busy} onClick={() => run('PDF with workings downloaded', () => downloadQuotePdf(buildDoc(), true, theme, seller))}>PDF with Workings</ActionBtn>
           <ActionBtn cls="bg-emerald-600 hover:bg-emerald-700 text-white" icon={<Upload size={15} />} disabled={busy} onClick={() => run('CSV exported', () => exportQuoteCsv(buildDoc()))}>Export CSV</ActionBtn>
           <ActionBtn cls="border border-slate-200 text-slate-700 hover:bg-slate-50" icon={<Bookmark size={15} />} disabled={busy}
-            onClick={() => run('Quotation saved', () => undefined)}>Save Quote</ActionBtn>
+            onClick={() => run('Quotation saved', () => undefined, true)}>Save Quote</ActionBtn>
         </div>
       </div>
 

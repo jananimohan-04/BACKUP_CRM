@@ -49,13 +49,17 @@ export function CustomerAutocomplete({
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Prefix match on what the user typed: typing "a" offers companies
-  // starting with "a", not random substring hits.
+  // Substring match: typing "poly" finds both "POLYMECH" and "AABEE POLY PRODUCTS".
+  // Multi-word search: each word must appear somewhere in the company name.
   const filtered = useMemo(() => {
     const q = (value || '').toLowerCase().trim();
     if (!q) return companies.slice(0, 50);
+    const words = q.split(/\s+/).filter(Boolean);
     return companies
-      .filter(c => (c.company || '').toLowerCase().startsWith(q))
+      .filter(c => {
+        const name = (c.company || '').toLowerCase();
+        return words.every(word => name.includes(word));
+      })
       .slice(0, 50);
   }, [value, companies]);
 
@@ -171,7 +175,7 @@ export function CustomerAutocomplete({
               ))
             ) : (
               <div className="px-3.5 py-2.5 text-xs text-slate-500 italic">
-                No company starts with that — keep typing to add “{value.trim()}” as new
+                No company matches "{value.trim()}" — keep typing to add as new
               </div>
             )}
           </div>,
