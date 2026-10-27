@@ -100,7 +100,9 @@ export function Modal({
   useEffect(() => {
     if (open) {
       const vw = window.innerWidth;
-      setDim({ w: initialWidth(size, vw, width, maxWidth), h: null });
+      const vh = window.innerHeight;
+      const modalW = initialWidth(size, vw, width, maxWidth);
+      setDim({ w: modalW, h: null });
       setTouched(false);
       setMinimized(false);
       setMaximized(false);
@@ -108,15 +110,22 @@ export function Modal({
       setDragging(false);
       setResizing(false);
       movedRef.current = false;
-      // Center once laid out (natural height is measured, not assumed).
+      // Set initial centered position immediately (estimate height as 400)
+      setPos({
+        x: Math.max(16, (vw - modalW) / 2),
+        y: Math.max(16, (vh - 400) / 2),
+      });
+      // Refine vertical centering once actual height is measured
       requestAnimationFrame(() => {
         const el = boxRef.current;
-        const h = el?.offsetHeight ?? 400;
-        const vh = window.innerHeight;
-        setPos({
-          x: Math.max(16, (vw - (el?.offsetWidth ?? initialWidth(size, vw, width, maxWidth))) / 2),
-          y: Math.max(16, (vh - h) / 2),
-        });
+        if (el) {
+          const h = el.offsetHeight;
+          const actualW = el.offsetWidth;
+          setPos({
+            x: Math.max(16, (vw - actualW) / 2),
+            y: Math.max(16, (vh - h) / 2),
+          });
+        }
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
