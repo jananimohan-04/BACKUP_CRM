@@ -4784,7 +4784,7 @@ export function SalesPipelinePage() {
     if (found) return found;
     return {
       id: `${type}_${record.id}`, stage, type, raw: record,
-      refNo: record.lead_no || record.enquiry_no || record.quote_no || record.order_no || record.wo_no || record.delivery_no || record.inward_no || '',
+      refNo: record.lead_no || record.enquiry_no || record.quote_no || record.order_no || record.wo_no || record.delivery_no || record.inward_no || record.invoice_no || '',
       customer: record.customer || record.customer_name || record.party_name || '', part: record.part_name || '', qty: Number(record.quantity) || 0, value: 0, date: '',
     } as KanbanCard;
   };
@@ -7930,7 +7930,7 @@ export function SalesPipelinePage() {
         </div>
       ) : activeView === 'invoice_list' ? (
         <div className="mb-2.5">
-          <InvoiceModule key={listRefresh} onBack={() => setActiveView('pipeline')} />
+          <InvoiceModule key={listRefresh} onBack={() => setActiveView('pipeline')} onView={listView('invoice', 'Invoice')} />
         </div>
       ) : activeView === 'tracking_list' ? (
         <div className="mb-2.5">

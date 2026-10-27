@@ -34,7 +34,7 @@ const diffDaysISO = (from: string, to: string): string => {
 };
 const emptySummary: InvoiceSummary = { total_invoices: 0, total_value: '0', total_received: '0', outstanding: '0', overdue_count: 0, overdue_amount: '0', by_status: {}, ageing: { current: '0', d31_60: '0', d61_90: '0', d90_plus: '0' }, top_customers: [], monthly: [] };
 
-export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
+export function InvoicesPage({ onBack, onView }: { onBack?: () => void; onView?: (record: any) => void } = {}) {
   const { company, canDo } = useAuth();
   const canCreateInv: boolean = typeof canDo === 'function' ? !!canDo('invoices', 'create') : true;
   const canEditInv: boolean = typeof canDo === 'function' ? !!canDo('invoices', 'edit') : true;
@@ -66,6 +66,40 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
   const [formOpen, setFormOpen] = useState(true);
   const [savedNote, setSavedNote] = useState('');
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewPdfUrl, setPreviewPdfUrl] = useState<string>('');
+  const [previewPdfLoading, setPreviewPdfLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!selected || !previewOpen) {
+      if (previewPdfUrl) {
+        try { URL.revokeObjectURL(previewPdfUrl); } catch { /* ignore */ }
+        setPreviewPdfUrl('');
+      }
+      return;
+    }
+    let active = true;
+    let url = '';
+    setPreviewPdfLoading(true);
+    (async () => {
+      try {
+        const input = await buildInvoicePdfInput(selected);
+        if (!active) return;
+        url = await salesInvoicePreviewUrl(input);
+        if (!active) { try { URL.revokeObjectURL(url); } catch { /* ignore */ } return; }
+        setPreviewPdfUrl(url);
+      } catch (err) {
+        console.error('Failed to generate PDF preview:', err);
+      } finally {
+        if (active) setPreviewPdfLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+      if (url) {
+        try { URL.revokeObjectURL(url); } catch { /* ignore */ }
+      }
+    };
+  }, [selected, previewOpen]);
   const [payOpen, setPayOpen] = useState(false);
   const [editId, setEditId] = useState('');
   const [form, setForm] = useState<any>({ invoice_type: 'Sales Invoice', invoice_date: todayISO(), customer_name: '', customer_id: '', due_days: '', po_no: '', dc_no: '', delivery_id: '', payment_terms: '' });
@@ -1360,7 +1394,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
               {loading ? (
                 <tr><td colSpan={14} className="p-10 text-center">Loading invoices...</td></tr>
               ) : displayedRows.map((r, i) => (
-                <tr key={r.id} onClick={() => void view(r)} className="border-b hover:bg-blue-50/50 cursor-pointer text-xs">
+                <tr key={r.id} onClick={() => (onView ? onView(r) : void view(r))} className="border-b hover:bg-blue-50/50 cursor-pointer text-xs">
                   <td className="px-2 py-2">{(page - 1) * PAGE + i + 1}</td>
                   <td className="px-2 py-2 font-semibold text-blue-700">{r.invoice_no}</td>
                   <td className="px-2 py-2">{formatDate(r.invoice_date)}</td>
@@ -1374,7 +1408,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
                   <td className="px-2 py-2 text-right">{cash(r.received)}</td>
                   <td className="px-2 py-2 text-right">{cash(r.balance)}</td>
                   <td className="px-2 py-2"><Badge variant={statusToVariant(r.status)}>{r.status}</Badge></td>
-                  <td className="px-2 py-2"><Eye size={14} /></td>
+                  <td className="px-2 py-2"><button type="button" onClick={(e) => { e.stopPropagation(); if (onView) { onView(r); } else { void view(r); } }} className="text-slate-400 hover:text-brand-600 transition-colors p-1" title="View"><Eye size={14} /></button></td>
                 </tr>
               ))}
               {!loading && !displayedRows.length && (
@@ -1407,7 +1441,10 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
           </div>
         ) : ''
       }
-      size="xl"
+      size="2xl"
+      width={1100}
+      maxWidth={1400}
+      tall={true}
       footer={
         selected ? (
           <div className="flex flex-wrap items-center justify-between gap-2 w-full">
@@ -1471,182 +1508,24 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
         ) : null
       }
     >
-      {selected && (
-        <div className="p-4 bg-white space-y-4 text-xs font-sans">
-          {/* Header section with company branding */}
-          <div className="flex flex-wrap justify-between items-start gap-3 border-b border-slate-200 pb-3">
-            <div>
-              <h2 className="text-xl font-black text-slate-900 tracking-tight">
-                {company?.company_name || 'ARGUS CNC'}
-              </h2>
-              <p className="text-[11px] text-slate-500 font-medium">PRECISION ENGINEERING & MANUFACTURING</p>
-            </div>
-            <div className="text-right">
-              <span className="text-xs font-bold uppercase tracking-wider text-brand-700 block">
-                {selected.invoice_type || 'TAX INVOICE'}
-              </span>
-              <span className="font-mono font-bold text-sm text-slate-800">{selected.invoice_no}</span>
-              <div className="text-[11px] text-slate-500 mt-0.5">
-                Date: <strong className="text-slate-700">{formatDate(selected.invoice_date)}</strong>
-              </div>
-              {selected.due_date && (
-                <div className="text-[11px] text-slate-500">
-                  Due: <strong className="text-slate-700">{formatDate(selected.due_date)}</strong>
-                </div>
-              )}
-            </div>
+      <div className="flex flex-col h-[75vh] min-h-[500px]">
+        {previewPdfLoading ? (
+          <div className="flex flex-1 flex-col items-center justify-center text-slate-500 gap-2">
+            <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm font-medium">Generating invoice PDF preview...</span>
           </div>
-
-          {/* Customer & Order details grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-50/80 p-3 rounded-lg border border-slate-200/90 text-xs">
-            <div>
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                Billed To
-              </span>
-              <div className="font-bold text-slate-900 text-sm">{selected.customer_name}</div>
-              {selected.billing_address && (
-                <div className="text-slate-600 mt-1 whitespace-pre-line leading-relaxed">
-                  {selected.billing_address}
-                </div>
-              )}
-              {selected.customer_gstin && (
-                <div className="text-slate-700 font-medium mt-1">
-                  GSTIN: <span className="font-mono font-semibold">{selected.customer_gstin}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-1.5 md:border-l md:border-slate-200 md:pl-3">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                Reference & Dispatch
-              </span>
-              <div className="flex justify-between py-0.5 border-b border-slate-200/60">
-                <span className="text-slate-500">Delivery Challan (DC):</span>
-                <span className="font-mono font-bold text-slate-800">{selected.dc_no || '-'}</span>
-              </div>
-              <div className="flex justify-between py-0.5 border-b border-slate-200/60">
-                <span className="text-slate-500">Purchase Order (PO):</span>
-                <span className="font-semibold text-slate-800">{selected.po_no || '-'}</span>
-              </div>
-              <div className="flex justify-between py-0.5 border-b border-slate-200/60">
-                <span className="text-slate-500">Payment Terms:</span>
-                <span className="font-medium text-slate-800">{selected.payment_terms || '-'}</span>
-              </div>
-              {selected.due_days && (
-                <div className="flex justify-between py-0.5">
-                  <span className="text-slate-500">Credit Period:</span>
-                  <span className="font-medium text-slate-800">{selected.due_days} Days</span>
-                </div>
-              )}
-            </div>
+        ) : previewPdfUrl ? (
+          <iframe
+            title="Invoice PDF Preview"
+            src={`${previewPdfUrl}#navpanes=0&view=Fit`}
+            className="w-full h-full rounded-lg border border-slate-200 bg-slate-100"
+          />
+        ) : (
+          <div className="flex flex-1 items-center justify-center text-slate-500 text-sm">
+            Unable to load PDF preview. Use the &quot;Download PDF&quot; or &quot;Print&quot; buttons below.
           </div>
-
-          {/* Product Items Table */}
-          <div className="border border-slate-200 rounded-lg overflow-hidden">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-100/80 text-slate-600 text-[10px] uppercase font-bold tracking-wider border-b border-slate-200">
-                <tr>
-                  <th className="p-2 w-8 text-center">#</th>
-                  <th className="p-2">Description / Part Name</th>
-                  <th className="p-2 w-20 text-center">HSN</th>
-                  <th className="p-2 w-16 text-right">Qty</th>
-                  <th className="p-2 w-14 text-center">Unit</th>
-                  <th className="p-2 w-24 text-right">Rate (₹)</th>
-                  <th className="p-2 w-16 text-right">GST %</th>
-                  <th className="p-2 w-24 text-right">Amount (₹)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {(selected.items || []).map((item: any, idx: number) => {
-                  const q = Number(item.quantity) || 0;
-                  const r = Number(item.rate) || 0;
-                  const amt = Number(item.amount ?? q * r) || 0;
-                  return (
-                    <tr key={item.id || idx} className="hover:bg-slate-50/50">
-                      <td className="p-2 text-center text-slate-400 font-medium">{idx + 1}</td>
-                      <td className="p-2 font-medium text-slate-800">{item.description}</td>
-                      <td className="p-2 text-center font-mono text-slate-600 text-[11px]">{item.hsn || '-'}</td>
-                      <td className="p-2 text-right font-bold text-slate-800 tabular-nums">{item.quantity}</td>
-                      <td className="p-2 text-center text-slate-600">{item.unit || 'Nos'}</td>
-                      <td className="p-2 text-right font-medium text-slate-700 tabular-nums">{cash(item.rate)}</td>
-                      <td className="p-2 text-right text-slate-600 tabular-nums">{item.gst_rate ? `${item.gst_rate}%` : '-'}</td>
-                      <td className="p-2 text-right font-bold text-slate-900 tabular-nums">{cash(amt)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Bottom Financial Summary and Notes */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start pt-1">
-            <div className="space-y-2">
-              {selected.notes && (
-                <div className="bg-slate-50 p-2.5 rounded border border-slate-200">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Notes</span>
-                  <p className="text-slate-700">{selected.notes}</p>
-                </div>
-              )}
-              {selected.receipts && selected.receipts.length > 0 && (
-                <div className="bg-emerald-50/60 p-2.5 rounded border border-emerald-200">
-                  <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block mb-1">Payment Receipts</span>
-                  <div className="space-y-1">
-                    {selected.receipts.map((rcv: any) => (
-                      <div key={rcv.id} className="flex justify-between text-[11px] text-emerald-950 font-medium">
-                        <span>{rcv.txn_no} ({formatDate(rcv.txn_date)})</span>
-                        <span className="font-bold">{cash(rcv.amount)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1.5 text-xs">
-              <div className="flex justify-between text-slate-600">
-                <span>Basic / Taxable Value:</span>
-                <span className="font-semibold text-slate-800 tabular-nums">{cash(selected.basic_value)}</span>
-              </div>
-              {Number(selected.cgst) > 0 && (
-                <div className="flex justify-between text-slate-600">
-                  <span>CGST:</span>
-                  <span className="font-semibold text-slate-800 tabular-nums">{cash(selected.cgst)}</span>
-                </div>
-              )}
-              {Number(selected.sgst) > 0 && (
-                <div className="flex justify-between text-slate-600">
-                  <span>SGST:</span>
-                  <span className="font-semibold text-slate-800 tabular-nums">{cash(selected.sgst)}</span>
-                </div>
-              )}
-              {Number(selected.igst) > 0 && (
-                <div className="flex justify-between text-slate-600">
-                  <span>IGST:</span>
-                  <span className="font-semibold text-slate-800 tabular-nums">{cash(selected.igst)}</span>
-                </div>
-              )}
-              {Number(selected.round_off) !== 0 && (
-                <div className="flex justify-between text-slate-600">
-                  <span>Round Off:</span>
-                  <span className="font-semibold text-slate-800 tabular-nums">{cash(selected.round_off)}</span>
-                </div>
-              )}
-              <div className="flex justify-between pt-1.5 border-t border-slate-300 text-sm font-black text-slate-900">
-                <span>Total Invoice Value:</span>
-                <span className="text-brand-700 tabular-nums">{cash(selected.total)}</span>
-              </div>
-              <div className="flex justify-between pt-1 text-slate-600">
-                <span>Total Received:</span>
-                <span className="font-semibold text-emerald-700 tabular-nums">{cash(selected.received)}</span>
-              </div>
-              <div className="flex justify-between pt-1 border-t border-slate-200 text-xs font-bold">
-                <span className={Number(selected.balance) > 0 ? "text-rose-700" : "text-emerald-700"}>Balance Due:</span>
-                <span className={`tabular-nums ${Number(selected.balance) > 0 ? "text-rose-700 text-sm" : "text-emerald-700"}`}>{cash(selected.balance)}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </Modal>
 
     <Modal open={formOpen && !!editId} onClose={()=>!busy&&setFormOpen(false)} title="Edit Invoice" subtitle="Tax totals and ledger postings are calculated by the database." size="2xl" footer={<><Button variant="secondary" onClick={()=>setFormOpen(false)}>Cancel</Button><Button variant="secondary" onClick={()=>void save(true)} disabled={busy || !canEditInv} title={!canEditInv ? 'Invoice edit permission is required' : 'Save invoice and print'}><Printer size={13}/> Save & Print</Button><Button onClick={()=>void save(false)} disabled={busy || !canEditInv} title={!canEditInv ? 'Invoice edit permission is required' : undefined}>{busy?'Saving...':'Save Invoice'}</Button></>}>

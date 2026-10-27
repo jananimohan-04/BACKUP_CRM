@@ -204,7 +204,7 @@ export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
   );
 }
 
-export function InvoiceModule({ onBack }: { onBack: () => void }) { return <InvoicesPage onBack={onBack} />; }
+export function InvoiceModule({ onBack, onView }: { onBack: () => void; onView?: (record: any) => void }) { return <InvoicesPage onBack={onBack} onView={onView} />; }
 
 function FlowStep({ active, highlight, title, subtitle }: { active: boolean, highlight?: boolean, title: string, subtitle: string }) {
   return (
