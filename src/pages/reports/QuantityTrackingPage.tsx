@@ -171,6 +171,11 @@ export function QuantityTrackingPage({ embedded = false }: { embedded?: boolean 
         active: activeTab === 'rejections',
         onClick: () => setActiveTab('rejections'),
       },
+      {
+        label: 'Pipeline Report (From Enquiry)',
+        active: activeTab === 'pipeline_report',
+        onClick: () => setActiveTab('pipeline_report'),
+      },
     ]);
     setTabActions(
       <div className="flex items-center gap-2">
@@ -253,7 +258,15 @@ export function QuantityTrackingPage({ embedded = false }: { embedded?: boolean 
             >
               Rejection Breakdown
             </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('pipeline_report')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${activeTab === 'pipeline_report' ? 'bg-orange-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'}`}
+            >
+              Pipeline Report (From Enquiry)
+            </button>
           </div>
+          {activeTab !== 'pipeline_report' && (
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <select
               aria-label="Company"
@@ -296,6 +309,7 @@ export function QuantityTrackingPage({ embedded = false }: { embedded?: boolean 
               Export CSV
             </Button>
           </div>
+          )}
         </div>
       )}
       {!embedded && (
@@ -319,6 +333,13 @@ export function QuantityTrackingPage({ embedded = false }: { embedded?: boolean 
             className={`pb-2 text-xs font-bold border-b-2 ${activeTab === 'rejections' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500'}`}
           >
             Rejection Breakdown
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('pipeline_report')}
+            className={`pb-2 text-xs font-bold border-b-2 ${activeTab === 'pipeline_report' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500'}`}
+          >
+            Pipeline Report
           </button>
         </div>
       </div>
@@ -345,6 +366,12 @@ export function QuantityTrackingPage({ embedded = false }: { embedded?: boolean 
           </div>
         </Card>
       </div>
+      )}
+
+      {activeTab === 'pipeline_report' && (
+        <div className="pt-1">
+          <PipelineReportPage embedded />
+        </div>
       )}
 
       {activeTab === 'orders' && (

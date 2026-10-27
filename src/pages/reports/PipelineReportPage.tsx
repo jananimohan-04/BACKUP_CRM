@@ -42,7 +42,7 @@ export type DatePreset =
   | 'all'
   | 'custom';
 
-export type ReportTab = 'overview' | 'companies' | 'products' | 'transactions';
+export type ReportTab = 'tracking' | 'overview' | 'companies' | 'products' | 'transactions';
 
 const num = (v: any): number => {
   const n = Number(v);
@@ -113,7 +113,7 @@ export function PipelineReportPage({ embedded = false, onBack, onSwitchTab }: Pi
   const [customTo, setCustomTo] = useState(() => getDatePresetRange('this_month').to);
   const [selectedCompany, setSelectedCompany] = useState('');
   const [search, setSearch] = useState('');
-  const [activeTab, setActiveTab] = useState<ReportTab>('overview');
+  const [activeTab, setActiveTab] = useState<ReportTab>('tracking');
   const [txStageFilter, setTxStageFilter] = useState<string>('all');
 
   const [loading, setLoading] = useState(true);
@@ -481,6 +481,185 @@ export function PipelineReportPage({ embedded = false, onBack, onSwitchTab }: Pi
     });
 
     return Array.from(map.values()).sort((a, b) => (b.soVal + b.invVal) - (a.soVal + a.invVal));
+  }, [filteredEnquiries, filteredQuotations, filteredSalesOrders, filteredDeliveries, filteredInvoices]);
+
+  // Itemized Pipeline Tracking rows starting from Enquiry through to Invoicing
+  const pipelineTrackingRows = useMemo(() => {
+    const norm = (s: unknown) => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const baseKey = (s: unknown) => norm(getProductBaseName(String(s ?? '')));
+
+    const rows: any[] = [];
+    const matchedQuo = new Set<string>();
+    const matchedSo = new Set<string>();
+    const matchedDc = new Set<string>();
+    const matchedInv = new Set<string>();
+
+    filteredEnquiries.forEach((e) => {
+      const enqKey = norm(e.enquiry_no || e.lead_no);
+      const co = e.customer || '';
+      const prod = e.part_name || '';
+
+      const quo = filteredQuotations.find((q) => {
+        if (q.lead_id && q.lead_id === e.id) return true;
+        if (enqKey && norm(q.enquiry_no) === enqKey) return true;
+        return norm(q.customer) === norm(co) && baseKey(q.part_name) === baseKey(prod);
+      });
+      if (quo) matchedQuo.add(quo.id);
+
+      const so = filteredSalesOrders.find((o) => {
+        if (enqKey && norm(o.lead_no) === enqKey) return true;
+        if (quo && (o.quotation_id === quo.id || (o.quote_no && norm(o.quote_no) === norm(quo.quote_no)))) return true;
+        return norm(o.customer) === norm(co) && baseKey(o.part_name) === baseKey(prod);
+      });
+      if (so) matchedSo.add(so.id);
+
+      const dcs = filteredDeliveries.filter((d) => {
+        if (so && (d.sales_order_id === so.id || (d.sales_order_no && norm(d.sales_order_no) === norm(so.order_no)))) return true;
+        return norm(d.customer_name) === norm(co) && baseKey(d.part_name) === baseKey(prod);
+      });
+      dcs.forEach((d) => matchedDc.add(d.id));
+
+      const invs = filteredInvoices.filter((i) => {
+        if (so && (i.sales_order_id === so.id || norm(i.sales_order_id) === norm(so.order_no))) return true;
+        if (dcs.some((d) => norm(d.delivery_no) === norm(i.dc_no))) return true;
+        return norm(i.customer_name) === norm(co) && baseKey(i.part_name) === baseKey(prod);
+      });
+      invs.forEach((i) => matchedInv.add(i.id));
+
+      const enqQty = num(e.quantity);
+      const quoQty = quo ? num(quo.quantity) : 0;
+      const soQty = so ? num(so.quantity) : 0;
+      const dcQty = dcs.reduce((s, d) => s + num(d.dispatch_qty ?? d.quantity), 0);
+      const invQty = invs.reduce((s, i) => s + num(i.quantity), 0);
+      const invVal = invs.reduce((s, i) => s + num(i.total_amount), 0);
+
+      let stage = 'Enquiry';
+      let stageTone = 'bg-amber-50 text-amber-800 border-amber-200';
+      if (invQty > 0 || invs.length > 0) {
+        stage = 'Invoiced';
+        stageTone = 'bg-indigo-50 text-indigo-800 border-indigo-200';
+      } else if (dcQty > 0 || dcs.length > 0) {
+        stage = 'Delivered';
+        stageTone = 'bg-rose-50 text-rose-800 border-rose-200';
+      } else if (soQty > 0 || so) {
+        stage = 'Sales Order';
+        stageTone = 'bg-blue-50 text-blue-800 border-blue-200';
+      } else if (quoQty > 0 || quo) {
+        stage = 'Quotation';
+        stageTone = 'bg-purple-50 text-purple-800 border-purple-200';
+      }
+
+      rows.push({
+        id: `enq-${e.id}`,
+        date: String(e.received_date || e.created_at || '').slice(0, 10),
+        time: String(e.created_at || '').slice(11, 16),
+        company: co,
+        product: prod,
+        enqDoc: e.enquiry_no || e.lead_no || '—',
+        enqQty,
+        enqVal: num(e.estimated_value),
+        quoteDoc: quo?.quote_no || '—',
+        quoQty,
+        quoVal: quo ? num(quo.total_value || quo.quantity * quo.unit_price) : 0,
+        soDoc: so?.order_no || so?.lead_no || '—',
+        soQty,
+        soVal: so ? num(so.total_amount || so.quantity * so.unit_price) : 0,
+        dcDoc: dcs.map((d) => d.delivery_no).filter(Boolean).join(', ') || '—',
+        dcQty,
+        invDoc: invs.map((i) => i.invoice_no).filter(Boolean).join(', ') || '—',
+        invQty,
+        invVal,
+        stage,
+        stageTone,
+      });
+    });
+
+    filteredSalesOrders.forEach((o) => {
+      if (matchedSo.has(o.id)) return;
+      const co = o.customer || '';
+      const prod = o.part_name || '';
+
+      const dcs = filteredDeliveries.filter((d) => {
+        if (d.sales_order_id === o.id || (d.sales_order_no && norm(d.sales_order_no) === norm(o.order_no))) return true;
+        return norm(d.customer_name) === norm(co) && baseKey(d.part_name) === baseKey(prod);
+      });
+      dcs.forEach((d) => matchedDc.add(d.id));
+
+      const invs = filteredInvoices.filter((i) => {
+        if (i.sales_order_id === o.id || norm(i.sales_order_id) === norm(o.order_no)) return true;
+        if (dcs.some((d) => norm(d.delivery_no) === norm(i.dc_no))) return true;
+        return norm(i.customer_name) === norm(co) && baseKey(i.part_name) === baseKey(prod);
+      });
+      invs.forEach((i) => matchedInv.add(i.id));
+
+      const soQty = num(o.quantity);
+      const dcQty = dcs.reduce((s, d) => s + num(d.dispatch_qty ?? d.quantity), 0);
+      const invQty = invs.reduce((s, i) => s + num(i.quantity), 0);
+      const invVal = invs.reduce((s, i) => s + num(i.total_amount), 0);
+
+      let stage = 'Sales Order';
+      let stageTone = 'bg-blue-50 text-blue-800 border-blue-200';
+      if (invQty > 0 || invs.length > 0) {
+        stage = 'Invoiced';
+        stageTone = 'bg-indigo-50 text-indigo-800 border-indigo-200';
+      } else if (dcQty > 0 || dcs.length > 0) {
+        stage = 'Delivered';
+        stageTone = 'bg-rose-50 text-rose-800 border-rose-200';
+      }
+
+      rows.push({
+        id: `so-${o.id}`,
+        date: String(o.order_date || o.created_at || '').slice(0, 10),
+        time: String(o.created_at || '').slice(11, 16),
+        company: co,
+        product: prod,
+        enqDoc: '—',
+        enqQty: 0,
+        enqVal: 0,
+        quoteDoc: o.quote_no || '—',
+        quoQty: 0,
+        quoVal: 0,
+        soDoc: o.order_no || o.lead_no || '—',
+        soQty,
+        soVal: num(o.total_amount || o.quantity * o.unit_price),
+        dcDoc: dcs.map((d) => d.delivery_no).filter(Boolean).join(', ') || '—',
+        dcQty,
+        invDoc: invs.map((i) => i.invoice_no).filter(Boolean).join(', ') || '—',
+        invQty,
+        invVal,
+        stage,
+        stageTone,
+      });
+    });
+
+    filteredQuotations.forEach((q) => {
+      if (matchedQuo.has(q.id)) return;
+      rows.push({
+        id: `quo-${q.id}`,
+        date: String(q.created_at || '').slice(0, 10),
+        time: String(q.created_at || '').slice(11, 16),
+        company: q.customer || '',
+        product: q.part_name || '',
+        enqDoc: q.enquiry_no || '—',
+        enqQty: 0,
+        enqVal: 0,
+        quoteDoc: q.quote_no || '—',
+        quoQty: num(q.quantity),
+        quoVal: num(q.total_value || q.quantity * q.unit_price),
+        soDoc: '—',
+        soQty: 0,
+        soVal: 0,
+        dcDoc: '—',
+        dcQty: 0,
+        invDoc: '—',
+        invQty: 0,
+        invVal: 0,
+        stage: 'Quotation',
+        stageTone: 'bg-purple-50 text-purple-800 border-purple-200',
+      });
+    });
+
+    return rows.sort((a, b) => String(b.date + b.time).localeCompare(String(a.date + a.time)));
   }, [filteredEnquiries, filteredQuotations, filteredSalesOrders, filteredDeliveries, filteredInvoices]);
 
   // Unified transactions feed
@@ -1048,11 +1227,22 @@ export function PipelineReportPage({ embedded = false, onBack, onSwitchTab }: Pi
 
       {/* Tabs navigation */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-        <div className="flex border-b border-slate-200 bg-slate-50/70 px-4 pt-2 gap-2">
+        <div className="flex border-b border-slate-200 bg-slate-50/70 px-4 pt-2 gap-2 overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => setActiveTab('tracking')}
+            className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap ${
+              activeTab === 'tracking'
+                ? 'border-teal-600 text-teal-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <TrendingUp size={14} /> Pipeline Tracking (From Enquiry) ({pipelineTrackingRows.length})
+          </button>
           <button
             type="button"
             onClick={() => setActiveTab('overview')}
-            className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 ${
+            className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap ${
               activeTab === 'overview'
                 ? 'border-teal-600 text-teal-700'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -1094,6 +1284,112 @@ export function PipelineReportPage({ embedded = false, onBack, onSwitchTab }: Pi
             <FileText size={14} /> Transactions Feed ({unifiedTransactions.length})
           </button>
         </div>
+
+        {/* Tab 0: Pipeline Tracking (From Enquiry) Table */}
+        {activeTab === 'tracking' && (
+          <div className="p-4 space-y-3">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs min-w-[1000px]">
+                <thead>
+                  <tr className="border-b border-slate-200 text-slate-500 uppercase text-[10px] tracking-wider text-left bg-slate-50/50">
+                    <th className="py-2.5 px-3 w-10 text-center">#</th>
+                    <th className="py-2.5 px-3">Date</th>
+                    <th className="py-2.5 px-3">Company</th>
+                    <th className="py-2.5 px-3">Product / Part</th>
+                    <th className="py-2.5 px-3 text-right">1. Enquiry</th>
+                    <th className="py-2.5 px-3 text-right">2. Quotation</th>
+                    <th className="py-2.5 px-3 text-right">3. Ordered</th>
+                    <th className="py-2.5 px-3 text-right">4. Delivered (DC)</th>
+                    <th className="py-2.5 px-3 text-right">5. Invoiced</th>
+                    <th className="py-2.5 px-3 text-center">Pipeline Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {pipelineTrackingRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} className="py-8 text-center text-slate-400 italic">
+                        No pipeline entries match this period and company filter.
+                      </td>
+                    </tr>
+                  ) : (
+                    pipelineTrackingRows.map((r, idx) => (
+                      <tr key={r.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-2.5 px-3 text-center font-mono text-[11px] text-slate-400">
+                          {idx + 1}
+                        </td>
+                        <td className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                          <span className="font-medium text-slate-900 block">{r.date}</span>
+                          {r.time && <span className="text-[10px] text-slate-400">{r.time}</span>}
+                        </td>
+                        <td className="py-2.5 px-3 font-semibold text-slate-900 max-w-[200px] truncate" title={r.company}>
+                          {r.company || '—'}
+                        </td>
+                        <td className="py-2.5 px-3 font-medium text-slate-800 max-w-[220px] truncate" title={r.product}>
+                          {r.product || '—'}
+                        </td>
+                        <td className="py-2.5 px-3 text-right tabular-nums whitespace-nowrap">
+                          {r.enqQty > 0 ? (
+                            <div>
+                              <span className="font-bold text-amber-900">{r.enqQty} pcs</span>
+                              <span className="text-[10px] text-slate-400 block font-mono">{r.enqDoc}</span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right tabular-nums whitespace-nowrap">
+                          {r.quoQty > 0 ? (
+                            <div>
+                              <span className="font-bold text-purple-900">{r.quoQty} pcs</span>
+                              <span className="text-[10px] text-slate-400 block font-mono">{r.quoteDoc}</span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right tabular-nums whitespace-nowrap">
+                          {r.soQty > 0 ? (
+                            <div>
+                              <span className="font-bold text-blue-900">{r.soQty} pcs</span>
+                              <span className="text-[10px] text-blue-600 block font-mono">{r.soDoc}</span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right tabular-nums whitespace-nowrap">
+                          {r.dcQty > 0 ? (
+                            <div>
+                              <span className="font-bold text-rose-900">{r.dcQty} pcs</span>
+                              <span className="text-[10px] text-rose-600 block font-mono">{r.dcDoc}</span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right tabular-nums whitespace-nowrap">
+                          {r.invQty > 0 ? (
+                            <div>
+                              <span className="font-black text-indigo-950">{r.invQty} pcs</span>
+                              <span className="text-[10px] text-indigo-700 block font-mono">{formatINR(r.invVal)}</span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${r.stageTone}`}>
+                            {r.stage}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Tab 1: Stage Overview Table */}
         {activeTab === 'overview' && (
