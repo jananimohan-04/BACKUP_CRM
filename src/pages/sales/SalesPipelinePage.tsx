@@ -6055,6 +6055,8 @@ export function SalesPipelinePage() {
       setDcItems(nextItems);
       setDcSnapshot({ form: { ...nextForm }, items: nextItems.map((l: any) => ({ ...l })) });
       setDcSaveNotice(f.dcNo || 'saved');
+      setAddPopup(null);
+      desktopToast('success', `Delivery Challan ${f.dcNo} saved successfully`, undefined, 2000);
       fetchPipeline();
       setListRefresh(n => n + 1);
     } finally {
@@ -6134,6 +6136,8 @@ export function SalesPipelinePage() {
       // The form stays on screen for the next order: reset it, confirm, and refresh.
       setSoForm(resetSoForm());
       setSoSaveNotice(soForm.orderNo);
+      setAddPopup(null);
+      desktopToast('success', `Sales Order ${soForm.orderNo} saved successfully`, undefined, 2000);
       fetchPipeline();
       setListRefresh(n => n + 1);
       setSavingSo(false);
