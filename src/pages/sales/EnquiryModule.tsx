@@ -6,6 +6,7 @@ import { Search, ArrowLeft, FileText, ArrowUpDown, ArrowUp, ArrowDown, Eye } fro
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
+import { formatTimestamp } from '@/lib/format';
 
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 
@@ -109,16 +110,22 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
       return matchesSearch && matchesCompany && matchesStatus && matchesProduct && matchesDate;
     });
     
-    // Sort the filtered results
-    if (sortKey) {
+    // Sort from recent to old by default
+    if (!sortKey) {
+      filtered.sort((a, b) => {
+        const bTime = new Date(b.created_at || b.received_date || 0).getTime();
+        const aTime = new Date(a.created_at || a.received_date || 0).getTime();
+        return bTime - aTime;
+      });
+    } else {
       filtered.sort((a, b) => {
         let aVal: string | number = '';
         let bVal: string | number = '';
         
         switch (sortKey) {
           case 'date':
-            aVal = a.received_date || a.created_at || '';
-            bVal = b.received_date || b.created_at || '';
+            aVal = a.created_at || a.received_date || '';
+            bVal = b.created_at || b.received_date || '';
             break;
           case 'customer':
             aVal = (a.customer || '').toLowerCase();
@@ -208,7 +215,7 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
                 <th className="p-3 font-semibold w-8">#</th>
                 <th className="p-3 font-semibold">
                   <button onClick={() => handleSort('date')} className="flex items-center gap-1.5 hover:text-brand-300 transition-colors cursor-pointer">
-                    <span>Date</span>
+                    <span>Timestamp</span>
                     <SortIcon column="date" />
                   </button>
                 </th>
@@ -286,7 +293,7 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
               {pager.pageItems.map((enq, idx) => (
                 <tr key={enq.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                   <td className="p-3 text-xs text-slate-400 font-mono">{pager.start + idx + 1}</td>
-                  <td className="p-3 text-sm text-slate-800 whitespace-nowrap">{enq.received_date ? enq.received_date.split('T')[0] : (enq.created_at ? enq.created_at.split('T')[0] : '')}</td>
+                  <td className="p-3 text-sm text-slate-800 whitespace-nowrap font-mono">{formatTimestamp(enq.created_at || enq.received_date)}</td>
                   <td className="p-3 font-semibold text-brand-700 text-sm max-w-[200px] truncate" title={enq.customer}>{enq.customer}</td>
                   <td className="p-3 text-sm text-slate-700 max-w-[240px] truncate" title={productNames(enq)}>{productNames(enq)}</td>
                   <td className="p-3">

@@ -4,6 +4,7 @@ import { Search, ArrowLeft, FileText, Eye } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
+import { formatTimestamp } from '@/lib/format';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { recordDateOf } from '@/lib/globalDate';
@@ -70,7 +71,15 @@ export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, o
     return matchesSearch && matchesCompany && matchesStatus && matchesDate;
   });
 
-  const pager = usePager(filteredRecords, `${search}||${companyFilter}||${statusFilter}||${globalFrom}||${globalTo}`);
+  const sortedRecords = useMemo(() => {
+    return [...filteredRecords].sort((a, b) => {
+      const bTime = new Date(b.created_at || b.completion_date || 0).getTime();
+      const aTime = new Date(a.created_at || a.completion_date || 0).getTime();
+      return bTime - aTime;
+    });
+  }, [filteredRecords]);
+
+  const pager = usePager(sortedRecords, `${search}||${companyFilter}||${statusFilter}||${globalFrom}||${globalTo}`);
 
   const searchInput = (
     <div className="relative shrink-0">
@@ -121,6 +130,8 @@ export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, o
           <table className="erp-table erp-table-teal w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
+                <th className="p-3 font-semibold w-8">#</th>
+                <th className="p-3 font-semibold">Timestamp</th>
                 <th className="p-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <span className="whitespace-nowrap">Company</span>
@@ -161,8 +172,10 @@ export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, o
               </tr>
             </thead>
             <tbody>
-              {pager.pageItems.map(record => (
+              {pager.pageItems.map((record, idx) => (
                 <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                  <td className="p-3 text-xs text-slate-400 font-mono">{pager.start + idx + 1}</td>
+                  <td className="p-3 text-sm text-slate-600 whitespace-nowrap font-mono">{formatTimestamp(record.created_at || record.completion_date)}</td>
                   <td className="p-3 text-sm font-semibold text-brand-700">{record.customer || '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{record.part_name || '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{record.completed ?? '-'}</td>
@@ -173,7 +186,7 @@ export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, o
                 </tr>
               ))}
               {filteredRecords.length === 0 && (
-                <tr><td colSpan={6} className="text-center py-8 text-slate-500">No records found.</td></tr>
+                <tr><td colSpan={8} className="text-center py-8 text-slate-500">No records found.</td></tr>
               )}
             </tbody>
           </table>

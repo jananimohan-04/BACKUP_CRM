@@ -67,3 +67,21 @@ export function todayISO(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
+
+/** Formats timestamp into "27 Oct 2026, 10:05 AM" */
+export function formatTimestamp(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso);
+    const dateStr = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    const timeStr = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    if (String(iso).includes('T') || String(iso).includes(':')) {
+      return `${dateStr}, ${timeStr}`;
+    }
+    return dateStr;
+  } catch {
+    return String(iso);
+  }
+}
+

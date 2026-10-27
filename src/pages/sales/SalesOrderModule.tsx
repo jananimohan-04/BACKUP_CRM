@@ -6,6 +6,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { SalesOrderSection } from './SalesOrderSection';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
+import { formatTimestamp } from '@/lib/format';
 import { formatLeadProductDisplay } from './SalesPipelinePage';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
@@ -130,7 +131,15 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onView, onEd
     return matchesSearch && matchesCompany && matchesDate;
   });
 
-  const pager = usePager(filteredRecords, `${search}||${companyFilter}||${globalFrom}||${globalTo}`);
+  const sortedRecords = useMemo(() => {
+    return [...filteredRecords].sort((a, b) => {
+      const bTime = new Date(b.created_at || b.order_date || b.delivery_date || 0).getTime();
+      const aTime = new Date(a.created_at || a.order_date || a.delivery_date || 0).getTime();
+      return bTime - aTime;
+    });
+  }, [filteredRecords]);
+
+  const pager = usePager(sortedRecords, `${search}||${companyFilter}||${globalFrom}||${globalTo}`);
 
   const searchInput = (
     <div className="relative shrink-0">
@@ -171,6 +180,8 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onView, onEd
           <table className="erp-table erp-table-emerald w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
+                <th className="p-3 font-semibold w-8">#</th>
+                <th className="p-3 font-semibold">Timestamp</th>
                 <th className="p-3 font-semibold">Order No</th>
                 <th className="p-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
@@ -197,8 +208,10 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onView, onEd
               </tr>
             </thead>
             <tbody>
-              {pager.pageItems.map(record => (
+              {pager.pageItems.map((record, idx) => (
                 <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                  <td className="p-3 text-xs text-slate-400 font-mono">{pager.start + idx + 1}</td>
+                  <td className="p-3 text-sm text-slate-600 whitespace-nowrap font-mono">{formatTimestamp(record.created_at || record.order_date || record.delivery_date)}</td>
                   <td className="p-3 text-sm font-mono font-medium text-slate-800">{record.order_no || '-'}</td>
                   <td className="p-3 text-sm font-semibold text-brand-700">{record.customer || '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{formatLeadProductDisplay(record)}</td>

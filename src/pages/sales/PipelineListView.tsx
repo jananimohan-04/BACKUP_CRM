@@ -6,6 +6,7 @@ import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { recordDateOf } from '@/lib/globalDate';
 import { exportCsv } from '@/lib/reportExport';
+import { formatTimestamp } from '@/lib/format';
 import { todayISO } from '@/lib/format';
 
 interface PipelineListViewProps {
@@ -65,7 +66,16 @@ export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineLi
     return matchesSearch && matchesCustomer && matchesStage && matchesDate;
   });
 
-  const pager = usePager(filteredCards, `${search}|${companyFilter}|${stageFilter}|${globalFrom}|${globalTo}`);
+  const sortedCards = useMemo(() => {
+    return [...filteredCards].sort((a, b) => {
+      const bTime = new Date((b.raw as any)?.created_at || cardDate(b) || 0).getTime();
+      const aTime = new Date((a.raw as any)?.created_at || cardDate(a) || 0).getTime();
+      if (bTime !== aTime) return bTime - aTime;
+      return (b.refNo || '').localeCompare(a.refNo || '', undefined, { numeric: true });
+    });
+  }, [filteredCards]);
+
+  const pager = usePager(sortedCards, `${search}|${companyFilter}|${stageFilter}|${globalFrom}|${globalTo}`);
   const { pageCards, start } = { pageCards: pager.pageItems, start: pager.start };
 
   const handleExport = () => {
@@ -112,8 +122,8 @@ export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineLi
           <thead>
             <tr className="text-white text-[13px] font-bold uppercase tracking-wider">
               <th className="bg-slate-800 px-4 py-3.5 w-12">#</th>
-              <th className="bg-slate-800 px-4 py-3.5">Enquiry No</th>
-              <th className="bg-slate-800 px-4 py-3.5">Date</th>
+              <th className="bg-slate-800 px-4 py-3.5">Timestamp</th>
+              <th className="bg-slate-800 px-4 py-3.5">Ref No</th>
               <th className="bg-slate-800 px-4 py-3.5">
                 <div className="flex items-center gap-1.5 flex-nowrap">
                   <span className="whitespace-nowrap">Company</span>
@@ -158,8 +168,8 @@ export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineLi
             {pageCards.map((card, index) => (
               <tr key={card.id} className="border-b border-slate-100 odd:bg-white even:bg-slate-50/60 hover:bg-brand-50/50 transition-colors">
                 <td className="px-4 py-1.5 text-sm text-slate-400">{start + index + 1}</td>
+                <td className="px-4 py-1.5 text-sm text-slate-600 whitespace-nowrap font-mono">{formatTimestamp((card.raw as any)?.created_at || card.date)}</td>
                 <td className="px-4 py-1.5 text-[15px] font-bold text-brand-600 cursor-pointer hover:underline" onClick={() => onView(card)}>{card.refNo}</td>
-                <td className="px-4 py-1.5 text-sm text-slate-600 whitespace-nowrap">{card.date}</td>
                 <td className="px-4 py-1.5 text-[15px] font-semibold text-slate-800">{card.customer}</td>
                 <td className="px-4 py-1.5 text-sm text-slate-700 max-w-[220px] truncate" title={card.part}>{card.part}</td>
                 <td className="px-4 py-1.5 whitespace-nowrap"><span className="inline-block rounded-full bg-brand-50 text-brand-700 border border-brand-100 px-2.5 py-0.5 text-xs font-semibold">{stageOf(card)}</span>{card.history && <span title={`Left the board${card.status ? ` (${card.status})` : ''}`} className="ml-1.5 inline-block rounded-full bg-slate-100 text-slate-500 border border-slate-200 px-2 py-0.5 text-[10px] font-semibold">{card.status || 'Old'}</span>}</td>

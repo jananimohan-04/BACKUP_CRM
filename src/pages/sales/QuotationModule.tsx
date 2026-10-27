@@ -6,6 +6,7 @@ import { Search, ArrowLeft, FileText, Eye } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
+import { formatTimestamp } from '@/lib/format';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 
 export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onView, toolbar }: { onBack: () => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onView?: (record: any) => void; /** Quotation tool strip, rendered on the same line as the title and actions. */ toolbar?: React.ReactNode }) {
@@ -156,7 +157,15 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
     return matchesSearch && matchesCompany && matchesStatus && matchesDate;
   });
 
-  const pager = usePager(filteredQuotes, `${search}||${companyFilter}||${statusFilter}||${globalFrom}||${globalTo}`);
+  const sortedQuotes = useMemo(() => {
+    return [...filteredQuotes].sort((a, b) => {
+      const bTime = new Date(b.created_at || b.date || 0).getTime();
+      const aTime = new Date(a.created_at || a.date || 0).getTime();
+      return bTime - aTime;
+    });
+  }, [filteredQuotes]);
+
+  const pager = usePager(sortedQuotes, `${search}||${companyFilter}||${statusFilter}||${globalFrom}||${globalTo}`);
 
   return (
     <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-violet-400/30 overflow-hidden flex flex-col">
@@ -194,8 +203,9 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
           <table className="erp-table erp-table-violet w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
+                <th className="p-3 font-semibold w-8">#</th>
+                <th className="p-3 font-semibold">Timestamp</th>
                 <th className="p-3 font-semibold">Quote No</th>
-                <th className="p-3 font-semibold">Date</th>
                 <th className="p-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <span className="whitespace-nowrap">Company</span>
@@ -236,10 +246,11 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
               </tr>
             </thead>
             <tbody>
-              {pager.pageItems.map(quote => (
+              {pager.pageItems.map((quote, idx) => (
                 <tr key={quote.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                  <td className="p-3 text-xs text-slate-400 font-mono">{pager.start + idx + 1}</td>
+                  <td className="p-3 text-sm text-slate-600 whitespace-nowrap font-mono">{formatTimestamp(quote.created_at || quote.date)}</td>
                   <td className="p-3 font-mono text-sm text-slate-800 font-medium">{quote.quote_no || 'Pending'}</td>
-                  <td className="p-3 text-sm text-slate-600">{quote.date ? quote.date.split('T')[0] : (quote.created_at ? quote.created_at.split('T')[0] : '')}</td>
                   <td className="p-3 font-semibold text-brand-700 text-sm">{quote.customer}</td>
                   <td className="p-3 text-sm text-slate-700">{quote.part_name || '—'}</td>
                   <td className="p-3 text-sm font-medium text-slate-700">₹{quote.total_value?.toLocaleString('en-IN') || '-'}</td>
@@ -252,7 +263,7 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
                 </tr>
               ))}
               {filteredQuotes.length === 0 && (
-                <tr><td colSpan={7} className="text-center py-8 text-slate-500">No quotations found.</td></tr>
+                <tr><td colSpan={8} className="text-center py-8 text-slate-500">No quotations found.</td></tr>
               )}
             </tbody>
           </table>

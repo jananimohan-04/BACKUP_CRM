@@ -9,6 +9,7 @@ import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { downloadBrandedDocument, viewBrandedDocument } from '@/lib/brandedDocument';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
+import { formatTimestamp } from '@/lib/format';
 
 export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, entryForm }: { onBack: () => void; refreshSignal?: number; onEdit?: (record: any) => void; onDelete?: (record: any) => void; onView?: (record: any) => void; entryForm?: ReactNode | ((props: { onBack: () => void; searchSlot: ReactNode }) => ReactNode) }) {
   const { company } = useAuth();
@@ -180,9 +181,17 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
     return matchesSearch && matchesCompany && matchesCategory && matchesPartName && matchesStatus && matchesDate;
   });
 
-  const colCount = 8;
+  const colCount = 10;
 
-  const pager = usePager(filteredRecords, `${search}||${companyFilter}||${categoryFilter}||${partNameFilter}||${statusFilter}||${globalFrom}||${globalTo}`);
+  const sortedRecords = useMemo(() => {
+    return [...filteredRecords].sort((a, b) => {
+      const bTime = new Date(b.created_at || b.inward_date || 0).getTime();
+      const aTime = new Date(a.created_at || a.inward_date || 0).getTime();
+      return bTime - aTime;
+    });
+  }, [filteredRecords]);
+
+  const pager = usePager(sortedRecords, `${search}||${companyFilter}||${categoryFilter}||${partNameFilter}||${statusFilter}||${globalFrom}||${globalTo}`);
 
   // Shared so the two row templates cannot drift apart.
   const actionCell = (record: any) => (
@@ -236,6 +245,8 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
           <table className="erp-table erp-table-amber w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
+                <th className="py-2 px-3 font-semibold w-8">#</th>
+                <th className="py-2 px-3 font-semibold">Timestamp</th>
                 <th className="py-2 px-3 font-semibold">Inward No</th>
                 <th className="py-2 px-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
@@ -311,7 +322,7 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
               </tr>
             </thead>
             <tbody>
-              {pager.pageItems.map(record => (
+              {pager.pageItems.map((record, idx) => (
                 <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                   <td className="py-2 px-3 text-sm font-mono font-medium text-slate-800">{record.inward_no || '-'}</td>
                   <td className="py-2 px-3 text-sm font-semibold text-brand-700">{record.party_name || '-'}</td>

@@ -7,7 +7,7 @@ import { FormField, inputClass, Modal } from '@/components/ui/Modal';
 import { financeApi, type InvoiceDetail, type InvoiceRow, type InvoiceSummary } from '@/lib/finance';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { exportCsv, escapeHtml, printHtml } from '@/lib/reportExport';
-import { formatDate, formatINR, todayISO } from '@/lib/format';
+import { formatDate, formatINR, todayISO, formatTimestamp } from '@/lib/format';
 import { tint } from '@/lib/entryTints';
 import { compactInput } from '@/lib/compactFields';
 import { supabase } from '@/lib/supabase';
@@ -1343,8 +1343,8 @@ export function InvoicesPage({ onBack, onView }: { onBack?: () => void; onView?:
             <thead>
               <tr className="bg-slate-50 border-b text-[10px] uppercase text-slate-500">
                 <th className="px-2 py-2">#</th>
+                <th className="px-2 py-2">Timestamp</th>
                 <th className="px-2 py-2">Invoice No</th>
-                <th className="px-2 py-2">Date</th>
                 <th className="px-2 py-2">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <span className="whitespace-nowrap">Company</span>
@@ -1396,8 +1396,8 @@ export function InvoicesPage({ onBack, onView }: { onBack?: () => void; onView?:
               ) : displayedRows.map((r, i) => (
                 <tr key={r.id} onClick={() => (onView ? onView(r) : void view(r))} className="border-b hover:bg-blue-50/50 cursor-pointer text-xs">
                   <td className="px-2 py-2">{(page - 1) * PAGE + i + 1}</td>
+                  <td className="px-2 py-2 text-slate-600 whitespace-nowrap font-mono">{formatTimestamp(r.created_at || r.invoice_date)}</td>
                   <td className="px-2 py-2 font-semibold text-blue-700">{r.invoice_no}</td>
-                  <td className="px-2 py-2">{formatDate(r.invoice_date)}</td>
                   <td className="px-2 py-2">{r.customer_name || '-'}</td>
                   <td className="px-2 py-2">{r.po_no || '-'}</td>
                   <td className="px-2 py-2 text-right">{cash(r.basic_value)}</td>

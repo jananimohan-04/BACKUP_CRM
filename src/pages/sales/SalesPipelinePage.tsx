@@ -8029,7 +8029,12 @@ export function SalesPipelinePage() {
                 (c.refNo || '').toLowerCase().includes(term) ||
                 (c.customer || '').toLowerCase().includes(term) ||
                 (c.part || '').toLowerCase().includes(term))
-              .sort((a, b) => (a.refNo || '').localeCompare(b.refNo || '', undefined, { numeric: true }));
+              .sort((a, b) => {
+                const bTime = new Date((b.raw as any)?.created_at || b.date || 0).getTime();
+                const aTime = new Date((a.raw as any)?.created_at || a.date || 0).getTime();
+                if (bTime !== aTime) return bTime - aTime;
+                return (b.refNo || '').localeCompare(a.refNo || '', undefined, { numeric: true });
+              });
             return (
               <div key={stage.id} 
                 className={`w-[280px] flex-shrink-0 ${stage.bg} rounded-xl p-3 flex flex-col border ${stage.border} shadow-sm h-full`}
