@@ -17,7 +17,10 @@ export function ProductPartSelect({ salesOrders, inwards, workOrders, value, onC
     return buildPartChoices(products, inwards, workOrders).map((p) => {
       const done = workOrdersForPart(p, workOrders).reduce((s, w) => s + (Number(w.completed) || 0), 0);
       const remaining = Math.max(0, p.ordered - done);
-      return { ...p, remaining, label: `${p.whole ? 'Whole product' : p.part} – ${label.get(p.productKey) ?? p.productName}  ·  Ordered ${p.ordered} · Remaining ${remaining}` };
+      const prodLbl = label.get(p.productKey) ?? p.productName;
+      const isSameAsProduct = String(p.part || '').trim().toLowerCase() === String(p.productName || '').trim().toLowerCase();
+      const prefix = isSameAsProduct ? '' : `${p.part} – `;
+      return { ...p, remaining, label: `${prefix}${prodLbl}  ·  Ordered ${p.ordered} · Remaining ${remaining}` };
     });
   }, [products, inwards, workOrders]);
   const options = productKey ? parts.filter((p) => p.productKey === productKey) : parts;

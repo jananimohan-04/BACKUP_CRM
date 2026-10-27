@@ -100,24 +100,30 @@ export function buildPartChoices(products: ProductChoice[], inwards: any[], work
       groups.set(k, g);
     }
     for (const [k, g] of groups) {
-      const used = wos.filter((w) => isPartOrder(w) && baseKey(w.product_name) === baseKey(p.name) && norm(w.part_name) === norm(g.part))
-        .reduce((s, w) => s + num(w.quantity), 0);
+      const isSameAsProduct = baseKey(g.part) === baseKey(p.name);
+      const used = wos.filter((w) => isSameAsProduct
+        ? (!isPartOrder(w) && (!p.so || norm(w.sales_order) === norm(p.so.order_no)) && (baseKey(w.part_name) === baseKey(p.name) || baseKey(w.product_name) === baseKey(p.name)))
+        : (isPartOrder(w) && baseKey(w.product_name) === baseKey(p.name) && norm(w.part_name) === norm(g.part))
+      ).reduce((s, w) => s + num(w.quantity), 0);
       const remaining = Math.max(0, g.qty - used);
+      const labelPrefix = isSameAsProduct ? '' : `${g.part} – `;
       out.push({
         key: `${p.key}|part:${k}`, productKey: p.key, productName: p.name, customer: p.customer, so: p.so,
-        part: g.part, partNumber: g.partNumber, whole: false, ordered: g.qty, used, remaining,
-        label: `${g.part} – ${p.label}  ·  Ordered ${g.qty} · Remaining ${remaining}`,
+        part: g.part, partNumber: g.partNumber, whole: isSameAsProduct, ordered: g.qty, used, remaining,
+        label: `${labelPrefix}${p.label}  ·  Ordered ${g.qty} · Remaining ${remaining}`,
       });
     }
     // The product itself, for orders that are not split into parts (the classic product-level production order).
-    if (p.so && p.soQty > 0) {
-      const used = wos.filter((w) => !isPartOrder(w) && norm(w.sales_order) === norm(p.so.order_no) && baseKey(w.part_name) === baseKey(p.name))
+    // If the inward already registered this part or parts for this product, skip adding a duplicate "Whole product" choice.
+    const alreadyHasProductInGroups = groups.size > 0 && Array.from(groups.values()).some((g) => baseKey(g.part) === baseKey(p.name));
+    if (p.so && p.soQty > 0 && groups.size === 0 && !alreadyHasProductInGroups) {
+      const used = wos.filter((w) => !isPartOrder(w) && norm(w.sales_order) === norm(p.so.order_no) && (baseKey(w.part_name) === baseKey(p.name) || baseKey(w.product_name) === baseKey(p.name)))
         .reduce((s, w) => s + num(w.quantity), 0);
       const remaining = Math.max(0, p.soQty - used);
       out.push({
         key: `${p.key}|whole`, productKey: p.key, productName: p.name, customer: p.customer, so: p.so,
         part: p.name, partNumber: p.partNumber, whole: true, ordered: p.soQty, used, remaining,
-        label: `Whole product – ${p.label}  ·  Ordered ${p.soQty} · Remaining ${remaining}`,
+        label: `${p.label}  ·  Ordered ${p.soQty} · Remaining ${remaining}`,
       });
     }
   }
@@ -126,9 +132,15 @@ export function buildPartChoices(products: ProductChoice[], inwards: any[], work
 
 /** The production orders that belong to a part choice (a part order for that part, or a whole-product order for the product). */
 export function workOrdersForPart(choice: PartChoice, workOrders: any[]): any[] {
-  return (workOrders ?? []).filter((w) => choice.whole
-    ? !isPartOrder(w) && !!choice.so && norm(w.sales_order) === norm(choice.so.order_no) && baseKey(w.part_name) === baseKey(choice.productName)
-    : isPartOrder(w) && baseKey(w.product_name) === baseKey(choice.productName) && norm(w.part_name) === norm(choice.part));
+  const isSameAsProduct = baseKey(choice.part) === baseKey(choice.productName);
+  return (workOrders ?? []).filter((w) => {
+    if (choice.whole || isSameAsProduct) {
+      const matchSo = !choice.so || norm(w.sales_order) === norm(choice.so.order_no);
+      const matchName = baseKey(w.part_name) === baseKey(choice.productName) || baseKey(w.product_name) === baseKey(choice.productName);
+      return matchSo && matchName;
+    }
+    return isPartOrder(w) && baseKey(w.product_name) === baseKey(choice.productName) && norm(w.part_name) === norm(choice.part);
+  });
 }
 
 const RUN_OPEN = (w: any) => !['Completed', 'Dispatched', 'Cancelled'].includes(String(w?.status)) && !(num(w?.quantity) > 0 && num(w?.completed) >= num(w?.quantity));
@@ -172,6 +184,9 @@ export function buildRunPartChoices(salesOrders: any[], inwards: any[], workOrde
   return buildPartChoices(products, inwards, workOrders).map((p) => {
     const done = workOrdersForPart(p, workOrders).reduce((n, w) => n + num(w.completed), 0);
     const remaining = Math.max(0, p.ordered - done);
-    return { ...p, remaining, label: `${p.whole ? 'Whole product' : p.part} – ${productLabel.get(p.productKey) ?? p.productName}  ·  Ordered ${p.ordered} · Remaining ${remaining}` };
+    const prodLbl = productLabel.get(p.productKey) ?? p.productName;
+    const isSameAsProduct = baseKey(p.part) === baseKey(p.productName);
+    const prefix = isSameAsProduct ? '' : `${p.part} – `;
+    return { ...p, remaining, label: `${prefix}${prodLbl}  ·  Ordered ${p.ordered} · Remaining ${remaining}` };
   });
 }

@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Search, Download, Calendar, Clock, Play, CheckCircle2, Layers, Cpu, Plus } from 'lucide-react';
+import { Search, Download, Calendar, Clock, Play, CheckCircle2, Layers, Cpu, Plus, Edit2, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { exportCsv } from '@/lib/reportExport';
 import { todayISO } from '@/lib/format';
 import { AddRunsModal, defaultActualSlot } from './AddRunsModal';
 import { fmtTime24, parseYmd, ymd } from '@/lib/operationPlans';
-import { generateJobNo } from '@/lib/jobCards';
-import { insertTolerant } from '@/lib/partRouting';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { dt, dur, jobSpan } from './ComparisonPage';
@@ -37,6 +35,7 @@ export function ActualListView() {
   const [inwards, setInwards] = useState<any[]>([]);
   const [machines, setMachines] = useState<string[]>([]);
   const [operators, setOperators] = useState<string[]>([]);
+  const [processes, setProcesses] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filters
@@ -51,23 +50,21 @@ export function ActualListView() {
   // Add Run modal state
   const [showAdd, setShowAdd] = useState(false);
   const [slot, setSlot] = useState(defaultActualSlot());
-  const [savingAdd, setSavingAdd] = useState(false);
-  const [addForm, setAddForm] = useState({
-    partKey: '',
-    woId: '',
-    workOrder: '',
-    customer: '',
-    partName: '',
-    operation: 'Machining',
-    machine: '',
-    operator: '',
+
+  // Edit Run modal state
+  const [picked, setPicked] = useState<JobCard | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editForm, setEditForm] = useState({
     date: todayISO(),
     startTime: '08:00',
     endTime: '16:00',
-    status: 'Completed' as 'Completed' | 'Running',
+    operation: 'Machining',
+    machine: '',
+    operator: '',
+    qtyCompleted: '0',
     qtyPlanned: '',
-    qtyCompleted: '',
     qtyRejected: '0',
+    status: 'Completed',
   });
 
   const today = todayISO();
@@ -75,12 +72,13 @@ export function ActualListView() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [j, w, m, so, inw] = await Promise.all([
+      const [j, w, m, so, inw, proc] = await Promise.all([
         supabase.from('cnc_job_cards').select('*').order('created_at', { ascending: false }).limit(2000),
         supabase.from('cnc_work_orders').select('*'),
         supabase.from('cnc_machines').select('code'),
         supabase.from('cnc_sales_orders').select('*'),
         supabase.from('cnc_inwards').select('*').neq('status', 'Deleted'),
+        supabase.from('cnc_processes').select('process_name'),
       ]);
       setSalesOrders(so.error ? [] : (so.data ?? []));
       setInwards(inw.error ? [] : (inw.data ?? []));
@@ -102,6 +100,17 @@ export function ActualListView() {
         if (n && n !== '—' && n !== '-' && !opSet.has(n.toLowerCase())) opSet.set(n.toLowerCase(), n);
       });
       setOperators([...opSet.values()].sort((a, b) => a.localeCompare(b)));
+
+      const procSet = new Set<string>();
+      (proc.error ? [] : (proc.data ?? [])).forEach((x: any) => {
+        const p = String(x.process_name ?? '').trim();
+        if (p) procSet.add(p);
+      });
+      jobList.forEach((x) => {
+        const p = String(x.operation ?? '').trim();
+        if (p) procSet.add(p);
+      });
+      setProcesses([...procSet].sort((a, b) => a.localeCompare(b)));
     } finally {
       setLoading(false);
     }
@@ -266,6 +275,101 @@ export function ActualListView() {
   };
 
   const openAddModal = () => { setSlot(defaultActualSlot()); setShowAdd(true); };
+
+  const openEdit = (j: JobCard) => {
+    setPicked(j);
+    const startDate = j.actual_start ? new Date(j.actual_start) : (j.created_at ? new Date(j.created_at) : new Date());
+    const endDate = j.actual_end ? new Date(j.actual_end) : startDate;
+
+    const dateStr = !isNaN(startDate.getTime()) ? ymd(startDate) : todayISO();
+    const startHhmm = !isNaN(startDate.getTime())
+      ? `${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}`
+      : '08:00';
+    const endHhmm = !isNaN(endDate.getTime())
+      ? `${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}`
+      : '16:00';
+
+    setEditForm({
+      date: dateStr,
+      startTime: startHhmm,
+      endTime: endHhmm,
+      operation: j.operation || 'Machining',
+      machine: j.machine || '',
+      operator: j.operator || '',
+      qtyCompleted: j.qty_completed != null ? String(j.qty_completed) : '0',
+      qtyPlanned: j.qty_planned != null ? String(j.qty_planned) : '',
+      qtyRejected: j.qty_rejected != null ? String(j.qty_rejected) : '0',
+      status: j.status || 'Completed',
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!picked) return;
+    setSavingEdit(true);
+    try {
+      const s = new Date(`${editForm.date}T${editForm.startTime}:00`);
+      const e = new Date(`${editForm.date}T${editForm.endTime}:00`);
+      const newQtyCompleted = Number(editForm.qtyCompleted) || 0;
+      const oldQtyCompleted = Number(picked.qty_completed) || 0;
+      const qtyDiff = newQtyCompleted - oldQtyCompleted;
+
+      const payload: any = {
+        operation: editForm.operation.trim() || 'Machining',
+        machine: editForm.machine.trim(),
+        operator: editForm.operator.trim() || null,
+        qty_completed: newQtyCompleted,
+        qty_planned: editForm.qtyPlanned.trim() === '' ? null : Number(editForm.qtyPlanned) || 0,
+        qty_rejected: Number(editForm.qtyRejected) || 0,
+        status: editForm.status,
+        actual_start: !isNaN(s.getTime()) ? s.toISOString() : null,
+        actual_end: !isNaN(e.getTime()) ? e.toISOString() : null,
+        completed_at: editForm.status === 'Completed' ? (!isNaN(e.getTime()) ? e.toISOString() : new Date().toISOString()) : null,
+      };
+
+      const res = await supabase.from('cnc_job_cards').update(payload).eq('id', picked.id);
+      if (res.error) throw res.error;
+
+      if (qtyDiff !== 0 && picked.work_order) {
+        const wo = woMap.get(String(picked.work_order).trim().toLowerCase());
+        if (wo?.id) {
+          const nextCompleted = Math.max(0, (Number(wo.completed) || 0) + qtyDiff);
+          const target = Number(wo.quantity) || 0;
+          const nextStatus = target > 0 && nextCompleted >= target ? 'Completed' : (nextCompleted > 0 ? 'In Progress' : wo.status);
+          await supabase.from('cnc_work_orders').update({ completed: nextCompleted, status: nextStatus }).eq('id', wo.id);
+        }
+      }
+
+      setPicked(null);
+      await load();
+    } catch (err: any) {
+      alert(`Could not update actual run: ${err?.message ?? err}`);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const removeJob = async (j: JobCard) => {
+    if (!window.confirm(`Delete actual run ${j.job_no || j.work_order || ''}? This will remove the actual run record.`)) return;
+    try {
+      const res = await supabase.from('cnc_job_cards').delete().eq('id', j.id);
+      if (res.error) throw res.error;
+
+      const completedQty = Number(j.qty_completed) || 0;
+      if (completedQty > 0 && j.work_order) {
+        const wo = woMap.get(String(j.work_order).trim().toLowerCase());
+        if (wo?.id) {
+          const nextCompleted = Math.max(0, (Number(wo.completed) || 0) - completedQty);
+          const target = Number(wo.quantity) || 0;
+          const nextStatus = target > 0 && nextCompleted >= target ? 'Completed' : (nextCompleted > 0 ? 'In Progress' : 'Planned');
+          await supabase.from('cnc_work_orders').update({ completed: nextCompleted, status: nextStatus }).eq('id', wo.id);
+        }
+      }
+
+      await load();
+    } catch (err: any) {
+      alert(`Could not delete actual run: ${err?.message ?? err}`);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -508,6 +612,7 @@ export function ActualListView() {
                     </select>
                   </div>
                 </th>
+                <th className="py-2.5 px-3 text-center bg-slate-100 text-slate-700">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -582,13 +687,33 @@ export function ActualListView() {
                         {isRunning ? 'Running' : j.status || 'Done'}
                       </span>
                     </td>
+                    <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                      <div className="inline-flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(j)}
+                          title="Edit actual run"
+                          className="p-1.5 rounded text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition cursor-pointer"
+                        >
+                          <Edit2 size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void removeJob(j)}
+                          title="Delete actual run"
+                          className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition cursor-pointer"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
 
               {!loading && filteredJobs.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-400">
+                  <td colSpan={11} className="py-12 text-center text-slate-400">
                     <Calendar size={32} className="mx-auto mb-2 text-slate-300" />
                     <p className="text-sm font-semibold text-slate-600">No actual run records match these filters</p>
                     <p className="text-xs text-slate-400 mt-0.5">Start job cards in Production or log runs in the Actual Timeline</p>
@@ -597,7 +722,7 @@ export function ActualListView() {
               )}
               {loading && filteredJobs.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-400 text-xs">Loading actual run records…</td>
+                  <td colSpan={11} className="py-12 text-center text-slate-400 text-xs">Loading actual run records…</td>
                 </tr>
               )}
             </tbody>
@@ -607,6 +732,172 @@ export function ActualListView() {
 
       {/* Record Actual Run Modal */}
       <AddRunsModal open={showAdd} onClose={() => setShowAdd(false)} initial={slot} mode="actual" onSaved={() => { void load(); }} />
+
+      {/* Edit Actual Run Modal */}
+      <Modal
+        open={!!picked}
+        onClose={() => setPicked(null)}
+        title="Edit Actual Run"
+        size="md"
+        footer={
+          <div className="flex items-center justify-between w-full">
+            <button
+              type="button"
+              onClick={() => { if (picked) void removeJob(picked); setPicked(null); }}
+              className="text-xs font-semibold text-red-600 hover:text-red-700 px-2 py-1 cursor-pointer"
+            >
+              Delete Run
+            </button>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => setPicked(null)}>Cancel</Button>
+              <Button onClick={() => void saveEdit()} disabled={savingEdit}>
+                {savingEdit ? 'Saving…' : 'Save Changes'}
+              </Button>
+            </div>
+          </div>
+        }
+      >
+        {picked && (
+          <div className="space-y-3.5 text-xs">
+            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+              <div className="flex items-center justify-between">
+                <div className="font-bold text-slate-900">{woMap.get(String(picked.work_order ?? '').trim().toLowerCase())?.part_name || picked.part_name || 'Part'}</div>
+                <span className="text-[11px] font-mono text-slate-500">{picked.job_no || picked.work_order}</span>
+              </div>
+              <div className="text-slate-600 font-medium mt-0.5">
+                {woMap.get(String(picked.work_order ?? '').trim().toLowerCase())?.customer ? `${woMap.get(String(picked.work_order ?? '').trim().toLowerCase())?.customer} · ` : ''}{picked.operation || 'Machining'}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Run Date" required>
+                <input
+                  type="date"
+                  className={inputClass}
+                  value={editForm.date}
+                  onChange={(e) => setEditForm((f) => ({ ...f, date: e.target.value }))}
+                />
+              </FormField>
+
+              <FormField label="Status" required>
+                <select
+                  className={inputClass}
+                  value={editForm.status}
+                  onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}
+                >
+                  <option value="Completed">Completed</option>
+                  <option value="Running">Running</option>
+                  <option value="Paused">Paused</option>
+                  <option value="In Progress">In Progress</option>
+                </select>
+              </FormField>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Start Time (24h)" required>
+                <input
+                  type="time"
+                  className={inputClass}
+                  value={editForm.startTime}
+                  onChange={(e) => setEditForm((f) => ({ ...f, startTime: e.target.value }))}
+                />
+              </FormField>
+
+              <FormField label="End Time (24h)" required>
+                <input
+                  type="time"
+                  className={inputClass}
+                  value={editForm.endTime}
+                  onChange={(e) => setEditForm((f) => ({ ...f, endTime: e.target.value }))}
+                />
+              </FormField>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Operation / Process" required>
+                <input
+                  className={inputClass}
+                  list="edit-actual-processes"
+                  value={editForm.operation}
+                  placeholder="e.g. Machining, Turning"
+                  onChange={(e) => setEditForm((f) => ({ ...f, operation: e.target.value }))}
+                />
+                <datalist id="edit-actual-processes">
+                  {processes.map((p) => (
+                    <option key={p} value={p} />
+                  ))}
+                </datalist>
+              </FormField>
+
+              <FormField label="Machine" required>
+                <input
+                  className={inputClass}
+                  list="edit-actual-machines"
+                  value={editForm.machine}
+                  placeholder="Select or enter machine"
+                  onChange={(e) => setEditForm((f) => ({ ...f, machine: e.target.value }))}
+                />
+                <datalist id="edit-actual-machines">
+                  {machines.map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
+              </FormField>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Operator">
+                <input
+                  className={inputClass}
+                  list="edit-actual-operators"
+                  value={editForm.operator}
+                  placeholder="Select or enter operator"
+                  onChange={(e) => setEditForm((f) => ({ ...f, operator: e.target.value }))}
+                />
+                <datalist id="edit-actual-operators">
+                  {operators.map((op) => (
+                    <option key={op} value={op} />
+                  ))}
+                </datalist>
+              </FormField>
+
+              <FormField label="Finished Qty (Completed)" required>
+                <input
+                  type="number"
+                  min="0"
+                  className={inputClass}
+                  value={editForm.qtyCompleted}
+                  onChange={(e) => setEditForm((f) => ({ ...f, qtyCompleted: e.target.value }))}
+                />
+              </FormField>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Planned Qty">
+                <input
+                  type="number"
+                  min="0"
+                  className={inputClass}
+                  value={editForm.qtyPlanned}
+                  placeholder="Optional"
+                  onChange={(e) => setEditForm((f) => ({ ...f, qtyPlanned: e.target.value }))}
+                />
+              </FormField>
+
+              <FormField label="Rejected Qty">
+                <input
+                  type="number"
+                  min="0"
+                  className={inputClass}
+                  value={editForm.qtyRejected}
+                  placeholder="0"
+                  onChange={(e) => setEditForm((f) => ({ ...f, qtyRejected: e.target.value }))}
+                />
+              </FormField>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
