@@ -2326,7 +2326,6 @@ export function SalesPipelinePage() {
     DC: () => setActiveView(cur => cur === 'dc_list' ? 'pipeline' : 'dc_list'),
     Invoice: () => setActiveView(cur => cur === 'invoice_list' ? 'pipeline' : 'invoice_list'),
     'Qty Tracking': () => setActiveView(cur => cur === 'tracking_list' ? 'pipeline' : 'tracking_list'),
-    'Pipeline Report': () => setActiveView(cur => cur === 'pipeline_report' ? 'pipeline' : 'pipeline_report'),
   };
   const kpiStats = [
     { key: 'enquiry', title: 'Enquiries', iconPath: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', stage: 'Enquiry' },
@@ -2338,7 +2337,6 @@ export function SalesPipelinePage() {
     { key: 'dc', title: 'Delivery Challans', iconPath: 'M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z', stage: 'DC' },
     { key: 'invoice', title: 'Invoices', iconPath: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', stage: 'Invoice' },
     { key: 'qty-tracking', title: 'Qty Tracking', iconPath: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4', stage: 'Qty Tracking' },
-    { key: 'pipeline-report', title: 'Pipeline Report', iconPath: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z', stage: 'Pipeline Report' },
   ];
   useEffect(() => {
     // Rejected counts pieces rejected (it is not a stage of the board); the others count cards.
@@ -2352,7 +2350,6 @@ export function SalesPipelinePage() {
       if (stage === 'DC') return activeView === 'dc_list';
       if (stage === 'Invoice') return activeView === 'invoice_list';
       if (stage === 'Qty Tracking') return activeView === 'tracking_list';
-      if (stage === 'Pipeline Report') return activeView === 'pipeline_report';
       return false;
     };
     setKpis(kpiStats.filter(s => canView(STAGE_MODULE[s.stage] ?? s.stage)).map(s => {
@@ -2360,7 +2357,7 @@ export function SalesPipelinePage() {
       return {
         key: s.key,
         label: s.title,
-        count: s.stage === 'Rejected' ? rejectedTotal : s.stage === 'Qty Tracking' ? salesOrdersList.length : s.stage === 'Pipeline Report' ? (boardCards.length + salesOrdersList.length) : boardCards.filter(c => c.stage === s.stage).length,
+        count: s.stage === 'Rejected' ? rejectedTotal : s.stage === 'Qty Tracking' ? salesOrdersList.length : boardCards.filter(c => c.stage === s.stage).length,
         tile: theme.kpiTile,
         icon: theme.kpiIcon,
         iconPath: s.iconPath,
