@@ -2,14 +2,14 @@ import { useState, useEffect, useMemo, type ReactNode } from 'react';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { recordDateOf } from '@/lib/globalDate';
 import { supabase } from '@/lib/supabase';
-import { Search, ArrowLeft, FileText, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Search, ArrowLeft, FileText, ArrowUpDown, ArrowUp, ArrowDown, Eye } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 
-type SortKey = 'enquiry_no' | 'date' | 'customer' | 'products' | 'quantity' | 'status' | null;
+type SortKey = 'date' | 'customer' | 'products' | 'quantity' | 'status' | null;
 type SortDir = 'asc' | 'desc';
 
 export function productNames(enq: any): string {
@@ -116,10 +116,6 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
         let bVal: string | number = '';
         
         switch (sortKey) {
-          case 'enquiry_no':
-            aVal = a.enquiry_no || '';
-            bVal = b.enquiry_no || '';
-            break;
           case 'date':
             aVal = a.received_date || a.created_at || '';
             bVal = b.received_date || b.created_at || '';
@@ -211,12 +207,6 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
               <tr className="bg-slate-800 text-white text-xs uppercase tracking-wider border-b border-slate-600">
                 <th className="p-3 font-semibold w-8">#</th>
                 <th className="p-3 font-semibold">
-                  <button onClick={() => handleSort('enquiry_no')} className="flex items-center gap-1.5 hover:text-brand-300 transition-colors cursor-pointer">
-                    <span>Enquiry No</span>
-                    <SortIcon column="enquiry_no" />
-                  </button>
-                </th>
-                <th className="p-3 font-semibold">
                   <button onClick={() => handleSort('date')} className="flex items-center gap-1.5 hover:text-brand-300 transition-colors cursor-pointer">
                     <span>Date</span>
                     <SortIcon column="date" />
@@ -296,7 +286,6 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
               {pager.pageItems.map((enq, idx) => (
                 <tr key={enq.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                   <td className="p-3 text-xs text-slate-400 font-mono">{pager.start + idx + 1}</td>
-                  <td className="p-3 font-mono text-sm text-slate-800 font-medium">{enq.enquiry_no || 'Pending'}</td>
                   <td className="p-3 text-sm text-slate-800 whitespace-nowrap">{enq.received_date ? enq.received_date.split('T')[0] : (enq.created_at ? enq.created_at.split('T')[0] : '')}</td>
                   <td className="p-3 font-semibold text-brand-700 text-sm max-w-[200px] truncate" title={enq.customer}>{enq.customer}</td>
                   <td className="p-3 text-sm text-slate-700 max-w-[240px] truncate" title={productNames(enq)}>{productNames(enq)}</td>
@@ -307,7 +296,7 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
                   <td className="p-3 text-sm text-slate-600 max-w-[180px] truncate" title={productRemarks(enq)}>{productRemarks(enq)}</td>
                   <td className="p-3">
                     <div className="flex flex-wrap gap-1.5 justify-center">
-                      <Button variant="secondary" size="sm" onClick={() => (onView ? onView(enq) : openEnquiry(enq))}>View</Button>
+                      <Button variant="secondary" size="sm" icon={<Eye size={13} />} onClick={() => (onView ? onView(enq) : openEnquiry(enq))}>View</Button>
                       {onEdit && <Button variant="secondary" size="sm" onClick={() => onEdit(enq)}>Edit</Button>}
                       {onDelete && <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => onDelete(enq)}>Delete</Button>}
                     </div>
@@ -315,7 +304,7 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
                 </tr>
               ))}
               {filteredEnquiries.length === 0 && (
-                <tr><td colSpan={9} className="text-center py-8 text-slate-500">No enquiries found.</td></tr>
+                <tr><td colSpan={8} className="text-center py-8 text-slate-500">No enquiries found.</td></tr>
               )}
             </tbody>
           </table>
@@ -324,12 +313,11 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
       <PagerFooter pager={pager} />
       </div>
 
-      <Modal open={!!selectedEnquiry} onClose={() => setSelectedEnquiry(null)} title={`Enquiry Details: ${selectedEnquiry?.enquiry_no || 'Pending'}`} size="xl" footer={<Button onClick={() => setSelectedEnquiry(null)}>Close</Button>}>
+      <Modal open={!!selectedEnquiry} onClose={() => setSelectedEnquiry(null)} title={`Enquiry Details: ${selectedEnquiry?.customer || 'Enquiry'}`} size="xl" footer={<Button onClick={() => setSelectedEnquiry(null)}>Close</Button>}>
         {selectedEnquiry && (
           <div className="flex gap-6">
             <div className="flex-1 space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <FormField label="Enquiry No"><input className={inputClass} value={selectedEnquiry.enquiry_no || 'Pending'} disabled /></FormField>
                 <FormField label="Date"><input className={inputClass} value={selectedEnquiry.received_date?.split('T')[0] || selectedEnquiry.created_at?.split('T')[0] || ''} disabled /></FormField>
                 <FormField label="Company"><input className={`${inputClass} font-semibold text-brand-700`} value={selectedEnquiry.customer || ''} disabled /></FormField>
                 <FormField label="Status"><input className={inputClass} value={selectedEnquiry.status || 'New'} disabled /></FormField>
@@ -346,7 +334,7 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
               <div className="flex flex-col space-y-0 relative pl-4">
                 <div className="absolute left-6 top-4 bottom-4 w-0.5 bg-slate-200 z-0"></div>
 
-                <FlowStep active={true} title="ENQUIRY" subtitle={selectedEnquiry.enquiry_no || 'New'} isFirst />
+                <FlowStep active={true} title="ENQUIRY" subtitle={selectedEnquiry?.customer || 'Enquiry'} isFirst />
                 
                 {relatedQuote ? (
                   <FlowStep active={true} title="QUOTATION" subtitle={relatedQuote.quote_no} link />
