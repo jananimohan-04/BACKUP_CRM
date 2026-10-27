@@ -2378,6 +2378,7 @@ export function SalesPipelinePage() {
   const [enquirySaveNotice, setEnquirySaveNotice] = useState<string | null>(null);
   // Original enquiry number when the form was pre-filled via Duplicate.
   const [duplicateSource, setDuplicateSource] = useState<string | null>(null);
+  const [duplicatingEnquiryId, setDuplicatingEnquiryId] = useState<string | null>(null);
   const [quotationModalTarget, setQuotationModalTarget] = useState<KanbanCard | null>(null);
   
   // The Inward form is inline on the Inward list, so its "entry session" (source card, or
@@ -5362,54 +5363,98 @@ export function SalesPipelinePage() {
     await moveCardToStage(card, toStage);
   };
 
-  // Duplicate = new enquiry using the old one as a template (new number,
-  // new record, New status). Only enquiry-level fields are copied; nothing
-  // downstream (quotations, orders, production, DCs, invoices) is touched.
-  // Attachment paths are referenced (never moved/deleted); new uploads merge
-  // on save through the existing saveEnquiry flow.
-  const duplicateEnquiry = (card: KanbanCard) => {
-    const raw = card.raw ?? {};
-    let parsed: any[] = [];
+  // Duplicate = directly creates a new enquiry cloned from the existing card as a template
+  // (new unique number, new DB record, New status, received_date today).
+  // Remains on the current board view and refreshes pipeline immediately.
+  const duplicateEnquiry = async (card: KanbanCard) => {
+    if (duplicatingEnquiryId) return;
+    setDuplicatingEnquiryId(card.id);
     try {
-      const ef = raw.enquiring_for;
-      const p = typeof ef === 'string' ? JSON.parse(ef) : ef;
-      if (Array.isArray(p)) parsed = p;
-    } catch { /* fall back to part_name below */ }
-    const mapped: { productName: string; partName: string; quantity: string; remarks: string; filePaths: string[]; files: File[] }[] = parsed
-      .map((it: any) => ({
-        productName: String(it.productName || it.partName || it.part_name || '').trim(),
-        partName: String(it.productName || it.partName || it.part_name || '').trim(),
-        quantity: String(it.quantity ?? it.qty ?? ''),
-        remarks: String(it.remarks || ''),
-        filePaths: Array.isArray(it.filePaths) ? it.filePaths.filter((p: any) => typeof p === 'string') : [],
-        files: [] as File[],
-      }))
-      .filter((it: any) => it.productName);
-    if (mapped.length === 0 && String(raw.part_name || '').trim()) {
-      mapped.push({
-        productName: String(raw.part_name).trim(),
-        partName: String(raw.part_name).trim(),
-        quantity: String(raw.quantity ?? ''),
-        remarks: '',
-        filePaths: [],
-        files: [] as File[],
-      });
+      const raw = card.raw ?? {};
+      const cardRecordId = raw.id || (card.id.startsWith('lead_') ? card.id.replace('lead_', '') : card.id);
+      let sourceRow = raw;
+      if (cardRecordId) {
+        const { data: fullEnq } = await supabase.from('cnc_enquiries').select('*').eq('id', cardRecordId).maybeSingle();
+        if (fullEnq) {
+          sourceRow = { ...raw, ...fullEnq };
+        }
+      }
+
+      let parsed: any[] = [];
+      try {
+        const ef = sourceRow.enquiring_for;
+        const p = typeof ef === 'string' ? JSON.parse(ef) : ef;
+        if (Array.isArray(p)) parsed = p;
+      } catch { /* fall back to part_name below */ }
+      const mapped: { productName: string; partName: string; quantity: string; remarks: string; filePaths: string[] }[] = parsed
+        .map((it: any) => ({
+          productName: String(it.productName || it.partName || it.part_name || '').trim(),
+          partName: String(it.productName || it.partName || it.part_name || '').trim(),
+          quantity: String(it.quantity ?? it.qty ?? ''),
+          remarks: String(it.remarks || ''),
+          filePaths: Array.isArray(it.filePaths) ? it.filePaths.filter((p: any) => typeof p === 'string') : [],
+        }))
+        .filter((it: any) => it.productName);
+      if (mapped.length === 0 && String(sourceRow.part_name || '').trim()) {
+        mapped.push({
+          productName: String(sourceRow.part_name).trim(),
+          partName: String(sourceRow.part_name).trim(),
+          quantity: String(sourceRow.quantity ?? ''),
+          remarks: '',
+          filePaths: [],
+        });
+      }
+
+      // Generate next unique lead/enquiry number
+      const { data: latestLeads } = await supabase.from('cnc_enquiries').select('lead_no, enquiry_no');
+      const baseLeads = latestLeads && latestLeads.length > 0 ? latestLeads : rawLeadsList;
+      const newLeadNo = generateUniqueProjectNo(baseLeads);
+
+      const itemsToSave = mapped.length ? mapped : [{ productName: '', partName: '', quantity: '0', remarks: '', filePaths: [] }];
+      const firstItem = itemsToSave[0];
+      const productNamesList = itemsToSave.map((it: any) => it.productName).filter(Boolean).join(', ');
+      const multiplePartsString = itemsToSave.length > 1 ? `${productNamesList} (${itemsToSave.length} Products)` : (firstItem?.productName || sourceRow.part_name || 'N/A');
+      const totalQty = itemsToSave.reduce((sum: number, it: any) => sum + (Number(it.quantity) || 0), 0) || Number(sourceRow.quantity) || 0;
+
+      const payload: any = {
+        id: crypto.randomUUID(),
+        lead_no: newLeadNo,
+        enquiry_no: newLeadNo,
+        customer: sourceRow.customer || '',
+        contact_person: sourceRow.contact_person || '',
+        phone: sourceRow.phone || '',
+        email: sourceRow.email || '',
+        enquiring_for: JSON.stringify(itemsToSave),
+        part_name: multiplePartsString,
+        part_no: sourceRow.part_no || 'N/A',
+        quantity: totalQty,
+        expected_date: sourceRow.expected_date || null,
+        received_date: new Date().toISOString().split('T')[0],
+        estimated_value: Number(sourceRow.estimated_value) || 0,
+        source: sourceRow.source || 'Direct',
+        status: 'New',
+        pipeline_stage: 'Enquiry',
+      };
+      if (company?.id || sourceRow.company_id) {
+        payload.company_id = company?.id || sourceRow.company_id;
+      }
+      if (sourceRow.gst) payload.gst = sourceRow.gst;
+      if (sourceRow.city) payload.city = sourceRow.city;
+
+      const { error } = await supabase.from('cnc_enquiries').insert([payload]);
+      if (error) {
+        alert("Error duplicating enquiry: " + error.message);
+        return;
+      }
+
+      desktopToast('success', `Enquiry ${newLeadNo} duplicated successfully`, undefined, 2000);
+      await fetchPipeline();
+      setListRefresh((n) => n + 1);
+    } catch (err: any) {
+      alert("Error duplicating enquiry: " + (err?.message || "Unknown error"));
+    } finally {
+      setDuplicatingEnquiryId(null);
     }
-    setEnquiryForm({
-      ...resetEnquiryForm(),
-      company: raw.customer || '',
-      expectedDate: raw.expected_date || '',
-      source: raw.source || 'Direct',
-      estimatedValue: raw.estimated_value ?? '',
-      receivedDate: new Date().toISOString().split('T')[0],
-      contacts: [{ person: raw.contact_person || '', phone: raw.phone || '', email: raw.email || '' }],
-      items: mapped.length ? mapped : [{ productName: '', partName: '', quantity: '', remarks: '', filePaths: [] as string[], files: [] as File[] }],
-    });
-    setDuplicateSource(raw.lead_no || raw.enquiry_no || card.refNo || '');
-    setEnquirySaveNotice(null);
-    // The entry form lives on the Enquiries list, so take the user there with the
-    // duplicated template pre-filled and ready to review.
-    setActiveView('enquiry_list');
   };
 
   const saveEnquiry = async () => {
@@ -8370,8 +8415,13 @@ export function SalesPipelinePage() {
                           </button>
                           )}
                           {card.type === 'lead' && canDo('enquiries', 'create') && (
-                            <button onClick={(e) => { e.stopPropagation(); duplicateEnquiry(card); }} className="text-slate-400 hover:text-brand-600 transition-colors" title="Duplicate Enquiry">
-                              <Copy size={14} />
+                            <button
+                              onClick={(e) => { e.stopPropagation(); void duplicateEnquiry(card); }}
+                              disabled={duplicatingEnquiryId === card.id}
+                              className={`transition-colors ${duplicatingEnquiryId === card.id ? 'opacity-50 cursor-not-allowed text-brand-600' : 'text-slate-400 hover:text-brand-600'}`}
+                              title={duplicatingEnquiryId === card.id ? "Duplicating..." : "Duplicate Enquiry"}
+                            >
+                              <Copy size={14} className={duplicatingEnquiryId === card.id ? "animate-pulse" : ""} />
                             </button>
                           )}
                           {canDo(STAGE_MODULE[card.stage] ?? 'sales-pipeline', 'delete') && (
