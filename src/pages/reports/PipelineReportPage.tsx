@@ -49,6 +49,26 @@ const num = (v: any): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
+const getSoAmount = (o: any): number => num((o as any)?.total_amount || (o as any)?.total_value || (o as any)?.value || (num(o?.quantity) * num((o as any)?.unit_price)));
+
+const getSoRate = (o: any): number => {
+  if (num((o as any)?.unit_price) > 0) return num((o as any)?.unit_price);
+  const amt = getSoAmount(o);
+  const q = num(o?.quantity);
+  if (q > 0 && amt > 0) return Math.round((amt / q) * 100) / 100;
+  if (Array.isArray(o?.items) && o.items.length > 0) {
+    const first = o.items[0];
+    return num(first?.unitPrice || first?.unit_price || first?.price || first?.rate);
+  }
+  return 0;
+};
+
+const getQuoAmount = (q: any): number => num(q?.total_value || (num(q?.quantity) * num(q?.unit_price)));
+const getQuoRate = (q: any): number => num(q?.unit_price || (num(q?.quantity) > 0 ? getQuoAmount(q) / num(q?.quantity) : 0));
+
+const getDcAmount = (d: any): number => num(d?.total_amount || (num(d?.dispatch_qty ?? d?.quantity) * num(d?.unit_price)));
+const getDcRate = (d: any): number => num(d?.unit_price || (num(d?.dispatch_qty ?? d?.quantity) > 0 ? getDcAmount(d) / num(d?.dispatch_qty ?? d?.quantity) : 0));
+
 const toISODate = (d: Date): string => {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -141,27 +161,27 @@ export function PipelineReportPage({ embedded = false, onBack, onSwitchTab }: Pi
       const [enqRes, quoRes, soRes, dcRes, invRes, custRes] = await Promise.all([
         supabase
           .from('cnc_enquiries')
-          .select('id,lead_no,enquiry_no,status,pipeline_stage,customer,part_name,quantity,estimated_value,expected_date,received_date,created_at,phone,email')
+          .select('*')
           .order('created_at', { ascending: false })
           .limit(3000),
         supabase
           .from('cnc_quotations')
-          .select('id,quote_no,customer,part_name,quantity,unit_price,total_value,status,created_at,lead_id,enquiry_no')
+          .select('*')
           .order('created_at', { ascending: false })
           .limit(3000),
         supabase
           .from('cnc_sales_orders')
-          .select('id,order_no,lead_no,customer,part_name,part_no,quantity,unit_price,total_amount,order_date,status,created_at,quotation_id,quote_no,items')
+          .select('*')
           .order('created_at', { ascending: false })
           .limit(3000),
         supabase
           .from('cnc_deliveries')
-          .select('id,delivery_no,customer_name,part_name,dispatch_qty,quantity,unit_price,total_amount,delivery_date,status,created_at,sales_order_no,po_no')
+          .select('*')
           .order('created_at', { ascending: false })
           .limit(4000),
         supabase
           .from('cnc_invoices')
-          .select('id,invoice_no,invoice_type,customer_name,part_name,quantity,total_amount,basic_amount,tax_amount,invoice_date,status,payment_status,created_at,dc_no,sales_order_id,delivery_id,cancelled')
+          .select('*')
           .order('created_at', { ascending: false })
           .limit(4000),
         supabase
@@ -298,13 +318,13 @@ export function PipelineReportPage({ embedded = false, onBack, onSwitchTab }: Pi
     // 2. Quotations
     const quoCount = filteredQuotations.length;
     const quoQty = filteredQuotations.reduce((s, q) => s + num(q.quantity), 0);
-    const quoVal = filteredQuotations.reduce((s, q) => s + num(q.total_value || num(q.quantity) * num(q.unit_price)), 0);
+    const quoVal = filteredQuotations.reduce((s, q) => s + getQuoAmount(q), 0);
 
     // 3. Sales Orders
     const soCount = filteredSalesOrders.length;
     const soQty = filteredSalesOrders.reduce((s, o) => s + num(o.quantity), 0);
     const soVal = filteredSalesOrders.reduce(
-      (s, o) => s + num(o.total_amount || (o as any).total_value || (o as any).value || num(o.quantity) * num(o.unit_price)),
+      (s, o) => s + getSoAmount(o),
       0
     );
 
@@ -312,7 +332,7 @@ export function PipelineReportPage({ embedded = false, onBack, onSwitchTab }: Pi
     const dcNos = new Set(filteredDeliveries.map((d) => d.delivery_no).filter(Boolean));
     const dcCount = dcNos.size || filteredDeliveries.length;
     const dcQty = filteredDeliveries.reduce((s, d) => s + num(d.dispatch_qty ?? d.quantity), 0);
-    const dcVal = filteredDeliveries.reduce((s, d) => s + num(d.total_amount || num(d.quantity) * num(d.unit_price)), 0);
+    const dcVal = filteredDeliveries.reduce((s, d) => s + getDcAmount(d), 0);
 
     // 5. Invoices
     const invNos = new Set(filteredInvoices.map((i) => i.invoice_no).filter(Boolean));
@@ -397,20 +417,20 @@ export function PipelineReportPage({ embedded = false, onBack, onSwitchTab }: Pi
     filteredQuotations.forEach((q) => {
       const c = get(q.customer);
       c.quoCount += 1;
-      c.quoVal += num(q.total_value || num(q.quantity) * num(q.unit_price));
+      c.quoVal += getQuoAmount(q);
     });
 
     filteredSalesOrders.forEach((o) => {
       const c = get(o.customer);
       c.soCount += 1;
-      c.soVal += num(o.total_amount || (o as any).total_value || (o as any).value || num(o.quantity) * num(o.unit_price));
+      c.soVal += getSoAmount(o);
     });
 
     filteredDeliveries.forEach((d) => {
       const c = get(d.customer_name);
       c.dcCount += 1;
       c.dcQty += num(d.dispatch_qty ?? d.quantity);
-      c.dcVal += num(d.total_amount || num(d.quantity) * num(d.unit_price));
+      c.dcVal += getDcAmount(d);
     });
 
     filteredInvoices.forEach((i) => {
@@ -459,19 +479,19 @@ export function PipelineReportPage({ embedded = false, onBack, onSwitchTab }: Pi
     filteredQuotations.forEach((q) => {
       const p = get(q.part_name);
       p.quoQty += num(q.quantity);
-      p.quoVal += num(q.total_value || num(q.quantity) * num(q.unit_price));
+      p.quoVal += getQuoAmount(q);
     });
 
     filteredSalesOrders.forEach((o) => {
       const p = get(o.part_name);
       p.soQty += num(o.quantity);
-      p.soVal += num(o.total_amount || (o as any).total_value || (o as any).value || num(o.quantity) * num(o.unit_price));
+      p.soVal += getSoAmount(o);
     });
 
     filteredDeliveries.forEach((d) => {
       const p = get(d.part_name);
       p.dcQty += num(d.dispatch_qty ?? d.quantity);
-      p.dcVal += num(d.total_amount || num(d.quantity) * num(d.unit_price));
+      p.dcVal += getDcAmount(d);
     });
 
     filteredInvoices.forEach((i) => {
@@ -560,10 +580,10 @@ export function PipelineReportPage({ embedded = false, onBack, onSwitchTab }: Pi
         enqVal: num(e.estimated_value),
         quoteDoc: quo?.quote_no || '—',
         quoQty,
-        quoVal: quo ? num(quo.total_value || quo.quantity * quo.unit_price) : 0,
+        quoVal: quo ? getQuoAmount(quo) : 0,
         soDoc: so?.order_no || so?.lead_no || '—',
         soQty,
-        soVal: so ? num(so.total_amount || so.quantity * so.unit_price) : 0,
+        soVal: so ? getSoAmount(so) : 0,
         dcDoc: dcs.map((d) => d.delivery_no).filter(Boolean).join(', ') || '—',
         dcQty,
         invDoc: invs.map((i) => i.invoice_no).filter(Boolean).join(', ') || '—',
@@ -621,7 +641,7 @@ export function PipelineReportPage({ embedded = false, onBack, onSwitchTab }: Pi
         quoVal: 0,
         soDoc: o.order_no || o.lead_no || '—',
         soQty,
-        soVal: num(o.total_amount || o.quantity * o.unit_price),
+        soVal: getSoAmount(o),
         dcDoc: dcs.map((d) => d.delivery_no).filter(Boolean).join(', ') || '—',
         dcQty,
         invDoc: invs.map((i) => i.invoice_no).filter(Boolean).join(', ') || '—',
@@ -645,7 +665,7 @@ export function PipelineReportPage({ embedded = false, onBack, onSwitchTab }: Pi
         enqVal: 0,
         quoteDoc: q.quote_no || '—',
         quoQty: num(q.quantity),
-        quoVal: num(q.total_value || q.quantity * q.unit_price),
+        quoVal: getQuoAmount(q),
         soDoc: '—',
         soQty: 0,
         soVal: 0,
@@ -692,8 +712,8 @@ export function PipelineReportPage({ embedded = false, onBack, onSwitchTab }: Pi
         company: q.customer || '—',
         product: q.part_name || '—',
         qty: num(q.quantity),
-        rate: num(q.unit_price),
-        amount: num(q.total_value || num(q.quantity) * num(q.unit_price)),
+        rate: getQuoRate(q),
+        amount: getQuoAmount(q),
         status: q.status || 'Draft',
       });
     });
@@ -708,8 +728,8 @@ export function PipelineReportPage({ embedded = false, onBack, onSwitchTab }: Pi
         company: o.customer || '—',
         product: o.part_name || '—',
         qty: num(o.quantity),
-        rate: num(o.unit_price),
-        amount: num(o.total_amount || num(o.quantity) * num(o.unit_price)),
+        rate: getSoRate(o),
+        amount: getSoAmount(o),
         status: o.status || 'Confirmed',
       });
     });
@@ -724,8 +744,8 @@ export function PipelineReportPage({ embedded = false, onBack, onSwitchTab }: Pi
         company: d.customer_name || '—',
         product: d.part_name || '—',
         qty: num(d.dispatch_qty ?? d.quantity),
-        rate: num(d.unit_price),
-        amount: num(d.total_amount || num(d.quantity) * num(d.unit_price)),
+        rate: getDcRate(d),
+        amount: getDcAmount(d),
         status: d.status || 'Pending',
       });
     });
