@@ -497,12 +497,16 @@ function challanDate(iso: string | null | undefined): string {
   return s || '—';
 }
 
-async function buildDeliveryChallanDocument(input: DeliveryChallanInput) {
+async function buildDeliveryChallanDocument(input: DeliveryChallanInput, docInstance?: any) {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([
     import('jspdf'),
     import('jspdf-autotable'),
   ]);
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const doc = docInstance || new jsPDF({ unit: 'mm', format: 'a4' });
+  const startPage = docInstance ? doc.getNumberOfPages() + 1 : 1;
+  if (docInstance) {
+    doc.addPage();
+  }
   const pageWidth = doc.internal.pageSize.getWidth();
   const NAVY: [number, number, number] = [30, 58, 95];
   const ORANGE: [number, number, number] = [234, 88, 12];
@@ -741,8 +745,8 @@ async function buildDeliveryChallanDocument(input: DeliveryChallanInput) {
   y += sigBoxH + 6;
 
   // ---- Subtle footer on every page ----
-  const pages = doc.getNumberOfPages();
-  for (let i = 1; i <= pages; i++) {
+  const endPage = doc.getNumberOfPages();
+  for (let i = startPage; i <= endPage; i++) {
     doc.setPage(i);
     doc.setDrawColor(...LINE);
     doc.setLineWidth(0.25);
@@ -752,7 +756,9 @@ async function buildDeliveryChallanDocument(input: DeliveryChallanInput) {
     doc.setTextColor(...GREY);
     doc.text(compName, ML, 289);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Page ${i} of ${pages}`, pageWidth - MR, 289, { align: 'right' });
+    const totalDcPages = endPage - startPage + 1;
+    const pageNum = i - startPage + 1;
+    doc.text(`Page ${pageNum} of ${totalDcPages}`, pageWidth - MR, 289, { align: 'right' });
   }
   return doc;
 }
@@ -1113,6 +1119,40 @@ export async function viewSalesInvoice(input: SalesInvoiceInput) {
   if (!tab) throw new Error('Allow pop-ups to preview the PDF.');
   try {
     const doc = await buildSalesInvoiceDocument(input);
+    const url = URL.createObjectURL(doc.output('blob'));
+    tab.location.href = url;
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (error) {
+    tab.close();
+    throw error;
+  }
+}
+
+/** Combines Sales Invoice and Delivery Challan into a single multi-page PDF */
+export async function buildCombinedInvoiceAndDcDocument(invoiceInput: SalesInvoiceInput, dcInput: DeliveryChallanInput) {
+  const doc = await buildSalesInvoiceDocument(invoiceInput);
+  await buildDeliveryChallanDocument(dcInput, doc);
+  return doc;
+}
+
+/** The combined invoice and DC as a PDF blob URL, for showing inside a popup. The caller revokes it. */
+export async function combinedInvoiceAndDcPreviewUrl(invoiceInput: SalesInvoiceInput, dcInput: DeliveryChallanInput): Promise<string> {
+  const doc = await buildCombinedInvoiceAndDcDocument(invoiceInput, dcInput);
+  return URL.createObjectURL(doc.output('blob'));
+}
+
+export async function downloadCombinedInvoiceAndDc(invoiceInput: SalesInvoiceInput, dcInput: DeliveryChallanInput) {
+  const doc = await buildCombinedInvoiceAndDcDocument(invoiceInput, dcInput);
+  const safeInv = (invoiceInput.docNo || 'Invoice').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const safeDc = (dcInput.dcNo || 'DC').replace(/[^a-zA-Z0-9_-]/g, '_');
+  doc.save(`${safeInv}_with_DC_${safeDc}.pdf`);
+}
+
+export async function viewCombinedInvoiceAndDc(invoiceInput: SalesInvoiceInput, dcInput: DeliveryChallanInput) {
+  const tab = window.open('', '_blank');
+  if (!tab) throw new Error('Allow pop-ups to preview the PDF.');
+  try {
+    const doc = await buildCombinedInvoiceAndDcDocument(invoiceInput, dcInput);
     const url = URL.createObjectURL(doc.output('blob'));
     tab.location.href = url;
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000);

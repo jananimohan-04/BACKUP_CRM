@@ -38,7 +38,7 @@ import { FgCostingModal } from './FgCostingModal';
 import { DcInvoiceModal } from './DcInvoiceModal';
 import { SignaturePad } from '@/components/ui/SignaturePad';
 import { SalesOrderSection } from './SalesOrderSection';
-import { downloadBrandedDocument, viewBrandedDocument, downloadDeliveryChallan, viewDeliveryChallan, downloadSalesInvoice, fetchCompanyPrintDetails, viewSalesInvoice, deliveryChallanPreviewUrl, salesInvoicePreviewUrl } from '@/lib/brandedDocument';
+import { downloadBrandedDocument, viewBrandedDocument, downloadDeliveryChallan, viewDeliveryChallan, downloadSalesInvoice, fetchCompanyPrintDetails, viewSalesInvoice, deliveryChallanPreviewUrl, salesInvoicePreviewUrl, combinedInvoiceAndDcPreviewUrl, downloadCombinedInvoiceAndDc, viewCombinedInvoiceAndDc } from '@/lib/brandedDocument';
 import { generateUniqueProjectNo } from '@/lib/projectNumber';
 import { summarizeSalesOrder, fetchOrderQty, recordProductionBatch, REJECTION_TYPES, type OrderQtySummary } from '@/lib/orderQuantities';
 import { QtyProgress, QtySummaryGrid, QtyBreakdown } from '@/components/ui/QuantitySummary';
@@ -3575,6 +3575,15 @@ export function SalesPipelinePage() {
         price: Number(item.unit_price ?? item.price ?? item.rate) || 0,
       })).filter((l) => l.partName);
     }
+    if (!dcLines.length && Array.isArray(viewModalData?.invoice?.items) && viewModalData.invoice.items.length) {
+      dcLines = viewModalData.invoice.items.map((it: any) => ({
+        partName: stripSummary(it.partName || it.part_name || it.description) || '—',
+        hsn: String(it.hsn || '').trim(),
+        qty: Number(it.quantity ?? it.qty) || 0,
+        unit: String(it.unit || '').trim() || 'Nos',
+        price: Number(it.rate ?? it.unitPrice ?? it.price) || 0,
+      })).filter((l: any) => l.partName);
+    }
     if (!dcLines.length) {
       dcLines = [{
         partName: stripSummary(record.part_name || record.description) || '—',
@@ -3612,9 +3621,20 @@ export function SalesPipelinePage() {
       authorizedSignature: record.authorized_signature || null,
     };
   };
-  const downloadPipelineDocument = async (kind: 'dc' | 'invoice') => {
-    const input = await pipelineDocumentInput(kind);
+  const downloadPipelineDocument = async (kind: 'dc' | 'invoice' | 'combined') => {
     try {
+      if (kind === 'combined') {
+        const invInput: any = await pipelineDocumentInput('invoice');
+        const dcInput: any = await pipelineDocumentInput('dc');
+        if (!invInput) return;
+        if (dcInput) {
+          await downloadCombinedInvoiceAndDc(invInput, dcInput);
+        } else {
+          await downloadSalesInvoice(invInput);
+        }
+        return;
+      }
+      const input = await pipelineDocumentInput(kind);
       if (!input) return;
       if (kind === 'dc') await downloadDeliveryChallan(input as any);
       else if (kind === 'invoice') await downloadSalesInvoice(input as any);
@@ -3622,9 +3642,20 @@ export function SalesPipelinePage() {
     }
     catch (error) { alert(error instanceof Error ? error.message : 'Unable to generate the document PDF.'); }
   };
-  const viewPipelineDocument = async (kind: 'dc' | 'invoice') => {
-    const input = await pipelineDocumentInput(kind);
+  const viewPipelineDocument = async (kind: 'dc' | 'invoice' | 'combined') => {
     try {
+      if (kind === 'combined') {
+        const invInput: any = await pipelineDocumentInput('invoice');
+        const dcInput: any = await pipelineDocumentInput('dc');
+        if (!invInput) return;
+        if (dcInput) {
+          await viewCombinedInvoiceAndDc(invInput, dcInput);
+        } else {
+          await viewSalesInvoice(invInput);
+        }
+        return;
+      }
+      const input = await pipelineDocumentInput(kind);
       if (!input) return;
       if (kind === 'dc') await viewDeliveryChallan(input as any);
       else if (kind === 'invoice') await viewSalesInvoice(input as any);
@@ -3637,22 +3668,47 @@ export function SalesPipelinePage() {
   const docKind: 'dc' | 'invoice' | null = viewModalTarget?.stage === 'DC' ? 'dc' : viewModalTarget?.stage === 'Invoice' ? 'invoice' : null;
   const [docPreviewUrl, setDocPreviewUrl] = useState('');
   const [docPreviewErr, setDocPreviewErr] = useState('');
+  const [invoiceDocTab, setInvoiceDocTab] = useState<'combined' | 'invoice' | 'dc'>('combined');
   useEffect(() => {
-    if (!docKind || !viewModalData?.[docKind]) { setDocPreviewUrl(''); setDocPreviewErr(''); return; }
+    if (!docKind || (!viewModalData?.invoice && !viewModalData?.dc)) { setDocPreviewUrl(''); setDocPreviewErr(''); return; }
     let dead = false;
     let made = '';
     (async () => {
       try {
-        const input: any = await pipelineDocumentInput(docKind);
-        if (!input || dead) return;
-        const url = docKind === 'dc' ? await deliveryChallanPreviewUrl(input) : await salesInvoicePreviewUrl(input);
-        if (dead) { URL.revokeObjectURL(url); return; }
+        let url = '';
+        if (docKind === 'dc') {
+          const input: any = await pipelineDocumentInput('dc');
+          if (!input || dead) return;
+          url = await deliveryChallanPreviewUrl(input);
+        } else if (docKind === 'invoice') {
+          const hasDc = !!viewModalData?.dc;
+          const activeTab = hasDc ? invoiceDocTab : 'invoice';
+          if (activeTab === 'combined' && hasDc) {
+            const invInput: any = await pipelineDocumentInput('invoice');
+            const dcInput: any = await pipelineDocumentInput('dc');
+            if (dead) return;
+            if (invInput && dcInput) {
+              url = await combinedInvoiceAndDcPreviewUrl(invInput, dcInput);
+            } else if (invInput) {
+              url = await salesInvoicePreviewUrl(invInput);
+            }
+          } else if (activeTab === 'dc' && hasDc) {
+            const dcInput: any = await pipelineDocumentInput('dc');
+            if (!dcInput || dead) return;
+            url = await deliveryChallanPreviewUrl(dcInput);
+          } else {
+            const invInput: any = await pipelineDocumentInput('invoice');
+            if (!invInput || dead) return;
+            url = await salesInvoicePreviewUrl(invInput);
+          }
+        }
+        if (dead) { if (url) URL.revokeObjectURL(url); return; }
         made = url; setDocPreviewUrl(url); setDocPreviewErr('');
       } catch (e: any) { if (!dead) setDocPreviewErr(e?.message ?? 'Unable to build the preview.'); }
     })();
     return () => { dead = true; if (made) URL.revokeObjectURL(made); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docKind, viewModalData]);
+  }, [docKind, viewModalData, invoiceDocTab]);
 
   const [rawLeadsList, setRawLeadsList] = useState<any[]>([]);
 
@@ -4809,6 +4865,7 @@ export function SalesPipelinePage() {
 
   const openViewModal = async (card: KanbanCard) => {
     if (card.type === 'finished_goods') { void openFgPopup(card, 'view'); return; }
+    setInvoiceDocTab('combined');
     setViewModalTarget(card);
     setLoading(true);
     const aggregated: any = { enquiry: null, quotation: null, order: null, inward: null, finished_goods: null, dc: null, invoice: null };
@@ -4936,8 +4993,26 @@ export function SalesPipelinePage() {
             const { data } = await supabase.from('cnc_deliveries').select('*').eq('delivery_no', card.raw.dc_no).limit(1);
             dc = (data ?? [])[0] ?? null;
           }
+          if (!dc && card.raw.delivery_no) {
+            const { data } = await supabase.from('cnc_deliveries').select('*').eq('delivery_no', card.raw.delivery_no).limit(1);
+            dc = (data ?? [])[0] ?? null;
+          }
+          if (!dc && (card.raw.sales_order_no || card.raw.sales_order_id)) {
+            const soQuery = card.raw.sales_order_no
+              ? supabase.from('cnc_deliveries').select('*').eq('sales_order_no', card.raw.sales_order_no).order('created_at', { ascending: false }).limit(1)
+              : supabase.from('cnc_deliveries').select('*').eq('sales_order_id', card.raw.sales_order_id).order('created_at', { ascending: false }).limit(1);
+            const { data: dcBySo } = await soQuery;
+            if (dcBySo && dcBySo.length > 0) dc = dcBySo[0];
+          }
           if (dc) {
             aggregated.dc = dc;
+            try {
+              const dcNo = String(dc.delivery_no || '').trim();
+              if (dcNo) {
+                const { data: sibs } = await supabase.from('cnc_deliveries').select('*').eq('delivery_no', dcNo).order('created_at', { ascending: true });
+                if (sibs && sibs.length > 1) aggregated.dcRows = sibs;
+              }
+            } catch { /* single-row fallback */ }
             const soNo = dc.sales_order_no || dc.sales_order_ref;
             if (soNo) {
               const { data: ord } = await supabase.from('cnc_sales_orders').select('*').eq('order_no', soNo).limit(1);
@@ -5014,6 +5089,7 @@ export function SalesPipelinePage() {
     setViewModalTarget(null);
     setViewModalData(null);
     setViewEditMode(false);
+    setInvoiceDocTab('combined');
     soSaveRef.current = null;
     enquirySaveRef.current = null;
     dcSaveRef.current = null;
@@ -8567,7 +8643,7 @@ export function SalesPipelinePage() {
       {/* Shared View / Edit modal: opened from every stage list's View / Edit actions.
           The entry forms are inline now, so this popup is only for inspecting or
           revising a record that already exists. */}
-<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Company ID: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" width={docKind ? 1500 : 900} maxWidth={docKind ? 1700 : undefined} tall={!!docKind} footer={<>{viewModalData?.dc && viewModalTarget?.stage !== 'Invoice' && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {
+<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Company ID: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" width={docKind ? 1500 : 900} maxWidth={docKind ? 1700 : undefined} tall={!!docKind} footer={<>{viewModalTarget?.stage === 'Invoice' && viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('combined')}>View Invoice + DC</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('combined')}>Download Invoice + DC</Button></>}{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {
                       if (viewEditMode && viewModalTarget?.stage === 'Sales Order' && soSaveRef.current) {
                         const ok = await soSaveRef.current();
                         if (!ok) return;
@@ -8695,12 +8771,57 @@ export function SalesPipelinePage() {
           <div className="p-8 text-center text-slate-500">Loading historical data...</div>
         )}
         {docKind && (
-          <div className="h-[calc(95vh-10rem)] min-h-[420px] overflow-hidden rounded-lg border border-slate-200 bg-slate-100" data-testid="doc-preview">
-            {docPreviewUrl ? (
-              <iframe title={docKind === 'dc' ? 'Delivery challan preview' : 'Invoice preview'} src={`${docPreviewUrl}#navpanes=0&view=Fit`} className="h-full w-full" />
-            ) : (
-              <div className="flex h-full items-center justify-center p-6 text-center text-sm text-slate-500">{docPreviewErr || 'Preparing the document…'}</div>
+          <div className="h-[calc(95vh-10rem)] min-h-[420px] flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-slate-100" data-testid="doc-preview">
+            {docKind === 'invoice' && viewModalData?.dc && (
+              <div className="flex items-center justify-between border-b border-slate-200 bg-white px-3 py-1.5 shrink-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mr-1">Preview:</span>
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceDocTab('combined')}
+                    className={`px-2.5 py-1 text-xs font-semibold rounded transition-colors ${
+                      invoiceDocTab === 'combined'
+                        ? 'bg-brand-600 text-white shadow-sm'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    Invoice + DC
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceDocTab('invoice')}
+                    className={`px-2.5 py-1 text-xs font-semibold rounded transition-colors ${
+                      invoiceDocTab === 'invoice'
+                        ? 'bg-brand-600 text-white shadow-sm'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    Invoice Only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceDocTab('dc')}
+                    className={`px-2.5 py-1 text-xs font-semibold rounded transition-colors ${
+                      invoiceDocTab === 'dc'
+                        ? 'bg-brand-600 text-white shadow-sm'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    DC Only
+                  </button>
+                </div>
+                <div className="text-[11px] font-medium text-slate-500">
+                  {invoiceDocTab === 'combined' ? 'Showing Invoice & DC together' : invoiceDocTab === 'dc' ? 'Showing Delivery Challan' : 'Showing Sales Invoice'}
+                </div>
+              </div>
             )}
+            <div className="flex-1 overflow-hidden relative">
+              {docPreviewUrl ? (
+                <iframe title={docKind === 'dc' ? 'Delivery challan preview' : invoiceDocTab === 'combined' ? 'Invoice and DC preview' : invoiceDocTab === 'dc' ? 'DC preview' : 'Invoice preview'} src={`${docPreviewUrl}#navpanes=0&view=Fit`} className="h-full w-full" />
+              ) : (
+                <div className="flex h-full items-center justify-center p-6 text-center text-sm text-slate-500">{docPreviewErr || 'Preparing the document…'}</div>
+              )}
+            </div>
           </div>
         )}
         </div>
