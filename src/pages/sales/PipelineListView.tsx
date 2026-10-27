@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Search, Download, Upload, Eye, Edit2, Trash2 } from 'lucide-react';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
+import { CompanyFilterInput } from '@/components/ui/CompanyFilterInput';
 import { KanbanCard } from './SalesPipelinePage';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
@@ -127,18 +128,11 @@ export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineLi
               <th className="bg-slate-800 px-4 py-3.5">
                 <div className="flex items-center gap-1.5 flex-nowrap">
                   <span className="whitespace-nowrap">Company</span>
-                  <select
-                    aria-label="Filter by Company"
-                    title="Filter by Company"
+                  <CompanyFilterInput
                     value={companyFilter || 'All Companies'}
-                    onChange={e => setCompanyFilter(e.target.value)}
-                    className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[125px] truncate shadow-xs"
-                  >
-                    <option value="All Companies">All</option>
-                    {customers.map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
+                    onChange={setCompanyFilter}
+                    options={customers}
+                  />
                 </div>
               </th>
               <th className="bg-slate-800 px-4 py-3.5">Products</th>

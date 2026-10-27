@@ -1,9 +1,10 @@
 import { defaultTermsText } from '@/lib/termsLibrary';
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Download, Upload, Eye, FileText, Plus, Printer, CreditCard, ChevronLeft, ChevronRight, Trash2, ChevronDown, Search, Check, X } from 'lucide-react';
+import { ArrowLeft, Download, Upload, Eye, FileText, Plus, Printer, CreditCard, ChevronLeft, ChevronRight, Trash2, ChevronDown, Search, Check, X, Pencil } from 'lucide-react';
 import { Badge, Button, Card, statusToVariant } from '@/components/ui/Card';
 import { FormField, inputClass, Modal } from '@/components/ui/Modal';
+import { CompanyFilterInput } from '@/components/ui/CompanyFilterInput';
 import { financeApi, type InvoiceDetail, type InvoiceRow, type InvoiceSummary } from '@/lib/finance';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { exportCsv, escapeHtml, printHtml } from '@/lib/reportExport';
@@ -34,10 +35,11 @@ const diffDaysISO = (from: string, to: string): string => {
 };
 const emptySummary: InvoiceSummary = { total_invoices: 0, total_value: '0', total_received: '0', outstanding: '0', overdue_count: 0, overdue_amount: '0', by_status: {}, ageing: { current: '0', d31_60: '0', d61_90: '0', d90_plus: '0' }, top_customers: [], monthly: [] };
 
-export function InvoicesPage({ onBack, onView }: { onBack?: () => void; onView?: (record: any) => void } = {}) {
+export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: () => void; onView?: (record: any) => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void } = {}) {
   const { company, canDo } = useAuth();
   const canCreateInv: boolean = typeof canDo === 'function' ? !!canDo('invoices', 'create') : true;
   const canEditInv: boolean = typeof canDo === 'function' ? !!canDo('invoices', 'edit') : true;
+  const canDeleteInv: boolean = typeof canDo === 'function' ? !!canDo('invoices', 'delete') : true;
   const canExportInv: boolean = typeof canDo === 'function' ? !!canDo('invoices', 'export') : true;
   const { companyFilter, setCompanyFilter, companyOptions } = useHeaderKpis();
   const [searchParams] = useSearchParams();
@@ -313,6 +315,79 @@ export function InvoicesPage({ onBack, onView }: { onBack?: () => void; onView?:
     setLines([{ description: '', quantity: '', unit: '', rate: '', gst_rate: '', discount_pct: '0' }]);
     setFormOpen(true);
   };
+  const handleEditRow = async (r: InvoiceRow) => {
+    setBusy(true);
+    try {
+      const detail = await financeApi.invoice(r.id);
+      setSelected(detail);
+      setEditId(detail.id);
+      const parsedDcs = detail.dc_no ? String(detail.dc_no).split(/[,;/]+/).map((s: string) => s.trim()).filter(Boolean) : [];
+      setSelectedDcNos(parsedDcs);
+      setForm({
+        id: detail.id,
+        invoice_no: detail.invoice_no,
+        invoice_type: detail.invoice_type,
+        invoice_date: detail.invoice_date || todayISO(),
+        due_date: detail.due_date || '',
+        due_days: (detail.invoice_date && detail.due_date) ? diffDaysISO(detail.invoice_date, detail.due_date) : '',
+        customer_name: detail.customer_name || '',
+        customer_id: detail.customer_id || '',
+        po_no: detail.po_no || '',
+        dc_no: detail.dc_no || '',
+        payment_terms: detail.payment_terms || ''
+      });
+      const quantity = Math.max(1, Number(detail.quantity || 1));
+      const taxable = Number(detail.taxable_value || detail.basic_value || 0);
+      const taxRate = taxable > 0 ? (Number(detail.cgst || 0) + Number(detail.sgst || 0) + Number(detail.igst || 0)) * 100 / taxable : 0;
+      setLines(detail.items?.length
+        ? detail.items.map(item => ({
+            description: item.description,
+            quantity: String(item.quantity ?? ''),
+            unit: item.unit || '',
+            rate: String(item.rate ?? ''),
+            gst_rate: item.gst_rate != null ? String(item.gst_rate) : '',
+            discount_pct: String(item.discount_pct || '0')
+          }))
+        : [{
+            description: detail.part_name || '',
+            quantity: String(quantity),
+            unit: '',
+            rate: String(taxable / quantity),
+            gst_rate: String(taxRate),
+            discount_pct: '0'
+          }]
+      );
+      setFormOpen(true);
+    } catch (e: any) {
+      setError(e instanceof Error ? e.message : 'Unable to load invoice details for editing.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDeleteRow = async (r: InvoiceRow) => {
+    if (!window.confirm(`Are you sure you want to delete invoice ${r.invoice_no}?`)) return;
+    setBusy(true);
+    try {
+      if (r.dc_no) {
+        const dcs = String(r.dc_no).split(/[,;/]+/).map(s => s.trim()).filter(Boolean);
+        if (dcs.length) {
+          try {
+            await supabase.from('cnc_deliveries').update({ status: 'Dispatched' }).in('delivery_no', dcs);
+          } catch { /* ignore */ }
+        }
+      }
+      await supabase.from('cnc_invoice_items').delete().eq('invoice_id', r.id);
+      const { error } = await supabase.from('cnc_invoices').delete().eq('id', r.id);
+      if (error) throw error;
+      await reload();
+    } catch (e: any) {
+      setError(e?.message || 'Unable to delete invoice.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const startEdit = () => {
     if (!selected || Number(selected.received) !== 0 || selected.cancelled) return;
     const item = selected.items?.[0];
@@ -1348,18 +1423,11 @@ export function InvoicesPage({ onBack, onView }: { onBack?: () => void; onView?:
                 <th className="px-2 py-2">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <span className="whitespace-nowrap">Company</span>
-                    <select
-                      aria-label="Filter by Company"
-                      title="Filter by Company"
+                    <CompanyFilterInput
                       value={companyFilter || 'All Companies'}
-                      onChange={e => setCompanyFilter(e.target.value)}
-                      className="text-[10px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[120px] truncate shadow-xs"
-                    >
-                      <option value="All Companies">All</option>
-                      {allCompanies.map(c => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
+                      onChange={setCompanyFilter}
+                      options={allCompanies}
+                    />
                   </div>
                 </th>
                 <th className="px-2 py-2">PO No</th>
@@ -1408,7 +1476,45 @@ export function InvoicesPage({ onBack, onView }: { onBack?: () => void; onView?:
                   <td className="px-2 py-2 text-right">{cash(r.received)}</td>
                   <td className="px-2 py-2 text-right">{cash(r.balance)}</td>
                   <td className="px-2 py-2"><Badge variant={statusToVariant(r.status)}>{r.status}</Badge></td>
-                  <td className="px-2 py-2"><button type="button" onClick={(e) => { e.stopPropagation(); if (onView) { onView(r); } else { void view(r); } }} className="text-slate-400 hover:text-brand-600 transition-colors p-1" title="View"><Eye size={14} /></button></td>
+                  <td className="px-2 py-2">
+                    <div className="flex items-center gap-1.5 whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onView) { onView(r); } else { void view(r); }
+                        }}
+                        className="p-1 rounded text-slate-400 hover:text-brand-600 hover:bg-slate-100 transition-colors"
+                        title="View"
+                      >
+                        <Eye size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onEdit) { onEdit(r); } else { void handleEditRow(r); }
+                        }}
+                        disabled={!canEditInv}
+                        className={`p-1 rounded transition-colors ${canEditInv ? 'text-slate-400 hover:text-blue-600 hover:bg-blue-50' : 'text-slate-300 cursor-not-allowed'}`}
+                        title={canEditInv ? 'Edit' : 'Invoice edit permission is required'}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onDelete) { onDelete(r); } else { void handleDeleteRow(r); }
+                        }}
+                        disabled={!canDeleteInv}
+                        className={`p-1 rounded transition-colors ${canDeleteInv ? 'text-slate-400 hover:text-red-600 hover:bg-red-50' : 'text-slate-300 cursor-not-allowed'}`}
+                        title={canDeleteInv ? 'Delete' : 'Invoice delete permission is required'}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
               {!loading && !displayedRows.length && (

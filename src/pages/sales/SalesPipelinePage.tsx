@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
+import { CompanyFilterInput } from '@/components/ui/CompanyFilterInput';
 import { Plus, Trash2, Eye, UploadCloud, Edit2, Download, FileText, RefreshCcw, Copy, Calculator, Package as PackageIcon, ScrollText, FolderOpen, Building2, ArrowLeft, ChevronDown, Printer } from 'lucide-react';
 import { uploadOrderFile } from '@/lib/orderFiles';
 import { MetalCalculatorPage, ClientLibraryPage, ProductLibraryPage, TermsLibraryPage, QuotationLibraryPage, CompanyProfilePage } from '../quotation/QuotationToolPages';
@@ -7911,22 +7912,15 @@ export function SalesPipelinePage() {
               <div className="relative flex items-center gap-1.5 sm:gap-2 px-3 py-1 bg-white border border-amber-500 rounded-full shadow-xs shrink-0">
                 <Building2 size={15} className="text-amber-500 shrink-0" />
                 <span className="text-[11px] font-extrabold text-slate-500 tracking-wider uppercase shrink-0">COMPANY:</span>
-                <div className="relative flex items-center">
-                  <select 
-                    className="appearance-none text-xs font-bold text-slate-800 bg-transparent border-0 focus:outline-none cursor-pointer pr-5 py-0 max-w-[150px] md:max-w-[200px] truncate"
-                    value={customerFilter}
-                    onChange={(e) => {
-                      setCustomerFilter(e.target.value);
-                      setCompanyFilter(e.target.value);
-                    }}
-                  >
-                    <option value="All Companies">All Companies</option>
-                    {Array.from(new Set(cards.map(c => c.customer))).filter(Boolean).sort().map(customer => (
-                      <option key={customer} value={customer}>{customer}</option>
-                    ))}
-                  </select>
-                  <ChevronDown size={14} className="text-slate-700 pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 shrink-0" />
-                </div>
+                <CompanyFilterInput
+                  value={customerFilter}
+                  onChange={(val) => {
+                    setCustomerFilter(val);
+                    setCompanyFilter(val);
+                  }}
+                  options={Array.from(new Set(cards.map(c => c.customer))).filter(Boolean).sort() as string[]}
+                  placeholder="All Companies"
+                />
               </div>
             )}
           </div>
@@ -8006,7 +8000,7 @@ export function SalesPipelinePage() {
         </div>
       ) : activeView === 'invoice_list' ? (
         <div className="mb-2.5">
-          <InvoiceModule key={listRefresh} onBack={() => setActiveView('pipeline')} onView={listView('invoice', 'Invoice')} />
+          <InvoiceModule key={listRefresh} onBack={() => setActiveView('pipeline')} onView={listView('invoice', 'Invoice')} onEdit={canDo('invoices', 'edit') ? listEdit('invoice', 'Invoice') : undefined} onDelete={canDo('invoices', 'delete') ? listDelete('invoice', 'Invoice') : undefined} />
         </div>
       ) : activeView === 'tracking_list' ? (
         <div className="mb-2.5">

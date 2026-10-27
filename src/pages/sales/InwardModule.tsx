@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { Search, ArrowLeft, FileText, Download, Eye } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
+import { CompanyFilterInput } from '@/components/ui/CompanyFilterInput';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
@@ -251,18 +252,11 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
                 <th className="py-2 px-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <span className="whitespace-nowrap">Company</span>
-                    <select
-                      aria-label="Filter by Company"
-                      title="Filter by Company"
+                    <CompanyFilterInput
                       value={companyFilter || 'All Companies'}
-                      onChange={e => setCompanyFilter(e.target.value)}
-                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[125px] truncate shadow-xs"
-                    >
-                      <option value="All Companies">All</option>
-                      {companies.map(c => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
+                      onChange={setCompanyFilter}
+                      options={companies}
+                    />
                   </div>
                 </th>
                 <th className="py-2 px-3 font-semibold">

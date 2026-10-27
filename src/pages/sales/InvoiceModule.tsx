@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { Search, ArrowLeft, FileText, Eye } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
+import { CompanyFilterInput } from '@/components/ui/CompanyFilterInput';
 import { InvoicesPage } from '@/pages/finance/InvoicesPage';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
@@ -103,18 +104,11 @@ export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
                 <th className="p-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <span className="whitespace-nowrap">Company</span>
-                    <select
-                      aria-label="Filter by Company"
-                      title="Filter by Company"
+                    <CompanyFilterInput
                       value={companyFilter || 'All Companies'}
-                      onChange={e => setCompanyFilter(e.target.value)}
-                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[125px] truncate shadow-xs"
-                    >
-                      <option value="All Companies">All</option>
-                      {companies.map(c => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
+                      onChange={setCompanyFilter}
+                      options={companies}
+                    />
                   </div>
                 </th>
                 <th className="p-3 font-semibold">Product Name</th>
@@ -204,7 +198,7 @@ export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
   );
 }
 
-export function InvoiceModule({ onBack, onView }: { onBack: () => void; onView?: (record: any) => void }) { return <InvoicesPage onBack={onBack} onView={onView} />; }
+export function InvoiceModule({ onBack, onView, onEdit, onDelete }: { onBack: () => void; onView?: (record: any) => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void }) { return <InvoicesPage onBack={onBack} onView={onView} onEdit={onEdit} onDelete={onDelete} />; }
 
 function FlowStep({ active, highlight, title, subtitle }: { active: boolean, highlight?: boolean, title: string, subtitle: string }) {
   return (

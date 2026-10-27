@@ -11,6 +11,7 @@ import { formatLeadProductDisplay } from './SalesPipelinePage';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { recordDateOf } from '@/lib/globalDate';
+import { CompanyFilterInput } from '@/components/ui/CompanyFilterInput';
 
 const orderValue = (r: any) => r.total_value ?? r.value;
 
@@ -186,18 +187,11 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onView, onEd
                 <th className="p-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <span className="whitespace-nowrap">Company</span>
-                    <select
-                      aria-label="Filter by Company"
-                      title="Filter by Company"
+                    <CompanyFilterInput
                       value={companyFilter || 'All Companies'}
-                      onChange={e => setCompanyFilter(e.target.value)}
-                      className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[125px] truncate shadow-xs"
-                    >
-                      <option value="All Companies">All</option>
-                      {companies.map(c => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
+                      onChange={setCompanyFilter}
+                      options={companies}
+                    />
                   </div>
                 </th>
                 <th className="p-3 font-semibold">Part Name</th>
