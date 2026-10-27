@@ -3433,7 +3433,9 @@ export function SalesPipelinePage() {
     if (invoice) {
       const items = Array.isArray(record.items) ? record.items : [];
       const comp = await fetchCompanyPrintDetails((company as any)?.id);
-      const invBasic = Number(record.basic_value ?? record.subtotal ?? 0) || 0;
+      const invBasic = Number(record.basic_value ?? record.taxable_value ?? record.subtotal ?? 0) || 0;
+      const invDiscount = Number(record.discount_amount ?? record.discount ?? 0) || 0;
+      const invSubtotal = Number(record.subtotal) || (invBasic + invDiscount);
       const invCgst = Number(record.cgst ?? 0) || 0;
       const invSgst = Number(record.sgst ?? 0) || 0;
       const invIgst = Number(record.igst ?? 0) || 0;
@@ -3479,6 +3481,8 @@ export function SalesPipelinePage() {
               hsn: '', qty: Number(record.quantity || record.dispatch_qty || 0) || 0,
               unit: String(record.unit || ''), price: 0, amount: 0,
             }],
+        subtotal: invSubtotal,
+        discountAmount: invDiscount,
         basicValue: invBasic,
         cgstRate: invRate(invCgst), cgstAmt: invCgst,
         sgstRate: invRate(invSgst), sgstAmt: invSgst,

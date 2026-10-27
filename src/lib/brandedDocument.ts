@@ -820,6 +820,8 @@ export interface SalesInvoiceInput {
   dcDate?: string | null | undefined;
   poNo?: string;
   items: SalesInvoiceItem[];
+  subtotal?: number;
+  discountAmount?: number;
   basicValue: number;
   cgstRate?: number | null;
   cgstAmt: number;
@@ -1008,7 +1010,12 @@ async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
   // Totals: amount-in-words left, tax stack right
   const rightW = 96;
   const leftW = contentW - rightW - 3;
+  const discAmt = Number(input.discountAmount) || 0;
+  const subtotalVal = input.subtotal != null && input.subtotal > 0 ? Number(input.subtotal) : (input.basicValue + discAmt);
+
   const totalRows: string[][] = [
+    ['Subtotal', fmt(subtotalVal)],
+    ['Less: Discount', fmt(discAmt)],
     ['Total Amount Before Tax', fmt(input.basicValue)],
     [`Add: ${taxLabel('CGST', input.cgstRate)}`, fmt(input.cgstAmt)],
     [`Add: ${taxLabel('SGST', input.sgstRate)}`, fmt(input.sgstAmt)],
@@ -1016,7 +1023,7 @@ async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
     ['Round Off', fmt(input.roundOff)],
     ['Total', fmt(input.grandTotal)],
   ];
-  ensureSpace(52);
+  ensureSpace(62);
   autoTable(doc, {
     startY: y,
     body: [[`Rupees (in words):\n${amountInWords(input.grandTotal)}`]],

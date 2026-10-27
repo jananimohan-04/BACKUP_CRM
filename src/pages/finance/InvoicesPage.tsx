@@ -783,7 +783,9 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
   // The invoice as the PDF layout (same document as Download), built from a saved invoice record.
   const buildInvoicePdfInput = async (inv: any) => {
     const comp = await fetchCompanyPrintDetails((company as any)?.id);
-    const basic = Number(inv.basic_value) || 0;
+    const basic = Number(inv.basic_value ?? inv.taxable_value ?? 0) || 0;
+    const disc = Number(inv.discount_amount ?? inv.discount ?? 0) || 0;
+    const sub = Number(inv.subtotal) || (basic + disc);
     const cg = Number(inv.cgst) || 0;
     const sg = Number(inv.sgst) || 0;
     const ig = Number(inv.igst) || 0;
@@ -815,6 +817,8 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
         const r = Number(item.rate) || 0;
         return { description: item.description || '', hsn: item.hsn || '', qty: q, unit: item.unit || '', price: r, amount: Number(item.amount ?? q * r) || 0 };
       }),
+      subtotal: sub,
+      discountAmount: disc,
       basicValue: basic,
       cgstRate: rateOf(cg), cgstAmt: cg,
       sgstRate: rateOf(sg), sgstAmt: sg,
